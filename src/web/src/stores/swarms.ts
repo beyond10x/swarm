@@ -1,5 +1,5 @@
 // The swarm store. Seed swarms come from /data/seed.json and are never persisted; swarms created in
-// the UI live in localStorage under `swarm2.swarms`. Lifecycle transitions follow SwarmState:
+// the UI live in localStorage under `swarm.swarms`. Lifecycle transitions follow SwarmState:
 //   Created → Running (start; the orchestrator bootstraps everything)
 //   Running → Paused (pause), Paused → Running (resume)
 //   Running | Paused → Stopped (stop), Created | Stopped → Deleted (delete)
@@ -11,7 +11,7 @@ import {
   SWARM_HOME, bootstrapBoxes, bootstrapFlows, bootstrapSchemas, orchestratorAgent, slugify,
 } from '@/composables/useBootstrap'
 
-export const STORAGE_KEY = 'swarm2.swarms'
+export const STORAGE_KEY = 'swarm.swarms'
 const SEED_URL = `${import.meta.env.BASE_URL}data/seed.json`
 
 export type SwarmAction = 'start' | 'pause' | 'resume' | 'stop' | 'delete'

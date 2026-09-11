@@ -1,4 +1,4 @@
-# swarm2.blackbox — the canvas: systems that agents build, visible only as inputs and outputs.
+# swarm.blackbox — the canvas: systems that agents build, visible only as inputs and outputs.
 #
 # Timo, 2026-09-11, verbatim: "the orchestrator will then also (individually per swarm) build
 # things - agents can do too - eg they build workflows/systems themselfs - blackbox these systems
@@ -30,12 +30,12 @@
 # field is read from Timo's words, model.ts or the binding model, or is marked `UNMAPPED:`.
 #
 # For the integrator — model.ts `Swarm.boxes`, `Swarm.schemas`, `Swarm.connections` say a swarm
-# holds these. That `owns` edge lives on `swarm2.manager.Swarm`, not here:
-#   DEFERRED-RELATION: swarm2.manager.Swarm owns swarm2.blackbox.Schema via swarm_id (many)
-#   DEFERRED-RELATION: swarm2.manager.Swarm owns swarm2.blackbox.Box via swarm_id (many)
+# holds these. That `owns` edge lives on `swarm.manager.Swarm`, not here:
+#   DEFERRED-RELATION: swarm.manager.Swarm owns swarm.blackbox.Schema via swarm_id (many)
+#   DEFERRED-RELATION: swarm.manager.Swarm owns swarm.blackbox.Box via swarm_id (many)
 # A Connection is owned by its source Box below, and two owners are refused, so the swarm reaches
 # its connections through its boxes (or by `references`, the integrator's call).
-domain: swarm2.blackbox
+domain: swarm.blackbox
 
 summary: >-
   The canvas: schemas known to everyone, boxes that show only inputs and outputs, and the
@@ -48,12 +48,12 @@ naming:
 
 types:
   # model.ts `BoxKind = 'flow' | 'service' | 'tool' | 'store' | 'agent' | 'swarm'`. A Flow's
-  # internals live in swarm2.flow (model.ts `Flow`, "A DAG that runs inside one workflow state");
+  # internals live in swarm.flow (model.ts `Flow`, "A DAG that runs inside one workflow state");
   # a Service is a running process with a surface; a Tool is a CLI or built-in tool; a Store is a
   # file, jsonl or db. An Agent and a Swarm are boxes too — Timo: "the orchestrator will then also
   # (individually per swarm) build things - agents can do too", so the thing that builds and the
   # thing built compose the same way, and a whole swarm is one box on a bigger canvas.
-  - name: swarm2.blackbox.BoxKind
+  - name: swarm.blackbox.BoxKind
     kind: enum
     variants: [Flow, Service, Tool, Store, Agent, Swarm]
     naming:
@@ -64,7 +64,7 @@ types:
   # because a struct field cannot carry one; the implementation resolves it against
   # `PublishedSchemas`. `required` is model.ts's optional boolean made a plain Boolean: a port
   # either must be wired or need not be, and "unstated" is not a third answer a box can promise.
-  - name: swarm2.blackbox.Port
+  - name: swarm.blackbox.Port
     kind: struct
     fields:
       - name: name
@@ -82,7 +82,7 @@ types:
   # "Neither is 'exactly once', and nothing here will ever be"). model.ts `Connection.delivery`
   # spells them 'at_least_once' | 'at_most_once'; these are the same two, PascalCased as ess/1
   # enum variants are.
-  - name: swarm2.blackbox.Delivery
+  - name: swarm.blackbox.Delivery
     kind: enum
     variants: [AtLeastOnce, AtMostOnce]
     naming:
@@ -92,7 +92,7 @@ types:
   # Retry is "another invocation of the command"; Escalate publishes the event named beside it
   # (`Connection.escalation_event`); Drop "records that losing it is acceptable" and "has to be a
   # word someone typed", so this enum has no default.
-  - name: swarm2.blackbox.Failure
+  - name: swarm.blackbox.Failure
     kind: enum
     variants: [Retry, Escalate, Drop]
     naming:
@@ -102,7 +102,7 @@ types:
   # things". Presentation, but it is state the agents write and read back, so it persists here and
   # not in the UI (model.ts `Box.position?: { x: number; y: number }`). Integer canvas units;
   # negative is allowed, a canvas has no origin an agent must respect.
-  - name: swarm2.blackbox.Position
+  - name: swarm.blackbox.Position
     kind: struct
     fields:
       - name: x
@@ -114,11 +114,11 @@ entities:
   # "schema known to everyone". model.ts `Schema { schemaId, name, version, jsonSchema }`, held
   # per swarm (`Swarm.schemas`). Known to everyone is the `PublishedSchemas` view below, readable
   # by every actor including the Viewer that may issue no command.
-  - name: swarm2.blackbox.Schema
+  - name: swarm.blackbox.Schema
     identity:
       # String, not Uuid: a schema is addressed by name and version from every Port that names it
       # (model.ts `Port.schemaId`), so the id is the readable pair, e.g.
-      # `swarm2.board.MessagePosted/1`. Assigned by the implementation at `DraftSchema` from
+      # `swarm.board.MessagePosted/1`. Assigned by the implementation at `DraftSchema` from
       # `name` and `version`. UNMAPPED: the exact id format — model.ts says `schemaId: string` and
       # no more; `<name>/<version>` is this file's proposal.
       name: schema_id
@@ -172,23 +172,23 @@ entities:
   # "blackbox these systems only have inputs and putputs". model.ts `Box { boxId, name, kind,
   # ownerAgentId?, inputs, outputs, version, flowId?, summary?, position? }`: "A blackbox: only
   # inputs and outputs are visible; other agents connect to them."
-  - name: swarm2.blackbox.Box
+  - name: swarm.blackbox.Box
     identity:
       name: box_id
       type: Uuid
     fields:
       # The swarm whose canvas it sits on (model.ts `Swarm.boxes`); the `via` of the deferred
-      # `swarm2.manager.Swarm` ownership named in the header.
+      # `swarm.manager.Swarm` ownership named in the header.
       - name: swarm_id
         type: Uuid
       - name: name
         type: String
       - name: kind
-        type: swarm2.blackbox.BoxKind
+        type: swarm.blackbox.BoxKind
       # model.ts `ownerAgentId?`. The agent that built it — Timo: "agents can do too - eg they
       # build workflows/systems themselfs". Optional: the orchestrator builds "(individually per
       # swarm)" and a pre-built component-lib box has no agent author. Slug, not a relation:
-      # swarm2.agent is not in this file's base.
+      # swarm.agent is not in this file's base.
       - name: owner_agent
         type: Optional<String>
       - name: summary
@@ -199,24 +199,24 @@ entities:
         type: Integer
       # The visible surface, and all of it. model.ts `inputs: Port[]`, `outputs: Port[]`.
       - name: inputs
-        type: List<swarm2.blackbox.Port>
+        type: List<swarm.blackbox.Port>
       - name: outputs
-        type: List<swarm2.blackbox.Port>
+        type: List<swarm.blackbox.Port>
       # model.ts `flowId?: string // when kind === 'flow', the Flow that is its internals`. A
-      # String and not a relation because swarm2.flow is not in this file's base.
-      # DEFERRED-RELATION: references swarm2.flow.Flow via flow_id (Optional)
+      # String and not a relation because swarm.flow is not in this file's base.
+      # DEFERRED-RELATION: references swarm.flow.Flow via flow_id (Optional)
       - name: flow_id
         type: Optional<String>
       # When kind is Agent: the agent this box stands for, by slug (model.ts `Agent.agentId`).
       # UNMAPPED: model.ts `Box` has `flowId` for a Flow and nothing for an Agent; this field is
       # the symmetric counterpart, added so an Agent box is not a box with no referent.
-      # DEFERRED-RELATION: references swarm2.agent.Agent via agent_id (Optional)
+      # DEFERRED-RELATION: references swarm.agent.Agent via agent_id (Optional)
       - name: agent_id
         type: Optional<String>
       # "where they can just throw things". Required, unlike model.ts `position?`: a box on a
       # canvas is somewhere, and `DraftBox` takes one.
       - name: position
-        type: swarm2.blackbox.Position
+        type: swarm.blackbox.Position
       - name: created_at
         type: Timestamp
       # Stamped by the implementation at `PublishBox`; cleared at `ReviseBox`.
@@ -226,16 +226,11 @@ entities:
       - version > 0
     relations:
       # Declared at integration (the DEFERRED-RELATION notes above). Both Optional via, both
-      # `references`: a Flow box points at the flow that is its internals, an Agent box at the agent
-      # it stands for, and neither the flow nor the agent stops existing when the box is retired.
-      - name: flow
-        kind: references
-        target: swarm2.flow.Flow
-        cardinality: one
-        via: flow_id
+      # `references`: an Agent box points at the agent it stands for, and the agent does not stop
+      # existing when the box is retired.
       - name: agent
         kind: references
-        target: swarm2.agent.Agent
+        target: swarm.agent.Agent
         cardinality: one
         via: agent_id
       # A connection has no meaning without its source box: it is that box's output, wired.
@@ -243,7 +238,7 @@ entities:
       # second owner is refused (authoring rules: "two owners refused").
       - name: outgoing
         kind: owns
-        target: swarm2.blackbox.Connection
+        target: swarm.blackbox.Connection
         cardinality: many
         via: from_box_id
     lifecycle:
@@ -274,7 +269,7 @@ entities:
   # output}, to: {boxId, input}, delivery? }`, flattened to columns here (a struct field cannot
   # be a relation's `via`). The ESS binding columns beyond model.ts — `on_failure`,
   # `escalation_event` — are from components.yaml and binding.rs, see the header.
-  - name: swarm2.blackbox.Connection
+  - name: swarm.blackbox.Connection
     identity:
       name: connection_id
       type: Uuid
@@ -303,10 +298,10 @@ entities:
       # ESS binding `delivery`. Required, never defaulted (components.yaml: "`delivery` and
       # `on_failure` are required words").
       - name: delivery
-        type: swarm2.blackbox.Delivery
+        type: swarm.blackbox.Delivery
       # ESS binding `on_failure`.
       - name: on_failure
-        type: swarm2.blackbox.Failure
+        type: swarm.blackbox.Failure
       # ESS binding `escalate: {emits: <event>}` — the event name published when `on_failure` is
       # Escalate. Optional: Retry and Drop name nothing. binding.rs refuses "escalates and does not
       # say what that emits"; that pairing is a check in the implementation of `Connect`, because
@@ -314,7 +309,7 @@ entities:
       - name: escalation_event
         type: Optional<String>
       # "other agents can connect": the agent that made it, by slug. Required — a connection is
-      # somebody's act, and the orchestrator has a slug too (swarm2.config.BoardDefaults
+      # somebody's act, and the orchestrator has a slug too (swarm.config.BoardDefaults
       # `orchestrator_slug`).
       - name: made_by
         type: String
@@ -324,7 +319,7 @@ entities:
       # The sink box stands alone without this connection, so `references`, via the field here.
       - name: target
         kind: references
-        target: swarm2.blackbox.Box
+        target: swarm.blackbox.Box
         cardinality: one
         via: to_box_id
     lifecycle:
@@ -353,33 +348,33 @@ entities:
           to: Removed
 
 errors:
-  - name: swarm2.blackbox.SchemaStateConflict
+  - name: swarm.blackbox.SchemaStateConflict
     summary: The schema is not in a state this command acts from, so nothing moved.
     fields:
       - name: state
-        type: swarm2.blackbox.Schema.State
-  - name: swarm2.blackbox.BoxStateConflict
+        type: swarm.blackbox.Schema.State
+  - name: swarm.blackbox.BoxStateConflict
     summary: The box is not in a state this command acts from, so nothing moved.
     fields:
       - name: state
-        type: swarm2.blackbox.Box.State
-  - name: swarm2.blackbox.ConnectionStateConflict
+        type: swarm.blackbox.Box.State
+  - name: swarm.blackbox.ConnectionStateConflict
     summary: The connection is not in a state this command acts from, so nothing moved.
     fields:
       - name: state
-        type: swarm2.blackbox.Connection.State
+        type: swarm.blackbox.Connection.State
   # Raised by the implementation of `RedefinePorts` on a box that is not Draft. Not an outcome:
   # `RedefinePorts` is an `updates:` command, and "which state is the row in" is a lookup a
   # `when:` cannot make (ESS-COMMAND-003); `wrong_state: true` is only for `moves:`.
-  - name: swarm2.blackbox.BoxNotDraft
+  - name: swarm.blackbox.BoxNotDraft
     summary: The box is Published or Retired, so its ports are a promise and were not changed.
     fields:
       - name: state
-        type: swarm2.blackbox.Box.State
+        type: swarm.blackbox.Box.State
   # Raised by the implementation of `Connect` when the output port's schema, the input port's
   # schema and the given `schema_id` are not one schema. Not an outcome: the two ports live on two
   # other rows, and a `when:` reads input fields only (ESS-COMMAND-003).
-  - name: swarm2.blackbox.SchemaMismatch
+  - name: swarm.blackbox.SchemaMismatch
     summary: The output and the input do not carry the same schema, so nothing was connected.
     fields:
       - name: from_schema
@@ -392,7 +387,7 @@ commands:
   # The implementation assigns `schema_id` from name and version, parses `json_schema` as JSON
   # Schema and refuses text that is not, and refuses a (swarm, name, version) already drafted —
   # all lookups, none an outcome (ESS-COMMAND-003).
-  - name: swarm2.blackbox.DraftSchema
+  - name: swarm.blackbox.DraftSchema
     naming:
       wire: draft-schema
       display: Draft a schema
@@ -411,15 +406,18 @@ commands:
         type: Optional<String>
     outcomes:
       - name: drafted
-        creates: swarm2.blackbox.Schema
+        creates: swarm.blackbox.Schema
         instance: schema_id
         emits:
-          - swarm2.blackbox.SchemaDrafted
+          - swarm.blackbox.SchemaDrafted
         payload:
-          swarm2.blackbox.SchemaDrafted:
+          swarm.blackbox.SchemaDrafted:
             swarm_id: input.swarm_id
             name: input.name
             version: input.version
+            json_schema: input.json_schema
+            owner_agent: input.owner_agent
+            summary: input.summary
         sets:
           swarm_id: input.swarm_id
           name: input.name
@@ -431,7 +429,7 @@ commands:
 
   # `name` and `version` are inputs so `SchemaPublished` can carry them to a listener (a
   # component-lib schema picker) without a lookup; the implementation checks they match the row.
-  - name: swarm2.blackbox.PublishSchema
+  - name: swarm.blackbox.PublishSchema
     naming:
       wire: publish-schema
       display: Publish a schema
@@ -444,22 +442,22 @@ commands:
         type: Integer
     outcomes:
       - name: published
-        moves: swarm2.blackbox.Schema.publish
+        moves: swarm.blackbox.Schema.publish
         instance: schema_id
         emits:
-          - swarm2.blackbox.SchemaPublished
+          - swarm.blackbox.SchemaPublished
         payload:
-          swarm2.blackbox.SchemaPublished:
+          swarm.blackbox.SchemaPublished:
             schema_id: input.schema_id
             name: input.name
             version: input.version
         summary: The schema is known to everyone; its text is frozen and connections may carry it.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.blackbox.SchemaStateConflict
+        error: swarm.blackbox.SchemaStateConflict
         summary: Only a Draft can be published.
 
-  - name: swarm2.blackbox.DeprecateSchema
+  - name: swarm.blackbox.DeprecateSchema
     naming:
       wire: deprecate-schema
       display: Deprecate a schema
@@ -468,17 +466,17 @@ commands:
         type: String
     outcomes:
       - name: deprecated
-        moves: swarm2.blackbox.Schema.deprecate
+        moves: swarm.blackbox.Schema.deprecate
         instance: schema_id
         emits:
-          - swarm2.blackbox.SchemaDeprecated
+          - swarm.blackbox.SchemaDeprecated
         payload:
-          swarm2.blackbox.SchemaDeprecated:
+          swarm.blackbox.SchemaDeprecated:
             schema_id: input.schema_id
         summary: No new connection may cite the schema; live ones keep working.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.blackbox.SchemaStateConflict
+        error: swarm.blackbox.SchemaStateConflict
         summary: The schema was already Deprecated.
 
   # ---- Box ---------------------------------------------------------------------------------
@@ -486,7 +484,7 @@ commands:
   # names a schema in `PublishedSchemas` or Draft of the same swarm, and that `flow_id` is given
   # exactly when `kind` is Flow and `agent_id` exactly when `kind` is Agent — a `when:` compares
   # one input to a literal and cannot pair two inputs, so those are prose.
-  - name: swarm2.blackbox.DraftBox
+  - name: swarm.blackbox.DraftBox
     naming:
       wire: draft-box
       display: Draft a box
@@ -496,32 +494,39 @@ commands:
       - name: name
         type: String
       - name: kind
-        type: swarm2.blackbox.BoxKind
+        type: swarm.blackbox.BoxKind
       - name: owner_agent
         type: Optional<String>
       - name: summary
         type: Optional<String>
       - name: inputs
-        type: List<swarm2.blackbox.Port>
+        type: List<swarm.blackbox.Port>
       - name: outputs
-        type: List<swarm2.blackbox.Port>
+        type: List<swarm.blackbox.Port>
       - name: flow_id
         type: Optional<String>
       - name: agent_id
         type: Optional<String>
       - name: position
-        type: swarm2.blackbox.Position
+        type: swarm.blackbox.Position
     outcomes:
       - name: drafted
-        creates: swarm2.blackbox.Box
+        creates: swarm.blackbox.Box
         instance: box_id
         emits:
-          - swarm2.blackbox.BoxDrafted
+          - swarm.blackbox.BoxDrafted
         payload:
-          swarm2.blackbox.BoxDrafted:
+          swarm.blackbox.BoxDrafted:
             swarm_id: input.swarm_id
             name: input.name
             kind: input.kind
+            owner_agent: input.owner_agent
+            summary: input.summary
+            inputs: input.inputs
+            outputs: input.outputs
+            flow_id: input.flow_id
+            agent_id: input.agent_id
+            position: input.position
         sets:
           swarm_id: input.swarm_id
           name: input.name
@@ -537,7 +542,7 @@ commands:
 
   # "where they can just throw things" — the one write the canvas makes constantly. Legal in
   # Draft and Published; on a Retired box the implementation raises `BoxStateConflict`.
-  - name: swarm2.blackbox.MoveBox
+  - name: swarm.blackbox.MoveBox
     naming:
       wire: move-box
       display: Move a box on the canvas
@@ -545,15 +550,15 @@ commands:
       - name: box_id
         type: Uuid
       - name: position
-        type: swarm2.blackbox.Position
+        type: swarm.blackbox.Position
     outcomes:
       - name: moved
-        updates: swarm2.blackbox.Box
+        updates: swarm.blackbox.Box
         instance: box_id
         emits:
-          - swarm2.blackbox.BoxMoved
+          - swarm.blackbox.BoxMoved
         payload:
-          swarm2.blackbox.BoxMoved:
+          swarm.blackbox.BoxMoved:
             box_id: input.box_id
             position: input.position
         sets:
@@ -563,7 +568,7 @@ commands:
   # Legal only in Draft: a published box's ports are the promise other boxes connected to. That
   # is a lookup on state, so the implementation raises `BoxNotDraft` (declared under `errors:`);
   # it is not an outcome here because `updates:` has no `wrong_state:` branch.
-  - name: swarm2.blackbox.RedefinePorts
+  - name: swarm.blackbox.RedefinePorts
     naming:
       wire: redefine-ports
       display: Redefine a draft box's ports
@@ -571,18 +576,20 @@ commands:
       - name: box_id
         type: Uuid
       - name: inputs
-        type: List<swarm2.blackbox.Port>
+        type: List<swarm.blackbox.Port>
       - name: outputs
-        type: List<swarm2.blackbox.Port>
+        type: List<swarm.blackbox.Port>
     outcomes:
       - name: redefined
-        updates: swarm2.blackbox.Box
+        updates: swarm.blackbox.Box
         instance: box_id
         emits:
-          - swarm2.blackbox.PortsRedefined
+          - swarm.blackbox.PortsRedefined
         payload:
-          swarm2.blackbox.PortsRedefined:
+          swarm.blackbox.PortsRedefined:
             box_id: input.box_id
+            inputs: input.inputs
+            outputs: input.outputs
         sets:
           inputs: input.inputs
           outputs: input.outputs
@@ -590,7 +597,7 @@ commands:
 
   # `version` is an input so the caller states the number it is promising (model.ts
   # `Box.version`); the implementation refuses one not greater than the row's — a lookup.
-  - name: swarm2.blackbox.PublishBox
+  - name: swarm.blackbox.PublishBox
     naming:
       wire: publish-box
       display: Publish a box
@@ -601,12 +608,12 @@ commands:
         type: Integer
     outcomes:
       - name: published
-        moves: swarm2.blackbox.Box.publish
+        moves: swarm.blackbox.Box.publish
         instance: box_id
         emits:
-          - swarm2.blackbox.BoxPublished
+          - swarm.blackbox.BoxPublished
         payload:
-          swarm2.blackbox.BoxPublished:
+          swarm.blackbox.BoxPublished:
             box_id: input.box_id
             version: input.version
         sets:
@@ -614,14 +621,14 @@ commands:
         summary: The surface is a promise at this version; other boxes may connect to it.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.blackbox.BoxStateConflict
+        error: swarm.blackbox.BoxStateConflict
         summary: Only a Draft can be published.
 
   # "system evolves". Every Live connection at either end of the box is moved to Broken by the
   # implementation in the same transaction, one `ConnectionBroken` each. Not a binding
   # `BoxRevised → BreakConnection`: a binding invokes one command with one mapping per event, and
   # cannot fan one event out to N connection ids.
-  - name: swarm2.blackbox.ReviseBox
+  - name: swarm.blackbox.ReviseBox
     naming:
       wire: revise-box
       display: Revise a published box
@@ -630,21 +637,21 @@ commands:
         type: Uuid
     outcomes:
       - name: revised
-        moves: swarm2.blackbox.Box.revise
+        moves: swarm.blackbox.Box.revise
         instance: box_id
         emits:
-          - swarm2.blackbox.BoxRevised
+          - swarm.blackbox.BoxRevised
         payload:
-          swarm2.blackbox.BoxRevised:
+          swarm.blackbox.BoxRevised:
             box_id: input.box_id
         summary: The box is back in Draft; its connections are Broken until repaired.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.blackbox.BoxStateConflict
+        error: swarm.blackbox.BoxStateConflict
         summary: Only a Published box can be revised.
 
   # As `ReviseBox`: connections at either end are broken by the implementation, one event each.
-  - name: swarm2.blackbox.RetireBox
+  - name: swarm.blackbox.RetireBox
     naming:
       wire: retire-box
       display: Retire a box
@@ -653,17 +660,17 @@ commands:
         type: Uuid
     outcomes:
       - name: retired
-        moves: swarm2.blackbox.Box.retire
+        moves: swarm.blackbox.Box.retire
         instance: box_id
         emits:
-          - swarm2.blackbox.BoxRetired
+          - swarm.blackbox.BoxRetired
         payload:
-          swarm2.blackbox.BoxRetired:
+          swarm.blackbox.BoxRetired:
             box_id: input.box_id
         summary: The box leaves the canvas of things to connect to; its record stays.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.blackbox.BoxStateConflict
+        error: swarm.blackbox.BoxStateConflict
         summary: The box was already Retired.
 
   # ---- Connection --------------------------------------------------------------------------
@@ -672,7 +679,7 @@ commands:
   # `outputs` and `to_input` one in the sink's `inputs`; both ports' `schema_id` equal
   # `schema_id` (else `SchemaMismatch`); that schema is Published, not Deprecated; both boxes are
   # of the same swarm; and `escalation_event` is given exactly when `on_failure` is Escalate.
-  - name: swarm2.blackbox.Connect
+  - name: swarm.blackbox.Connect
     naming:
       wire: connect
       display: Connect an output to an input
@@ -690,24 +697,31 @@ commands:
       - name: schema_id
         type: String
       - name: delivery
-        type: swarm2.blackbox.Delivery
+        type: swarm.blackbox.Delivery
       - name: on_failure
-        type: swarm2.blackbox.Failure
+        type: swarm.blackbox.Failure
       - name: escalation_event
         type: Optional<String>
       - name: made_by
         type: String
     outcomes:
       - name: proposed
-        creates: swarm2.blackbox.Connection
+        creates: swarm.blackbox.Connection
         instance: connection_id
         emits:
-          - swarm2.blackbox.ConnectionProposed
+          - swarm.blackbox.ConnectionProposed
         payload:
-          swarm2.blackbox.ConnectionProposed:
+          swarm.blackbox.ConnectionProposed:
             from_box_id: input.from_box_id
             to_box_id: input.to_box_id
             schema_id: input.schema_id
+            swarm_id: input.swarm_id
+            from_output: input.from_output
+            to_input: input.to_input
+            delivery: input.delivery
+            on_failure: input.on_failure
+            escalation_event: input.escalation_event
+            made_by: input.made_by
         sets:
           swarm_id: input.swarm_id
           from_box_id: input.from_box_id
@@ -722,7 +736,7 @@ commands:
         summary: The connection is drawn in Proposed; it carries nothing until activated.
 
   # The implementation refuses unless both boxes are Published — a lookup.
-  - name: swarm2.blackbox.ActivateConnection
+  - name: swarm.blackbox.ActivateConnection
     naming:
       wire: activate-connection
       display: Activate a connection
@@ -731,23 +745,23 @@ commands:
         type: Uuid
     outcomes:
       - name: live
-        moves: swarm2.blackbox.Connection.activate
+        moves: swarm.blackbox.Connection.activate
         instance: connection_id
         emits:
-          - swarm2.blackbox.ConnectionLive
+          - swarm.blackbox.ConnectionLive
         payload:
-          swarm2.blackbox.ConnectionLive:
+          swarm.blackbox.ConnectionLive:
             connection_id: input.connection_id
         summary: The connection carries values under its delivery guarantee and failure policy.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.blackbox.ConnectionStateConflict
+        error: swarm.blackbox.ConnectionStateConflict
         summary: Only a Proposed connection can be activated.
 
   # Invoked by the implementation of `ReviseBox` and `RetireBox` for each connection at either
   # end, and by a builder who sees a connection misbehave. `reason` is on the event only.
   # UNMAPPED: whether the reason should persist on the row for `BrokenConnections` to show.
-  - name: swarm2.blackbox.BreakConnection
+  - name: swarm.blackbox.BreakConnection
     naming:
       wire: break-connection
       display: Break a connection
@@ -758,23 +772,23 @@ commands:
         type: String
     outcomes:
       - name: broken
-        moves: swarm2.blackbox.Connection.break
+        moves: swarm.blackbox.Connection.break
         instance: connection_id
         emits:
-          - swarm2.blackbox.ConnectionBroken
+          - swarm.blackbox.ConnectionBroken
         payload:
-          swarm2.blackbox.ConnectionBroken:
+          swarm.blackbox.ConnectionBroken:
             connection_id: input.connection_id
             reason: input.reason
         summary: The connection carries nothing until repaired; its record says why.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.blackbox.ConnectionStateConflict
+        error: swarm.blackbox.ConnectionStateConflict
         summary: Only a Live connection can break.
 
   # The implementation re-runs the `Connect` checks against the boxes' current surfaces before
   # moving; a connection whose port or schema is gone stays Broken and gets `SchemaMismatch`.
-  - name: swarm2.blackbox.RepairConnection
+  - name: swarm.blackbox.RepairConnection
     naming:
       wire: repair-connection
       display: Repair a broken connection
@@ -783,20 +797,20 @@ commands:
         type: Uuid
     outcomes:
       - name: repaired
-        moves: swarm2.blackbox.Connection.repair
+        moves: swarm.blackbox.Connection.repair
         instance: connection_id
         emits:
-          - swarm2.blackbox.ConnectionRepaired
+          - swarm.blackbox.ConnectionRepaired
         payload:
-          swarm2.blackbox.ConnectionRepaired:
+          swarm.blackbox.ConnectionRepaired:
             connection_id: input.connection_id
         summary: The connection is Live again against the ends' current surfaces.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.blackbox.ConnectionStateConflict
+        error: swarm.blackbox.ConnectionStateConflict
         summary: Only a Broken connection can be repaired.
 
-  - name: swarm2.blackbox.Disconnect
+  - name: swarm.blackbox.Disconnect
     naming:
       wire: disconnect
       display: Remove a connection
@@ -805,21 +819,21 @@ commands:
         type: Uuid
     outcomes:
       - name: removed
-        moves: swarm2.blackbox.Connection.remove
+        moves: swarm.blackbox.Connection.remove
         instance: connection_id
         emits:
-          - swarm2.blackbox.ConnectionRemoved
+          - swarm.blackbox.ConnectionRemoved
         payload:
-          swarm2.blackbox.ConnectionRemoved:
+          swarm.blackbox.ConnectionRemoved:
             connection_id: input.connection_id
         summary: The connection is gone from the canvas; its record stays.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.blackbox.ConnectionStateConflict
+        error: swarm.blackbox.ConnectionStateConflict
         summary: The connection was already Removed.
 
 events:
-  - name: swarm2.blackbox.SchemaDrafted
+  - name: swarm.blackbox.SchemaDrafted
     fields:
       - name: schema_id
         type: String
@@ -829,7 +843,13 @@ events:
         type: String
       - name: version
         type: Integer
-  - name: swarm2.blackbox.SchemaPublished
+      - name: json_schema
+        type: String
+      - name: owner_agent
+        type: Optional<String>
+      - name: summary
+        type: Optional<String>
+  - name: swarm.blackbox.SchemaPublished
     fields:
       - name: schema_id
         type: String
@@ -837,11 +857,11 @@ events:
         type: String
       - name: version
         type: Integer
-  - name: swarm2.blackbox.SchemaDeprecated
+  - name: swarm.blackbox.SchemaDeprecated
     fields:
       - name: schema_id
         type: String
-  - name: swarm2.blackbox.BoxDrafted
+  - name: swarm.blackbox.BoxDrafted
     fields:
       - name: box_id
         type: Uuid
@@ -850,32 +870,50 @@ events:
       - name: name
         type: String
       - name: kind
-        type: swarm2.blackbox.BoxKind
-  - name: swarm2.blackbox.BoxMoved
+        type: swarm.blackbox.BoxKind
+      - name: owner_agent
+        type: Optional<String>
+      - name: summary
+        type: Optional<String>
+      - name: inputs
+        type: List<swarm.blackbox.Port>
+      - name: outputs
+        type: List<swarm.blackbox.Port>
+      - name: flow_id
+        type: Optional<String>
+      - name: agent_id
+        type: Optional<String>
+      - name: position
+        type: swarm.blackbox.Position
+  - name: swarm.blackbox.BoxMoved
     fields:
       - name: box_id
         type: Uuid
       - name: position
-        type: swarm2.blackbox.Position
-  - name: swarm2.blackbox.PortsRedefined
+        type: swarm.blackbox.Position
+  - name: swarm.blackbox.PortsRedefined
     fields:
       - name: box_id
         type: Uuid
-  - name: swarm2.blackbox.BoxPublished
+      - name: inputs
+        type: List<swarm.blackbox.Port>
+      - name: outputs
+        type: List<swarm.blackbox.Port>
+  - name: swarm.blackbox.BoxPublished
     fields:
       - name: box_id
         type: Uuid
       - name: version
         type: Integer
-  - name: swarm2.blackbox.BoxRevised
+  - name: swarm.blackbox.BoxRevised
     fields:
       - name: box_id
         type: Uuid
-  - name: swarm2.blackbox.BoxRetired
+  - name: swarm.blackbox.BoxRetired
     fields:
       - name: box_id
         type: Uuid
-  - name: swarm2.blackbox.ConnectionProposed
+  - name: swarm.blackbox.ConnectionProposed
     fields:
       - name: connection_id
         type: Uuid
@@ -885,21 +923,35 @@ events:
         type: Uuid
       - name: schema_id
         type: String
-  - name: swarm2.blackbox.ConnectionLive
+      - name: swarm_id
+        type: Uuid
+      - name: from_output
+        type: String
+      - name: to_input
+        type: String
+      - name: delivery
+        type: swarm.blackbox.Delivery
+      - name: on_failure
+        type: swarm.blackbox.Failure
+      - name: escalation_event
+        type: Optional<String>
+      - name: made_by
+        type: String
+  - name: swarm.blackbox.ConnectionLive
     fields:
       - name: connection_id
         type: Uuid
-  - name: swarm2.blackbox.ConnectionBroken
+  - name: swarm.blackbox.ConnectionBroken
     fields:
       - name: connection_id
         type: Uuid
       - name: reason
         type: String
-  - name: swarm2.blackbox.ConnectionRepaired
+  - name: swarm.blackbox.ConnectionRepaired
     fields:
       - name: connection_id
         type: Uuid
-  - name: swarm2.blackbox.ConnectionRemoved
+  - name: swarm.blackbox.ConnectionRemoved
     fields:
       - name: connection_id
         type: Uuid
@@ -907,8 +959,8 @@ events:
 views:
   # "schema known to everyone" — this view is that fact. Readable by every actor, the Viewer
   # included. read_your_writes so the agent that just published sees it before wiring a port.
-  - name: swarm2.blackbox.PublishedSchemas
-    source: swarm2.blackbox.Schema
+  - name: swarm.blackbox.PublishedSchemas
+    source: swarm.blackbox.Schema
     consistency: read_your_writes
     filter: state == Published
     fields:
@@ -929,8 +981,8 @@ views:
       display: Schemas known to everyone
 
   # The whole schema including its JSON Schema text, in any state — what a validator fetches.
-  - name: swarm2.blackbox.SchemaById
-    source: swarm2.blackbox.Schema
+  - name: swarm.blackbox.SchemaById
+    source: swarm.blackbox.Schema
     consistency: read_your_writes
     fields:
       - name: schema_id
@@ -960,8 +1012,8 @@ views:
   # UI has to draw Draft, Published and Retired apart (probed 2026-09-11, ess 0.23.0: a view may
   # list the lifecycle state as a field typed `<Entity>.State`; manager.yaml never does, it
   # filters instead).
-  - name: swarm2.blackbox.Canvas
-    source: swarm2.blackbox.Box
+  - name: swarm.blackbox.Canvas
+    source: swarm.blackbox.Box
     consistency: read_your_writes
     fields:
       - name: box_id
@@ -971,30 +1023,30 @@ views:
       - name: name
         type: String
       - name: kind
-        type: swarm2.blackbox.BoxKind
+        type: swarm.blackbox.BoxKind
       - name: owner_agent
         type: Optional<String>
       - name: version
         type: Integer
       - name: inputs
-        type: List<swarm2.blackbox.Port>
+        type: List<swarm.blackbox.Port>
       - name: outputs
-        type: List<swarm2.blackbox.Port>
+        type: List<swarm.blackbox.Port>
       - name: flow_id
         type: Optional<String>
       - name: agent_id
         type: Optional<String>
       - name: position
-        type: swarm2.blackbox.Position
+        type: swarm.blackbox.Position
       - name: state
-        type: swarm2.blackbox.Box.State
+        type: swarm.blackbox.Box.State
     naming:
       wire: canvas
       display: The canvas — every box of a swarm
 
   # What an agent may connect to: the surfaces that are promises.
-  - name: swarm2.blackbox.PublishedBoxes
-    source: swarm2.blackbox.Box
+  - name: swarm.blackbox.PublishedBoxes
+    source: swarm.blackbox.Box
     consistency: read_your_writes
     filter: state == Published
     fields:
@@ -1005,7 +1057,7 @@ views:
       - name: name
         type: String
       - name: kind
-        type: swarm2.blackbox.BoxKind
+        type: swarm.blackbox.BoxKind
       - name: owner_agent
         type: Optional<String>
       - name: summary
@@ -1013,15 +1065,15 @@ views:
       - name: version
         type: Integer
       - name: inputs
-        type: List<swarm2.blackbox.Port>
+        type: List<swarm.blackbox.Port>
       - name: outputs
-        type: List<swarm2.blackbox.Port>
+        type: List<swarm.blackbox.Port>
     naming:
       wire: published-boxes
       display: Boxes that can be connected to
 
-  - name: swarm2.blackbox.BoxById
-    source: swarm2.blackbox.Box
+  - name: swarm.blackbox.BoxById
+    source: swarm.blackbox.Box
     consistency: read_your_writes
     fields:
       - name: box_id
@@ -1031,7 +1083,7 @@ views:
       - name: name
         type: String
       - name: kind
-        type: swarm2.blackbox.BoxKind
+        type: swarm.blackbox.BoxKind
       - name: owner_agent
         type: Optional<String>
       - name: summary
@@ -1039,15 +1091,15 @@ views:
       - name: version
         type: Integer
       - name: inputs
-        type: List<swarm2.blackbox.Port>
+        type: List<swarm.blackbox.Port>
       - name: outputs
-        type: List<swarm2.blackbox.Port>
+        type: List<swarm.blackbox.Port>
       - name: flow_id
         type: Optional<String>
       - name: agent_id
         type: Optional<String>
       - name: position
-        type: swarm2.blackbox.Position
+        type: swarm.blackbox.Position
       - name: created_at
         type: Timestamp
       - name: published_at
@@ -1057,8 +1109,8 @@ views:
       display: One box, whole
 
   # The wires the canvas draws solid: what is carrying values now, with the binding columns.
-  - name: swarm2.blackbox.LiveConnections
-    source: swarm2.blackbox.Connection
+  - name: swarm.blackbox.LiveConnections
+    source: swarm.blackbox.Connection
     consistency: read_your_writes
     filter: state == Live
     fields:
@@ -1077,16 +1129,16 @@ views:
       - name: schema_id
         type: String
       - name: delivery
-        type: swarm2.blackbox.Delivery
+        type: swarm.blackbox.Delivery
       - name: on_failure
-        type: swarm2.blackbox.Failure
+        type: swarm.blackbox.Failure
     naming:
       wire: live-connections
       display: Connections carrying values
 
   # The wires the canvas draws dashed: what a revise or retire broke, for its maker to repair.
-  - name: swarm2.blackbox.BrokenConnections
-    source: swarm2.blackbox.Connection
+  - name: swarm.blackbox.BrokenConnections
+    source: swarm.blackbox.Connection
     consistency: read_your_writes
     filter: state == Broken
     fields:
@@ -1113,8 +1165,8 @@ views:
   # Every connection in every state — the audit list; eventual, nobody acts on it in the same
   # breath as a write. `state` is listed for the same reason as on `Canvas`: no filter, so Removed
   # rows are in it.
-  - name: swarm2.blackbox.Connections
-    source: swarm2.blackbox.Connection
+  - name: swarm.blackbox.Connections
+    source: swarm.blackbox.Connection
     consistency: eventual
     order_by:
       - made_at desc
@@ -1134,9 +1186,9 @@ views:
       - name: schema_id
         type: String
       - name: delivery
-        type: swarm2.blackbox.Delivery
+        type: swarm.blackbox.Delivery
       - name: on_failure
-        type: swarm2.blackbox.Failure
+        type: swarm.blackbox.Failure
       - name: escalation_event
         type: Optional<String>
       - name: made_by
@@ -1144,7 +1196,7 @@ views:
       - name: made_at
         type: Timestamp
       - name: state
-        type: swarm2.blackbox.Connection.State
+        type: swarm.blackbox.Connection.State
     naming:
       wire: connections
       display: Every connection, newest first
@@ -1153,26 +1205,26 @@ actors:
   # Any agent, the orchestrator included — Timo: "the orchestrator will then also (individually
   # per swarm) build things - agents can do too". One actor, not one per kind of builder:
   # nothing in his words gives the orchestrator a command an agent lacks.
-  - name: swarm2.blackbox.Builder
+  - name: swarm.blackbox.Builder
     may:
-      - swarm2.blackbox.DraftSchema
-      - swarm2.blackbox.PublishSchema
-      - swarm2.blackbox.DeprecateSchema
-      - swarm2.blackbox.DraftBox
-      - swarm2.blackbox.MoveBox
-      - swarm2.blackbox.RedefinePorts
-      - swarm2.blackbox.PublishBox
-      - swarm2.blackbox.ReviseBox
-      - swarm2.blackbox.RetireBox
-      - swarm2.blackbox.Connect
-      - swarm2.blackbox.ActivateConnection
-      - swarm2.blackbox.BreakConnection
-      - swarm2.blackbox.RepairConnection
-      - swarm2.blackbox.Disconnect
+      - swarm.blackbox.DraftSchema
+      - swarm.blackbox.PublishSchema
+      - swarm.blackbox.DeprecateSchema
+      - swarm.blackbox.DraftBox
+      - swarm.blackbox.MoveBox
+      - swarm.blackbox.RedefinePorts
+      - swarm.blackbox.PublishBox
+      - swarm.blackbox.ReviseBox
+      - swarm.blackbox.RetireBox
+      - swarm.blackbox.Connect
+      - swarm.blackbox.ActivateConnection
+      - swarm.blackbox.BreakConnection
+      - swarm.blackbox.RepairConnection
+      - swarm.blackbox.Disconnect
     naming:
       display: Builder
   # The UI ("pre-build ui-components (component-lib)"): reads every view, issues no command. An
   # actor with no `may` is "in the picture, permitted nothing" (authoring rules).
-  - name: swarm2.blackbox.Viewer
+  - name: swarm.blackbox.Viewer
     naming:
       display: Viewer

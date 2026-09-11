@@ -174,7 +174,7 @@
           "outputs": [
             {
               "name": "message.posted",
-              "schemaId": "swarm2.board.MessagePosted/1"
+              "schemaId": "swarm.board.MessagePosted/1"
             }
           ]
         },
@@ -191,7 +191,7 @@
           "inputs": [
             {
               "name": "event",
-              "schemaId": "swarm2.agent.AgentEvent/1",
+              "schemaId": "swarm.agent.AgentEvent/1",
               "required": true
             }
           ],
@@ -210,13 +210,13 @@
           "inputs": [
             {
               "name": "event",
-              "schemaId": "swarm2.board.MessagePosted/1"
+              "schemaId": "swarm.board.MessagePosted/1"
             }
           ],
           "outputs": [
             {
               "name": "gate.fired",
-              "schemaId": "swarm2.schedule.GateFired/1"
+              "schemaId": "swarm.schedule.GateFired/1"
             }
           ]
         },
@@ -233,14 +233,14 @@
           "inputs": [
             {
               "name": "decision.raised",
-              "schemaId": "swarm2.decision.DecisionRaised/1",
+              "schemaId": "swarm.decision.DecisionRaised/1",
               "required": true
             }
           ],
           "outputs": [
             {
               "name": "decision.answered",
-              "schemaId": "swarm2.decision.DecisionAnswered/1"
+              "schemaId": "swarm.decision.DecisionAnswered/1"
             }
           ]
         }
@@ -264,7 +264,7 @@
           "flowId": "orchestrator.check-in",
           "name": "orchestrator.check-in",
           "binds": {
-            "entity": "swarm2.orchestrator.Generation",
+            "entity": "swarm.orchestrator.Generation",
             "state": "Ticking"
           },
           "inputs": [],
@@ -278,7 +278,7 @@
               "outputs": [
                 {
                   "name": "messages",
-                  "schemaId": "swarm2.board.MessagePosted/1"
+                  "schemaId": "swarm.board.MessagePosted/1"
                 }
               ],
               "run": "swarm/bin/board.sh read --agent coord"
@@ -351,7 +351,7 @@
           "flowId": "orchestrator.memory-tick",
           "name": "orchestrator.memory-tick",
           "binds": {
-            "entity": "swarm2.orchestrator.Generation",
+            "entity": "swarm.orchestrator.Generation",
             "state": "Ticking"
           },
           "inputs": [],
@@ -452,7 +452,7 @@
           "flowId": "agent.spawn",
           "name": "agent.spawn",
           "binds": {
-            "entity": "swarm2.agent.Agent",
+            "entity": "swarm.agent.Agent",
             "state": "Spawned"
           },
           "inputs": [],
@@ -504,7 +504,7 @@
               "outputs": [
                 {
                   "name": "assignment",
-                  "schemaId": "swarm2.agent.AssignmentPosted/1"
+                  "schemaId": "swarm.agent.AssignmentPosted/1"
                 }
               ],
               "run": "swarm/bin/board.sh post --to <slug> --inbox main --from coord --body \"<outcome, sign-off verbatim, what it may not do>\""
@@ -541,7 +541,7 @@
           "flowId": "agent.wake-pass",
           "name": "agent.wake-pass",
           "binds": {
-            "entity": "swarm2.agent.Agent",
+            "entity": "swarm.agent.Agent",
             "state": "Working"
           },
           "inputs": [],
@@ -554,7 +554,7 @@
               "inputs": [
                 {
                   "name": "gate.fired",
-                  "schemaId": "swarm2.schedule.GateFired/1"
+                  "schemaId": "swarm.schedule.GateFired/1"
                 }
               ],
               "outputs": [],
@@ -608,15 +608,15 @@
       ],
       "schemas": [
         {
-          "schemaId": "swarm2.board.MessagePosted/1",
+          "schemaId": "swarm.board.MessagePosted/1",
           "name": "MessagePosted",
           "version": 1,
           "jsonSchema": {
-            "$comment": "projection of swarm2/domains/board.yaml swarm2.board.MessagePosted"
+            "$comment": "projection of swarm/domains/board.yaml swarm.board.MessagePosted"
           }
         },
         {
-          "schemaId": "swarm2.agent.AgentEvent/1",
+          "schemaId": "swarm.agent.AgentEvent/1",
           "name": "AgentEvent",
           "version": 1,
           "jsonSchema": {
@@ -624,35 +624,35 @@
           }
         },
         {
-          "schemaId": "swarm2.schedule.GateFired/1",
+          "schemaId": "swarm.schedule.GateFired/1",
           "name": "GateFired",
           "version": 1,
           "jsonSchema": {
-            "$comment": "projection of swarm2/domains/schedule.yaml swarm2.schedule.GateFired"
+            "$comment": "projection of swarm/domains/schedule.yaml swarm.schedule.GateFired"
           }
         },
         {
-          "schemaId": "swarm2.decision.DecisionRaised/1",
+          "schemaId": "swarm.decision.DecisionRaised/1",
           "name": "DecisionRaised",
           "version": 1,
           "jsonSchema": {
-            "$comment": "projection of swarm2/domains/decision.yaml swarm2.decision.DecisionRaised"
+            "$comment": "projection of swarm/domains/decision.yaml swarm.decision.DecisionRaised"
           }
         },
         {
-          "schemaId": "swarm2.decision.DecisionAnswered/1",
+          "schemaId": "swarm.decision.DecisionAnswered/1",
           "name": "DecisionAnswered",
           "version": 1,
           "jsonSchema": {
-            "$comment": "projection of swarm2/domains/decision.yaml swarm2.decision.DecisionAnswered"
+            "$comment": "projection of swarm/domains/decision.yaml swarm.decision.DecisionAnswered"
           }
         },
         {
-          "schemaId": "swarm2.agent.AssignmentPosted/1",
+          "schemaId": "swarm.agent.AssignmentPosted/1",
           "name": "AssignmentPosted",
           "version": 1,
           "jsonSchema": {
-            "$comment": "projection of swarm2/domains/agent.yaml swarm2.agent.AssignmentPosted"
+            "$comment": "projection of swarm/domains/agent.yaml swarm.agent.AssignmentPosted"
           }
         }
       ],

@@ -6,7 +6,7 @@ import { RouterLink, RouterView } from 'vue-router'
 <template>
   <div class="shell">
     <header class="topbar">
-      <RouterLink to="/" class="brand">swarm2</RouterLink>
+      <RouterLink to="/" class="brand">swarm</RouterLink>
       <nav>
         <RouterLink to="/">swarms</RouterLink>
         <RouterLink to="/ui">components</RouterLink>

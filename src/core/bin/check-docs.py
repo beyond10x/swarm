@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate swarm2 instance documents (config/*.yaml, flows/*.yaml) against the JSON Schemas
+"""Validate swarm instance documents (config/*.yaml, flows/*.yaml) against the JSON Schemas
 `ess generate --kind schema` projects from the specification. Zero model tokens; exit 1 on any error.
 Usage: bin/check-docs.py [--schema-dir generated/schema/schema]"""
 import glob, json, os, sys
@@ -8,7 +8,7 @@ here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 schema_dir = os.path.join(here, "generated", "schema", "schema")
 if len(sys.argv) > 2 and sys.argv[1] == "--schema-dir":
     schema_dir = sys.argv[2]
-targets = {"config": "swarm2.config.Config", "flows": "swarm2.flow.Flow"}
+targets = {"config": "swarm.config.Config", "flows": "swarm.flow.Flow"}
 failed = 0
 for sub, entity in targets.items():
     sf = os.path.join(schema_dir, "entities", f"{entity}.schema.json")

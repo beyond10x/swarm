@@ -1,8 +1,8 @@
-# One swarm2.flow.Flow record: the orchestrator's check-in cycle, swarm/AGENTS.md §1 "The ingestion
-# cycle — every tick, in this order". Runs inside swarm2.orchestrator.Generation / Ticking, started by
+# One swarm.flow.Flow record: the orchestrator's check-in cycle, swarm/AGENTS.md §1 "The ingestion
+# cycle — every tick, in this order". Runs inside swarm.orchestrator.Generation / Ticking, started by
 # the binding on CheckInStarted (components.yaml). Six steps, linear; steps 1–3 are scripts that spend
 # no model tokens (WORKING-RULES §12), 4–6 are judgement. Validated against
-# generated/schema/schema/entities/swarm2.flow.Flow.schema.json (bin/check-docs.py).
+# generated/schema/schema/entities/swarm.flow.Flow.schema.json (bin/check-docs.py).
 flow_id: orchestrator.check-in
 swarm_id: a0eae637-d85f-43b8-8072-389a06954fa6
 name: Check-in
@@ -11,11 +11,11 @@ version: 1
 owner_agent: orchestrator
 state: Published
 published_at: "2026-09-11T18:40:00+02:00"
-binds: {entity: swarm2.orchestrator.Generation, state: Ticking}
+binds: {entity: swarm.orchestrator.Generation, state: Ticking}
 inputs:
-  - {name: generation_id, schema_id: swarm2.orchestrator.Generation/1, required: true}
+  - {name: generation_id, schema_id: swarm.orchestrator.Generation/1, required: true}
 outputs:
-  - {name: report, schema_id: swarm2.orchestrator.ReportSent/1, required: false}
+  - {name: report, schema_id: swarm.orchestrator.ReportSent/1, required: false}
 context:
   skills: [swarm-inbox, aep-plan:planning]
   tools: [Bash]
@@ -28,7 +28,7 @@ steps:
     kind: Command
     run: [swarm/bin/board.sh, read, --agent, orchestrator, --bodies, --json]
     inputs: []
-    outputs: [{name: unread, schema_id: swarm2.board.UnreadForAgent/1, required: true}]
+    outputs: [{name: unread, schema_id: swarm.board.UnreadForAgent/1, required: true}]
     context: {skills: [], tools: [], files: [], write_scope: []}
     max_attempts: 2
   - step_id: take-ledger
@@ -44,7 +44,7 @@ steps:
     kind: Command
     run: [swarm/bin/swarm-state.sh, --json]
     inputs: []
-    outputs: [{name: agent_state, schema_id: swarm2.agent.AgentState/1, required: true}]
+    outputs: [{name: agent_state, schema_id: swarm.agent.AgentState/1, required: true}]
     context: {skills: [], tools: [], files: [], write_scope: []}
     max_attempts: 2
   - step_id: classify
@@ -54,12 +54,12 @@ steps:
     prompt: >-
       For every agent in agent_state, one of four verdicts and nothing else: continue, idle is
       correct, decision, fault (WORKING-RULES §8). The classification is the work. Do not relay.
-      Emit one swarm2.orchestrator.Classify per agent.
+      Emit one swarm.orchestrator.Classify per agent.
     inputs:
-      - {name: unread, schema_id: swarm2.board.UnreadForAgent/1, required: true}
+      - {name: unread, schema_id: swarm.board.UnreadForAgent/1, required: true}
       - {name: drafts, schema_id: aep.planning-document/1, required: true}
-      - {name: agent_state, schema_id: swarm2.agent.AgentState/1, required: true}
-    outputs: [{name: verdicts, schema_id: swarm2.orchestrator.Classify/1, required: true}]
+      - {name: agent_state, schema_id: swarm.agent.AgentState/1, required: true}
+    outputs: [{name: verdicts, schema_id: swarm.orchestrator.Classify/1, required: true}]
     context: {skills: [], tools: [], files: [swarm/WORKING-RULES.md], write_scope: []}
     max_attempts: 1
   - step_id: route
@@ -70,8 +70,8 @@ steps:
       Keep, dispatch or park each verdict (swarm/AGENTS.md §1 step 5): continue → the next step on
       the peer channel or the board; decision → one numbered binary line; fault → fix, or report if
       fixing needs Timo. A verdict of idle-is-correct produces nothing.
-    inputs: [{name: verdicts, schema_id: swarm2.orchestrator.Classify/1, required: true}]
-    outputs: [{name: routes, schema_id: swarm2.orchestrator.Route/1, required: true}]
+    inputs: [{name: verdicts, schema_id: swarm.orchestrator.Classify/1, required: true}]
+    outputs: [{name: routes, schema_id: swarm.orchestrator.Route/1, required: true}]
     context: {skills: [swarm-inbox], tools: [Bash], files: [], write_scope: ["swarm/runs/<run>/decisions.md"]}
     max_attempts: 1
   - step_id: report
@@ -80,9 +80,9 @@ steps:
     run: []
     prompt: >-
       Verdict first, deviations only, decisions by number (WORKING-RULES §6, §9). A tick where every
-      agent is idle-is-correct produces no message: call swarm2.orchestrator.Report with deviations 0.
-    inputs: [{name: routes, schema_id: swarm2.orchestrator.Route/1, required: true}]
-    outputs: [{name: report, schema_id: swarm2.orchestrator.ReportSent/1, required: false}]
+      agent is idle-is-correct produces no message: call swarm.orchestrator.Report with deviations 0.
+    inputs: [{name: routes, schema_id: swarm.orchestrator.Route/1, required: true}]
+    outputs: [{name: report, schema_id: swarm.orchestrator.ReportSent/1, required: false}]
     context: {skills: [], tools: [], files: [], write_scope: []}
     max_attempts: 1
 edges:

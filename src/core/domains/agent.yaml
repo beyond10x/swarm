@@ -1,21 +1,21 @@
-# swarm2.agent — one member of a swarm: a Role running on a Host, with its assignments and its
+# swarm.agent — one member of a swarm: a Role running on a Host, with its assignments and its
 # self-reported state.
 #
 # The `Agent` entity used to live in swarm/domains/board.yaml; it moved here on 2026-09-11 so the
-# whole system has ONE agent entity, and the board (`swarm2.board.Message.sender`,
-# `swarm2.board.Inbox.agent_id`) references it instead of owning a copy. The identity argument the
+# whole system has ONE agent entity, and the board (`swarm.board.Message.sender`,
+# `swarm.board.Inbox.agent_id`) references it instead of owning a copy. The identity argument the
 # board wrote is kept verbatim in the entity below. The lifecycle is the agent WORKFLOW in the shape
 # of ../aep/workflows: the four verdicts of swarm/WORKING-RULES.md §8 (continue / idle is correct /
 # decision / fault) and the nine event-log kinds of §10 and swarm/docs/eventlog.md are what the
 # states and the commands are read from; where they are silent the gap is `UNMAPPED:`.
 #
 # Two things this domain does NOT hold, and where they are:
-#   - The binding `swarm2.agent.AssignmentPosted -> swarm2.board.PostMessage` (the assignment
+#   - The binding `swarm.agent.AssignmentPosted -> swarm.board.PostMessage` (the assignment
 #     reaches the member as a post in its `main` inbox, swarm/AGENTS.md §4 step 4) is declared in
 #     components.yaml, not here — a domain names its events, the composition names who listens.
-#   - The `swarm2.agent.Clock` actor is declared in the schedule domain and is permitted nothing
+#   - The `swarm.agent.Clock` actor is declared in the schedule domain and is permitted nothing
 #     here, so it is omitted rather than redeclared.
-domain: swarm2.agent
+domain: swarm.agent
 
 summary: >-
   The members of a swarm: each a Role on a Host, spawned by the orchestrator, given one assignment
@@ -26,23 +26,13 @@ naming:
   display: Swarm agents
 
 types:
-  # The eight roles of .agents/README.md ("One file per role the coordinator can spawn"), in the
-  # table's order, plus `Orchestrator`: the one main process is an agent too, and this variant is
-  # reserved for it (swarm/WORKING-RULES.md §4: "The coordinator is `orchestrator` / `main`").
-  # Wire form is the slug the table uses: repo-advancer, wave-planner, swarm-improver,
-  # harness-researcher, tool-builder, disk-warden, slack-publisher, ops-investigator, orchestrator.
-  - name: swarm2.agent.Role
+  # One variant, because a swarm is born with one agent. The 2026-09-11 draft carried nine — that
+  # run's roster — and a roster is something a swarm arrives at, not something it starts with. A
+  # role the coordinator invents for an agent it spawns is a Box it draws, not a variant added here.
+  - name: swarm.agent.Role
     kind: enum
     variants:
-      - RepoAdvancer
-      - WavePlanner
-      - SwarmImprover
-      - HarnessResearcher
-      - ToolBuilder
-      - DiskWarden
-      - SlackPublisher
-      - OpsInvestigator
-      - Orchestrator
+      - Coordinator
     naming:
       display: Role
 
@@ -52,7 +42,7 @@ types:
   # lists only what it adds (.agents/README.md). `tools` are harness tools or CLIs by name,
   # `skills` are plugin skills (`aep-plan:planning`, `ess-specify:specify`), `mcp_servers` are MCP
   # servers the harness is launched with, `plugin_dirs` are `--plugin-dir` values (metaharness).
-  - name: swarm2.agent.Loadout
+  - name: swarm.agent.Loadout
     kind: struct
     fields:
       - name: skills
@@ -77,7 +67,7 @@ types:
   #   pid             UNMAPPED: no source records a pid for a window today; swarm/WORKING-RULES.md
   #                   §12a kills by "what a bystander cannot contain", which is a pattern, not a
   #                   pid. Kept Optional so an implementation that has one can say so.
-  - name: swarm2.agent.Host
+  - name: swarm.agent.Host
     kind: struct
     fields:
       - name: tmux_window_id
@@ -98,16 +88,16 @@ entities:
   # window is killed and another created ... and a Claude session id changes whenever a window is
   # restarted ... `agent_id` is therefore the **role slug** — `improver`, `cv2-aep`, `disk-warden`
   # — which is what a sender already writes ... and what survives both." It is the same identity
-  # `swarm2.board.Inbox.agent_id` carries, `eventlog.sh --agent` takes ("role slug ... the same
+  # `swarm.board.Inbox.agent_id` carries, `eventlog.sh --agent` takes ("role slug ... the same
   # identity as `board.yaml`'s `agent_id`. **Not** the window index", swarm/docs/eventlog.md) and
   # `AEP_ACTOR=agent:<slug>` names (swarm/AGENTS.md §4 step 3: "record the slug — it is the same
   # slug the event log and `AEP_ACTOR` use").
-  - name: swarm2.agent.Agent
+  - name: swarm.agent.Agent
     identity:
       name: agent_id
       type: String
     fields:
-      # The swarm this member belongs to; the `via` of `swarm2.manager.Swarm.agents`, which the
+      # The swarm this member belongs to; the `via` of `swarm.manager.Swarm.agents`, which the
       # integrator declares on the manager side.
       - name: swarm_id
         type: Uuid
@@ -115,20 +105,20 @@ entities:
       # definition from `.agents/`"). NOT the identity: two windows may run the same role
       # (README's table lists five `repo-advancer` windows) and the slug tells them apart.
       - name: role
-        type: swarm2.agent.Role
-      # Which harness the window runs (swarm2.config.Harness: the three kinds `metaharness run`
+        type: swarm.agent.Role
+      # Which harness the window runs (swarm.config.Harness: the three kinds `metaharness run`
       # accepts). Cross-domain enum reference, as the authoring rules allow.
       - name: harness
-        type: swarm2.config.Harness
+        type: swarm.config.Harness
       # What it may reach: the loadout it was spawned with (see the Loadout type).
       - name: loadout
-        type: swarm2.agent.Loadout
+        type: swarm.agent.Loadout
       # Free text for a human list (kept from the board's Agent block, unchanged).
       - name: display_name
         type: String
       # The observations of where the role runs now — see the Host type.
       - name: host
-        type: swarm2.agent.Host
+        type: swarm.agent.Host
       - name: spawned_at
         type: Timestamp
       # swarm/docs/eventlog.md: "`decision` with a `ref` sets `blocked_on`; nothing else sets it
@@ -153,21 +143,13 @@ entities:
       - name: retired_at
         type: Optional<Timestamp>
     relations:
-      # Decision 9y (Timo, 2026-09-11 11:40): one Agent owns MANY Inboxes; an inbox with no agent
-      # addresses nobody, so `owns`. `via` is `swarm2.board.Inbox.agent_id`, which board.yaml
-      # keeps unchanged. Names are told apart by `Inbox.name` (decision 34).
-      - name: inboxes
-        kind: owns
-        target: swarm2.board.Inbox
-        cardinality: many
-        via: agent_id
       # swarm/bin/assign.sh: "per-window assignment record"; one live record per window, but a
       # window is `set` again when retasked (swarm/AGENTS.md §4: "Retasking a member is a new
       # post, not an edit"), so over a member's life there are many. An assignment names an agent
       # and has no meaning without it: `owns`.
       - name: assignments
         kind: owns
-        target: swarm2.agent.Assignment
+        target: swarm.agent.Assignment
         cardinality: many
         via: agent_id
     lifecycle:
@@ -266,12 +248,12 @@ entities:
   # `set_at` and the owning Agent's `host` against the live tmux table at read time; none is a
   # fact the record holds, and "A `done` record is never stale". They live in the reader
   # (`assign.sh list`/`json`), not in this lifecycle.
-  - name: swarm2.agent.Assignment
+  - name: swarm.agent.Assignment
     identity:
       name: assignment_id
       type: Uuid
     fields:
-      # The owning member; the `via` of `swarm2.agent.Agent.assignments`.
+      # The owning member; the `via` of `swarm.agent.Agent.assignments`.
       - name: agent_id
         type: String
       # "the one outcome" (swarm/AGENTS.md §4 step 4) — assign.sh's `<text...>`.
@@ -300,7 +282,7 @@ entities:
     lifecycle:
       # assign.sh's two status words, `assigned` and `done`, plus `clear` — which there removes
       # the file, and here is a terminal state, because a record that was in force during a run
-      # is evidence (the same reason swarm2.config keeps Superseded).
+      # is evidence (the same reason swarm.config keeps Superseded).
       initial: Assigned
       states: [Assigned, Done, Cleared]
       terminal: [Done, Cleared]
@@ -313,16 +295,16 @@ entities:
           to: Cleared
 
 errors:
-  - name: swarm2.agent.AgentStateConflict
+  - name: swarm.agent.AgentStateConflict
     summary: The agent is not in a state this command acts from, so nothing moved.
     fields:
       - name: state
-        type: swarm2.agent.Agent.State
-  - name: swarm2.agent.AssignmentStateConflict
+        type: swarm.agent.Agent.State
+  - name: swarm.agent.AssignmentStateConflict
     summary: The assignment is not in a state this command acts from, so nothing moved.
     fields:
       - name: state
-        type: swarm2.agent.Assignment.State
+        type: swarm.agent.Assignment.State
   # Raised by the implementation of `Unpark` when the given ref is not the one held. eventlog.md:
   # "`decision_cleared` ... **must** carry `--ref`, and it clears only when that ref equals the
   # one currently held. ... a ref that does not match the held one (exit 4) is **rejected and
@@ -330,7 +312,7 @@ errors:
   # `blocked_on`, and a `when` reads input only (ESS-COMMAND-003), so the comparison is a lookup.
   # `held` is Optional because the held ref may be null — parked with no ref recorded is the
   # "row written before `blocked_on` existed" case.
-  - name: swarm2.agent.RefMismatch
+  - name: swarm.agent.RefMismatch
     summary: The decision ref given is not the one this agent is parked on, so nothing was cleared.
     fields:
       - name: held
@@ -340,13 +322,13 @@ errors:
 
 commands:
   # swarm/AGENTS.md §4 steps 1-3: pick a role, guarantee the loadout, launch the window, create
-  # its inbox. The inbox creation is `swarm2.board.CreateInbox`, bound to `AgentSpawned` in
+  # its inbox. The inbox creation is `swarm.board.CreateInbox`, bound to `AgentSpawned` in
   # components.yaml. `agent_id` is an INPUT, not assigned: the slug is chosen by the
   # orchestrator (it is the tmux window name, WORKING-RULES §10) before the record exists.
   # "This slug is already a live agent" is a lookup and not a `when`, so a duplicate slug is
-  # refused by the implementation in prose here, the same way `swarm2.manager.CreateSwarm`
+  # refused by the implementation in prose here, the same way `swarm.manager.CreateSwarm`
   # documents `SwarmSessionTaken`.
-  - name: swarm2.agent.Spawn
+  - name: swarm.agent.Spawn
     naming:
       wire: spawn
       display: Spawn a swarm member
@@ -356,28 +338,30 @@ commands:
       - name: swarm_id
         type: Uuid
       - name: role
-        type: swarm2.agent.Role
+        type: swarm.agent.Role
       - name: harness
-        type: swarm2.config.Harness
+        type: swarm.config.Harness
       - name: loadout
-        type: swarm2.agent.Loadout
+        type: swarm.agent.Loadout
       - name: display_name
         type: String
       - name: host
-        type: swarm2.agent.Host
+        type: swarm.agent.Host
     outcomes:
       - name: spawned
-        creates: swarm2.agent.Agent
+        creates: swarm.agent.Agent
         instance: agent_id
         emits:
-          - swarm2.agent.AgentSpawned
+          - swarm.agent.AgentSpawned
         payload:
-          swarm2.agent.AgentSpawned:
+          swarm.agent.AgentSpawned:
             agent_id: input.agent_id
             swarm_id: input.swarm_id
             role: input.role
             harness: input.harness
             display_name: input.display_name
+            loadout: input.loadout
+            host: input.host
         sets:
           swarm_id: input.swarm_id
           role: input.role
@@ -390,9 +374,9 @@ commands:
   # swarm/AGENTS.md §4 step 4: "Post its assignment to its inbox ... naming the one outcome, the
   # sign-off it is running under (verbatim, from Timo), and what it may not do." One outcome has
   # one subject, so this command MOVES the agent and emits the fact; the record is created by
-  # `RecordAssignment` and the inbox post by `swarm2.board.PostMessage`, both invoked from
+  # `RecordAssignment` and the inbox post by `swarm.board.PostMessage`, both invoked from
   # `AssignmentPosted` by bindings declared in components.yaml.
-  - name: swarm2.agent.Assign
+  - name: swarm.agent.Assign
     naming:
       wire: assign
       display: Assign one outcome to a member
@@ -409,12 +393,12 @@ commands:
         type: Optional<String>
     outcomes:
       - name: assigned
-        moves: swarm2.agent.Agent.assign
+        moves: swarm.agent.Agent.assign
         instance: agent_id
         emits:
-          - swarm2.agent.AssignmentPosted
+          - swarm.agent.AssignmentPosted
         payload:
-          swarm2.agent.AssignmentPosted:
+          swarm.agent.AssignmentPosted:
             agent_id: input.agent_id
             outcome: input.outcome
             signoff: input.signoff
@@ -423,13 +407,13 @@ commands:
         summary: The member is Assigned; bindings post the assignment to its inbox and record it.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.agent.AgentStateConflict
+        error: swarm.agent.AgentStateConflict
         summary: Only a Spawned or Idle member takes a new assignment; retask after it finishes.
 
   # The durable half of an assignment — assign.sh `set`. Invoked by the binding on
   # `AssignmentPosted` (components.yaml), never typed: the fact crosses as an event and lands as
-  # its own command, exactly as `swarm2.manager.AdoptConfig` does.
-  - name: swarm2.agent.RecordAssignment
+  # its own command, exactly as `swarm.manager.AdoptConfig` does.
+  - name: swarm.agent.RecordAssignment
     naming:
       wire: record-assignment
       display: Record an assignment
@@ -446,12 +430,12 @@ commands:
         type: Optional<String>
     outcomes:
       - name: recorded
-        creates: swarm2.agent.Assignment
+        creates: swarm.agent.Assignment
         instance: assignment_id
         emits:
-          - swarm2.agent.AssignmentRecorded
+          - swarm.agent.AssignmentRecorded
         payload:
-          swarm2.agent.AssignmentRecorded:
+          swarm.agent.AssignmentRecorded:
             agent_id: input.agent_id
             outcome: input.outcome
             signoff: input.signoff
@@ -470,7 +454,7 @@ commands:
   # command below stamps `last_event_kind`/`last_event_at` with its own kind and the write
   # instant; neither is in `sets:` because `sets:` reads input fields only and the kind is a
   # constant of the command, not an input.
-  - name: swarm2.agent.TakeAssignment
+  - name: swarm.agent.TakeAssignment
     naming:
       wire: take-assignment
       display: Take the posted assignment
@@ -483,24 +467,24 @@ commands:
         type: String
     outcomes:
       - name: taken
-        moves: swarm2.agent.Agent.take
+        moves: swarm.agent.Agent.take
         instance: agent_id
         emits:
-          - swarm2.agent.AssignmentTaken
+          - swarm.agent.AssignmentTaken
         payload:
-          swarm2.agent.AssignmentTaken:
+          swarm.agent.AssignmentTaken:
             agent_id: input.agent_id
             ref: input.ref
             msg: input.msg
         summary: The member is Working on the assignment it was posted.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.agent.AgentStateConflict
+        error: swarm.agent.AgentStateConflict
         summary: Nothing was Assigned to take.
 
   # eventlog.md kind `step_done`: "one step of your brief is finished and the next is implied"
   # — §8's `continue`. An update, not a move: Working stays Working.
-  - name: swarm2.agent.ReportStep
+  - name: swarm.agent.ReportStep
     naming:
       wire: report-step
       display: Report a finished step
@@ -513,12 +497,12 @@ commands:
         type: String
     outcomes:
       - name: reported
-        updates: swarm2.agent.Agent
+        updates: swarm.agent.Agent
         instance: agent_id
         emits:
-          - swarm2.agent.StepDone
+          - swarm.agent.StepDone
         payload:
-          swarm2.agent.StepDone:
+          swarm.agent.StepDone:
             agent_id: input.agent_id
             ref: input.ref
             msg: input.msg
@@ -528,7 +512,7 @@ commands:
   # "A red gate is `gate` with a non-zero `exit`, not `fault` — you continue with it", so both
   # outcomes are updates and neither moves. The branch is on the input alone, which is the one
   # kind of `when` ess/1 admits.
-  - name: swarm2.agent.ReportGate
+  - name: swarm.agent.ReportGate
     naming:
       wire: report-gate
       display: Report a gate result
@@ -544,24 +528,24 @@ commands:
     outcomes:
       - name: red
         when: exit_code != 0
-        updates: swarm2.agent.Agent
+        updates: swarm.agent.Agent
         instance: agent_id
         emits:
-          - swarm2.agent.GateRed
+          - swarm.agent.GateRed
         payload:
-          swarm2.agent.GateRed:
+          swarm.agent.GateRed:
             agent_id: input.agent_id
             ref: input.ref
             exit_code: input.exit_code
             msg: input.msg
         summary: The gate failed; the member continues with it (not a fault).
       - name: green
-        updates: swarm2.agent.Agent
+        updates: swarm.agent.Agent
         instance: agent_id
         emits:
-          - swarm2.agent.GateGreen
+          - swarm.agent.GateGreen
         payload:
-          swarm2.agent.GateGreen:
+          swarm.agent.GateGreen:
             agent_id: input.agent_id
             ref: input.ref
             exit_code: input.exit_code
@@ -570,7 +554,7 @@ commands:
 
   # eventlog.md kind `blocked`: "waiting on a gate, a peer or a push: anything that does **not**
   # reach Timo". `waiting_on` names which (WORKING-RULES §10: "a gate, a peer or a push").
-  - name: swarm2.agent.Block
+  - name: swarm.agent.Block
     naming:
       wire: block
       display: Report waiting on something that is not Timo
@@ -583,23 +567,23 @@ commands:
         type: String
     outcomes:
       - name: blocked
-        moves: swarm2.agent.Agent.block
+        moves: swarm.agent.Agent.block
         instance: agent_id
         emits:
-          - swarm2.agent.AgentBlocked
+          - swarm.agent.AgentBlocked
         payload:
-          swarm2.agent.AgentBlocked:
+          swarm.agent.AgentBlocked:
             agent_id: input.agent_id
             waiting_on: input.waiting_on
             msg: input.msg
         summary: The member is Blocked on a gate, a peer or a push; the orchestrator sends nothing.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.agent.AgentStateConflict
+        error: swarm.agent.AgentStateConflict
         summary: Only a Working member blocks.
 
   # See the `unblock` transition's UNMAPPED note: no event-log kind carries this today.
-  - name: swarm2.agent.Unblock
+  - name: swarm.agent.Unblock
     naming:
       wire: unblock
       display: Report the wait is over
@@ -610,25 +594,25 @@ commands:
         type: String
     outcomes:
       - name: unblocked
-        moves: swarm2.agent.Agent.unblock
+        moves: swarm.agent.Agent.unblock
         instance: agent_id
         emits:
-          - swarm2.agent.AgentUnblocked
+          - swarm.agent.AgentUnblocked
         payload:
-          swarm2.agent.AgentUnblocked:
+          swarm.agent.AgentUnblocked:
             agent_id: input.agent_id
             msg: input.msg
         summary: The member is Working again.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.agent.AgentStateConflict
+        error: swarm.agent.AgentStateConflict
         summary: The member was not Blocked.
 
   # eventlog.md kind `decision`: "parked on something only Timo can answer; `ref` = its number
   # in `decisions.md`" — "decision, **and sets `blocked_on`**". §8: reaches Timo "as a
   # **number**, never as a paragraph". A ref decisions.md already reports as settled "is
   # **warned about, never refused**" — so no error is declared for it here.
-  - name: swarm2.agent.Park
+  - name: swarm.agent.Park
     naming:
       wire: park
       display: Park on a decision only Timo can take
@@ -641,21 +625,22 @@ commands:
         type: String
     outcomes:
       - name: parked
-        moves: swarm2.agent.Agent.park
+        moves: swarm.agent.Agent.park
         instance: agent_id
         emits:
-          - swarm2.agent.DecisionParked
+          - swarm.agent.DecisionParked
         payload:
-          swarm2.agent.DecisionParked:
+          swarm.agent.DecisionParked:
             agent_id: input.agent_id
             decision_ref: input.decision_ref
             msg: input.msg
+            blocked_on: input.decision_ref
         sets:
           blocked_on: input.decision_ref
         summary: The member is Parked and blocked_on holds the decision number.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.agent.AgentStateConflict
+        error: swarm.agent.AgentStateConflict
         summary: Only a Working or Blocked member parks.
 
   # eventlog.md kind `decision_cleared`: "Timo answered the decision you were parked on. `--ref`
@@ -665,7 +650,7 @@ commands:
   # and writes nothing at all — no event line, no projection update"). On the match `blocked_on`
   # is cleared to null — not a `sets:` line, because `sets:` maps a field to an input and no
   # input carries null.
-  - name: swarm2.agent.Unpark
+  - name: swarm.agent.Unpark
     naming:
       wire: unpark
       display: Clear the decision the member was parked on
@@ -678,25 +663,25 @@ commands:
         type: Optional<String>
     outcomes:
       - name: cleared
-        moves: swarm2.agent.Agent.unpark
+        moves: swarm.agent.Agent.unpark
         instance: agent_id
         emits:
-          - swarm2.agent.DecisionCleared
+          - swarm.agent.DecisionCleared
         payload:
-          swarm2.agent.DecisionCleared:
+          swarm.agent.DecisionCleared:
             agent_id: input.agent_id
             decision_ref: input.decision_ref
         summary: blocked_on is null and the member is Working again.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.agent.AgentStateConflict
+        error: swarm.agent.AgentStateConflict
         summary: The member was not Parked.
 
   # eventlog.md kind `idle`: "your task is done or your brief has nothing left. Emit this
   # explicitly" — §8's "idle is correct": the orchestrator does "nothing, and say[s] nothing".
   # From Parked it leaves `blocked_on` as it was (eventlog.md: "`idle` ... leave[s] it exactly
   # as it was").
-  - name: swarm2.agent.GoIdle
+  - name: swarm.agent.GoIdle
     naming:
       wire: go-idle
       display: Report nothing left to do
@@ -707,23 +692,23 @@ commands:
         type: String
     outcomes:
       - name: idle
-        moves: swarm2.agent.Agent.go_idle
+        moves: swarm.agent.Agent.go_idle
         instance: agent_id
         emits:
-          - swarm2.agent.AgentIdle
+          - swarm.agent.AgentIdle
         payload:
-          swarm2.agent.AgentIdle:
+          swarm.agent.AgentIdle:
             agent_id: input.agent_id
             msg: input.msg
         summary: The member is Idle; blocked_on, if set, is untouched.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.agent.AgentStateConflict
+        error: swarm.agent.AgentStateConflict
         summary: Only a Working or Parked member goes idle.
 
   # The orchestrator's nudge: `nudge.sh <win> <text>` (swarm/README.md), the wake gate
   # (swarm/docs/wake-gate.md). `reason` is the text typed into the window.
-  - name: swarm2.agent.Wake
+  - name: swarm.agent.Wake
     naming:
       wire: wake
       display: Wake an idle member
@@ -734,24 +719,24 @@ commands:
         type: String
     outcomes:
       - name: woken
-        moves: swarm2.agent.Agent.wake
+        moves: swarm.agent.Agent.wake
         instance: agent_id
         emits:
-          - swarm2.agent.AgentWoken
+          - swarm.agent.AgentWoken
         payload:
-          swarm2.agent.AgentWoken:
+          swarm.agent.AgentWoken:
             agent_id: input.agent_id
             reason: input.reason
         summary: The member is Working again on what it already holds.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.agent.AgentStateConflict
+        error: swarm.agent.AgentStateConflict
         summary: Only an Idle member is woken; a Parked one waits on Timo, not on a nudge.
 
   # eventlog.md kind `fault`: "your window is broken: dead background shell, lost Enter, usage
   # limit" — §8: "lost Enter, dead pane, usage limit, background shell gone, a stall". `kind`
   # is which of those; a String because the sources give an open list.
-  - name: swarm2.agent.RaiseFault
+  - name: swarm.agent.RaiseFault
     naming:
       wire: raise-fault
       display: Report that the window itself is broken
@@ -764,24 +749,24 @@ commands:
         type: String
     outcomes:
       - name: faulted
-        moves: swarm2.agent.Agent.fault
+        moves: swarm.agent.Agent.fault
         instance: agent_id
         emits:
-          - swarm2.agent.FaultRaised
+          - swarm.agent.FaultRaised
         payload:
-          swarm2.agent.FaultRaised:
+          swarm.agent.FaultRaised:
             agent_id: input.agent_id
             kind: input.kind
             msg: input.msg
         summary: The member is Faulted; §8 says fix it, or report it if fixing needs Timo.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.agent.AgentStateConflict
+        error: swarm.agent.AgentStateConflict
         summary: The member is already Faulted or is Retired.
 
   # §8 `fault` -> "fix it": the window is relaunched (with `--resume` or fresh) and the member
   # starts over in Spawned with the new Host — a new window id, index and session id.
-  - name: swarm2.agent.Restart
+  - name: swarm.agent.Restart
     naming:
       wire: restart
       display: Relaunch a faulted member
@@ -789,26 +774,27 @@ commands:
       - name: agent_id
         type: String
       - name: host
-        type: swarm2.agent.Host
+        type: swarm.agent.Host
     outcomes:
       - name: restarted
-        moves: swarm2.agent.Agent.restart
+        moves: swarm.agent.Agent.restart
         instance: agent_id
         emits:
-          - swarm2.agent.AgentRestarted
+          - swarm.agent.AgentRestarted
         payload:
-          swarm2.agent.AgentRestarted:
+          swarm.agent.AgentRestarted:
             agent_id: input.agent_id
+            host: input.host
         sets:
           host: input.host
         summary: The member is Spawned again on the new host; its slug and inboxes are unchanged.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.agent.AgentStateConflict
+        error: swarm.agent.AgentStateConflict
         summary: Only a Faulted member is restarted.
 
   # The window is closed for good. `retired_at` is stamped by the implementation.
-  - name: swarm2.agent.Retire
+  - name: swarm.agent.Retire
     naming:
       wire: retire
       display: Retire a member
@@ -817,22 +803,22 @@ commands:
         type: String
     outcomes:
       - name: retired
-        moves: swarm2.agent.Agent.retire
+        moves: swarm.agent.Agent.retire
         instance: agent_id
         emits:
-          - swarm2.agent.AgentRetired
+          - swarm.agent.AgentRetired
         payload:
-          swarm2.agent.AgentRetired:
+          swarm.agent.AgentRetired:
             agent_id: input.agent_id
         summary: The member is Retired; its record, inboxes and assignments stay.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.agent.AgentStateConflict
+        error: swarm.agent.AgentStateConflict
         summary: A Working, Blocked, Parked or Assigned member is not retired; let it go idle first.
 
   # assign.sh `done <win> [note...]`: "mark the current assignment finished". `done_at` is
   # stamped by the implementation ("A `done` record is never stale").
-  - name: swarm2.agent.FinishAssignment
+  - name: swarm.agent.FinishAssignment
     naming:
       wire: finish-assignment
       display: Mark an assignment finished
@@ -843,12 +829,12 @@ commands:
         type: Optional<String>
     outcomes:
       - name: finished
-        moves: swarm2.agent.Assignment.finish
+        moves: swarm.agent.Assignment.finish
         instance: assignment_id
         emits:
-          - swarm2.agent.AssignmentDone
+          - swarm.agent.AssignmentDone
         payload:
-          swarm2.agent.AssignmentDone:
+          swarm.agent.AssignmentDone:
             assignment_id: input.assignment_id
             note: input.note
         sets:
@@ -856,12 +842,12 @@ commands:
         summary: The assignment is Done with its note and done_at.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.agent.AssignmentStateConflict
+        error: swarm.agent.AssignmentStateConflict
         summary: The assignment was already Done or Cleared.
 
   # assign.sh `clear <win>`: "remove the record" — the repair for `mismatch` ("Repair:
   # `assign.sh clear`"). Kept as a terminal state rather than a deletion.
-  - name: swarm2.agent.ClearAssignment
+  - name: swarm.agent.ClearAssignment
     naming:
       wire: clear-assignment
       display: Clear an assignment that no longer applies
@@ -870,22 +856,22 @@ commands:
         type: Uuid
     outcomes:
       - name: cleared
-        moves: swarm2.agent.Assignment.clear
+        moves: swarm.agent.Assignment.clear
         instance: assignment_id
         emits:
-          - swarm2.agent.AssignmentCleared
+          - swarm.agent.AssignmentCleared
         payload:
-          swarm2.agent.AssignmentCleared:
+          swarm.agent.AssignmentCleared:
             assignment_id: input.assignment_id
         summary: The assignment is Cleared without having been finished.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.agent.AssignmentStateConflict
+        error: swarm.agent.AssignmentStateConflict
         summary: The assignment was already Done or Cleared.
 
   # eventlog.md kind `note`: "anything else worth seeing. If you are idle, emit `idle`, not a
   # note" — projects to `continue`, changes no state.
-  - name: swarm2.agent.Note
+  - name: swarm.agent.Note
     naming:
       wire: note
       display: Emit a note
@@ -898,12 +884,12 @@ commands:
         type: String
     outcomes:
       - name: noted
-        updates: swarm2.agent.Agent
+        updates: swarm.agent.Agent
         instance: agent_id
         emits:
-          - swarm2.agent.NoteEmitted
+          - swarm.agent.NoteEmitted
         payload:
-          swarm2.agent.NoteEmitted:
+          swarm.agent.NoteEmitted:
             agent_id: input.agent_id
             ref: input.ref
             msg: input.msg
@@ -912,26 +898,30 @@ commands:
 events:
   # Emitted by NO outcome: it is the `escalate` event of a binding in components.yaml (the binding assignment-is-a-message could not post to the agent's inbox).
   # An escalation nobody declared would be a silence; this is the fact instead (WakeLost precedent).
-  - name: swarm2.agent.AssignmentUndelivered
+  - name: swarm.agent.AssignmentUndelivered
     fields:
       - name: agent_id
         type: String
-  - name: swarm2.agent.AgentSpawned
+  - name: swarm.agent.AgentSpawned
     fields:
       - name: agent_id
         type: String
       - name: swarm_id
         type: Uuid
       - name: role
-        type: swarm2.agent.Role
+        type: swarm.agent.Role
       - name: harness
-        type: swarm2.config.Harness
+        type: swarm.config.Harness
       - name: display_name
         type: String
-  # What the bindings in components.yaml fan out: to `swarm2.board.PostMessage` (the inbox post)
-  # and to `swarm2.agent.RecordAssignment` (the record). Carries every input so a binding maps
+  # What the bindings in components.yaml fan out: to `swarm.board.PostMessage` (the inbox post)
+  # and to `swarm.agent.RecordAssignment` (the record). Carries every input so a binding maps
   # one event field per command input.
-  - name: swarm2.agent.AssignmentPosted
+      - name: loadout
+        type: swarm.agent.Loadout
+      - name: host
+        type: swarm.agent.Host
+  - name: swarm.agent.AssignmentPosted
     fields:
       - name: agent_id
         type: String
@@ -943,7 +933,7 @@ events:
         type: String
       - name: artifact_ref
         type: Optional<String>
-  - name: swarm2.agent.AssignmentRecorded
+  - name: swarm.agent.AssignmentRecorded
     fields:
       - name: assignment_id
         type: Uuid
@@ -958,7 +948,7 @@ events:
       - name: artifact_ref
         type: Optional<String>
   # The event-log kinds, one event each, carrying the line's `ref`/`msg` (and `exit` for gates).
-  - name: swarm2.agent.AssignmentTaken
+  - name: swarm.agent.AssignmentTaken
     fields:
       - name: agent_id
         type: String
@@ -966,7 +956,7 @@ events:
         type: Optional<String>
       - name: msg
         type: String
-  - name: swarm2.agent.StepDone
+  - name: swarm.agent.StepDone
     fields:
       - name: agent_id
         type: String
@@ -974,17 +964,7 @@ events:
         type: Optional<String>
       - name: msg
         type: String
-  - name: swarm2.agent.GateRed
-    fields:
-      - name: agent_id
-        type: String
-      - name: ref
-        type: Optional<String>
-      - name: exit_code
-        type: Integer
-      - name: msg
-        type: String
-  - name: swarm2.agent.GateGreen
+  - name: swarm.agent.GateRed
     fields:
       - name: agent_id
         type: String
@@ -994,7 +974,17 @@ events:
         type: Integer
       - name: msg
         type: String
-  - name: swarm2.agent.AgentBlocked
+  - name: swarm.agent.GateGreen
+    fields:
+      - name: agent_id
+        type: String
+      - name: ref
+        type: Optional<String>
+      - name: exit_code
+        type: Integer
+      - name: msg
+        type: String
+  - name: swarm.agent.AgentBlocked
     fields:
       - name: agent_id
         type: String
@@ -1002,13 +992,13 @@ events:
         type: String
       - name: msg
         type: String
-  - name: swarm2.agent.AgentUnblocked
+  - name: swarm.agent.AgentUnblocked
     fields:
       - name: agent_id
         type: String
       - name: msg
         type: String
-  - name: swarm2.agent.DecisionParked
+  - name: swarm.agent.DecisionParked
     fields:
       - name: agent_id
         type: String
@@ -1016,19 +1006,21 @@ events:
         type: String
       - name: msg
         type: String
-  - name: swarm2.agent.DecisionCleared
+      - name: blocked_on
+        type: Optional<String>
+  - name: swarm.agent.DecisionCleared
     fields:
       - name: agent_id
         type: String
       - name: decision_ref
         type: String
-  - name: swarm2.agent.AgentIdle
+  - name: swarm.agent.AgentIdle
     fields:
       - name: agent_id
         type: String
       - name: msg
         type: String
-  - name: swarm2.agent.AgentWoken
+  - name: swarm.agent.AgentWoken
     fields:
       # Added at integration: a binding maps one event field per input and a literal is text, so the id an invoked command requires must ride on the event (resolved by the implementation, not from the input).
       - name: swarm_id
@@ -1037,7 +1029,7 @@ events:
         type: String
       - name: reason
         type: String
-  - name: swarm2.agent.FaultRaised
+  - name: swarm.agent.FaultRaised
     fields:
       # Added at integration: a binding maps one event field per input and a literal is text, so the id an invoked command requires must ride on the event (resolved by the implementation, not from the input).
       - name: swarm_id
@@ -1048,25 +1040,27 @@ events:
         type: String
       - name: msg
         type: String
-  - name: swarm2.agent.AgentRestarted
+  - name: swarm.agent.AgentRestarted
     fields:
       - name: agent_id
         type: String
-  - name: swarm2.agent.AgentRetired
+      - name: host
+        type: swarm.agent.Host
+  - name: swarm.agent.AgentRetired
     fields:
       - name: agent_id
         type: String
-  - name: swarm2.agent.AssignmentDone
+  - name: swarm.agent.AssignmentDone
     fields:
       - name: assignment_id
         type: Uuid
       - name: note
         type: Optional<String>
-  - name: swarm2.agent.AssignmentCleared
+  - name: swarm.agent.AssignmentCleared
     fields:
       - name: assignment_id
         type: Uuid
-  - name: swarm2.agent.NoteEmitted
+  - name: swarm.agent.NoteEmitted
     fields:
       - name: agent_id
         type: String
@@ -1082,8 +1076,8 @@ views:
   # what `eventlog.sh state` and `swarm-state.sh` render. read_your_writes: a member that has
   # just emitted and reads back its own row must see what it said ("the projection equals the
   # log's tail").
-  - name: swarm2.agent.AgentState
-    source: swarm2.agent.Agent
+  - name: swarm.agent.AgentState
+    source: swarm.agent.Agent
     consistency: read_your_writes
     fields:
       - name: agent_id
@@ -1091,11 +1085,11 @@ views:
       - name: swarm_id
         type: Uuid
       - name: role
-        type: swarm2.agent.Role
+        type: swarm.agent.Role
       - name: state
-        type: swarm2.agent.Agent.State
+        type: swarm.agent.Agent.State
       - name: host
-        type: swarm2.agent.Host
+        type: swarm.agent.Host
       - name: blocked_on
         type: Optional<String>
       - name: last_event_kind
@@ -1107,17 +1101,17 @@ views:
       display: What every agent last said
 
   # §8's `fault` verdict as a list: what the orchestrator fixes or reports.
-  - name: swarm2.agent.FaultedAgents
-    source: swarm2.agent.Agent
+  - name: swarm.agent.FaultedAgents
+    source: swarm.agent.Agent
     consistency: read_your_writes
     filter: state == Faulted
     fields:
       - name: agent_id
         type: String
       - name: role
-        type: swarm2.agent.Role
+        type: swarm.agent.Role
       - name: host
-        type: swarm2.agent.Host
+        type: swarm.agent.Host
       - name: last_event_at
         type: Optional<Timestamp>
     naming:
@@ -1128,15 +1122,15 @@ views:
   # Note eventlog.md's reader rule ("a non-null `blocked_on` means the verdict is `decision`
   # whatever `state` says") is broader than this filter: an Idle member holding a `blocked_on`
   # is not here; `AgentState` shows it.
-  - name: swarm2.agent.ParkedAgents
-    source: swarm2.agent.Agent
+  - name: swarm.agent.ParkedAgents
+    source: swarm.agent.Agent
     consistency: read_your_writes
     filter: state == Parked
     fields:
       - name: agent_id
         type: String
       - name: role
-        type: swarm2.agent.Role
+        type: swarm.agent.Role
       - name: blocked_on
         type: Optional<String>
       - name: last_event_at
@@ -1146,15 +1140,15 @@ views:
       display: Agents parked on a decision
 
   # §8's "idle is correct" as a list: who can be assigned or woken.
-  - name: swarm2.agent.IdleAgents
-    source: swarm2.agent.Agent
+  - name: swarm.agent.IdleAgents
+    source: swarm.agent.Agent
     consistency: read_your_writes
     filter: state == Idle
     fields:
       - name: agent_id
         type: String
       - name: role
-        type: swarm2.agent.Role
+        type: swarm.agent.Role
       - name: blocked_on
         type: Optional<String>
       - name: last_event_at
@@ -1163,8 +1157,8 @@ views:
       wire: idle
       display: Agents with nothing left to do
 
-  - name: swarm2.agent.AgentById
-    source: swarm2.agent.Agent
+  - name: swarm.agent.AgentById
+    source: swarm.agent.Agent
     consistency: eventual
     fields:
       - name: agent_id
@@ -1172,13 +1166,13 @@ views:
       - name: swarm_id
         type: Uuid
       - name: role
-        type: swarm2.agent.Role
+        type: swarm.agent.Role
       - name: harness
-        type: swarm2.config.Harness
+        type: swarm.config.Harness
       - name: display_name
         type: String
       - name: host
-        type: swarm2.agent.Host
+        type: swarm.agent.Host
       - name: spawned_at
         type: Timestamp
       - name: blocked_on
@@ -1196,8 +1190,8 @@ views:
   # assign.sh `list` / `json`, newest first. The `stale`/`mismatch`/`gone` flags are computed by
   # the reader over `set_at` and the owner's `host` against live tmux (see the entity), not
   # stored, so they are not fields here.
-  - name: swarm2.agent.Assignments
-    source: swarm2.agent.Assignment
+  - name: swarm.agent.Assignments
+    source: swarm.agent.Assignment
     consistency: eventual
     order_by:
       - set_at desc
@@ -1221,8 +1215,8 @@ views:
       display: Every assignment, newest first
 
   # assign.sh's `assigned` rows: what each window is meant to be doing now.
-  - name: swarm2.agent.OpenAssignments
-    source: swarm2.agent.Assignment
+  - name: swarm.agent.OpenAssignments
+    source: swarm.agent.Assignment
     consistency: read_your_writes
     filter: state == Assigned
     fields:
@@ -1245,33 +1239,33 @@ views:
       display: Assignments not yet finished or cleared
 
 actors:
-  # swarm/AGENTS.md §2: "the orchestrator commands, everyone else informs". Spawning, assigning,
-  # waking, restarting and retiring are commands; the member's own reports are not.
-  - name: swarm2.agent.Orchestrator
+  # The coordinator commands; everyone else informs. Spawning, assigning, waking, restarting and
+  # retiring are commands; a member's own reports about itself are not.
+  - name: swarm.agent.Coordinator
     may:
-      - swarm2.agent.Spawn
-      - swarm2.agent.Assign
-      - swarm2.agent.RecordAssignment
-      - swarm2.agent.Wake
-      - swarm2.agent.Restart
-      - swarm2.agent.Retire
-      - swarm2.agent.ClearAssignment
+      - swarm.agent.Spawn
+      - swarm.agent.Assign
+      - swarm.agent.RecordAssignment
+      - swarm.agent.Wake
+      - swarm.agent.Restart
+      - swarm.agent.Retire
+      - swarm.agent.ClearAssignment
     naming:
-      display: Orchestrator
+      display: Coordinator
   # The member itself, under WORKING-RULES §10: "You know your own state. Say it." Everything it
   # may do here is a report about itself; it commands nobody.
-  - name: swarm2.agent.Worker
+  - name: swarm.agent.Worker
     may:
-      - swarm2.agent.TakeAssignment
-      - swarm2.agent.ReportStep
-      - swarm2.agent.ReportGate
-      - swarm2.agent.Block
-      - swarm2.agent.Unblock
-      - swarm2.agent.Park
-      - swarm2.agent.Unpark
-      - swarm2.agent.GoIdle
-      - swarm2.agent.RaiseFault
-      - swarm2.agent.Note
-      - swarm2.agent.FinishAssignment
+      - swarm.agent.TakeAssignment
+      - swarm.agent.ReportStep
+      - swarm.agent.ReportGate
+      - swarm.agent.Block
+      - swarm.agent.Unblock
+      - swarm.agent.Park
+      - swarm.agent.Unpark
+      - swarm.agent.GoIdle
+      - swarm.agent.RaiseFault
+      - swarm.agent.Note
+      - swarm.agent.FinishAssignment
     naming:
       display: Swarm member

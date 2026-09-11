@@ -1,7 +1,7 @@
-# One swarm2.flow.Flow record: what a woken window does, from the WAKE_PROMPT in
+# One swarm.flow.Flow record: what a woken window does, from the WAKE_PROMPT in
 # swarm/wake.d/improver.conf: "drain your inbox (it MARKS READ, so act on what it returns), re-read
 # .agents/<role>.md, and do one improvement round, then stop. End the pass with
-# wakegate.sh <slug> --arm <files you wrote>". Runs inside swarm2.agent.Agent / Working, started
+# wakegate.sh <slug> --arm <files you wrote>". Runs inside swarm.agent.Agent / Working, started
 # by the binding on AgentWoken. The round itself is a subflow the agent owns — agents build their
 # own (Timo, 2026-09-11) — so it is a Subflow step whose id is the role's round flow.
 flow_id: agent.wake-pass
@@ -11,11 +11,11 @@ summary: Drain the inbox, re-read the role, run one round, re-arm the gate.
 version: 1
 state: Published
 published_at: "2026-09-11T18:40:00+02:00"
-binds: {entity: swarm2.agent.Agent, state: Working}
+binds: {entity: swarm.agent.Agent, state: Working}
 inputs:
-  - {name: wake, schema_id: swarm2.agent.AgentWoken/1, required: true}
+  - {name: wake, schema_id: swarm.agent.AgentWoken/1, required: true}
 outputs:
-  - {name: armed, schema_id: swarm2.schedule.GateArmed/1, required: true}
+  - {name: armed, schema_id: swarm.schedule.GateArmed/1, required: true}
 context:
   skills: [swarm-inbox]
   tools: [Bash]
@@ -27,8 +27,8 @@ steps:
     name: Drain the inbox
     kind: Command
     run: [swarm/bin/board.sh, read, --agent, "<slug>", --bodies, --json]
-    inputs: [{name: wake, schema_id: swarm2.agent.AgentWoken/1, required: true}]
-    outputs: [{name: mail, schema_id: swarm2.board.UnreadForAgent/1, required: true}]
+    inputs: [{name: wake, schema_id: swarm.agent.AgentWoken/1, required: true}]
+    outputs: [{name: mail, schema_id: swarm.board.UnreadForAgent/1, required: true}]
     context: {skills: [], tools: [], files: [], write_scope: ["swarm/runs/<run>/board/messages.jsonl"]}
     max_attempts: 1
   - step_id: reread-role
@@ -46,7 +46,7 @@ steps:
     subflow_id: "<role>.round"
     run: []
     inputs:
-      - {name: mail, schema_id: swarm2.board.UnreadForAgent/1, required: true}
+      - {name: mail, schema_id: swarm.board.UnreadForAgent/1, required: true}
       - {name: role, schema_id: text/markdown/1, required: true}
     outputs: [{name: written, schema_id: path-list/1, required: true}]
     context: {skills: [], tools: [], files: [], write_scope: ["swarm/**"], budget_tokens: 30}
@@ -56,7 +56,7 @@ steps:
     kind: Command
     run: [swarm/bin/wakegate.sh, "<slug>", --arm]
     inputs: [{name: written, schema_id: path-list/1, required: true}]
-    outputs: [{name: armed, schema_id: swarm2.schedule.GateArmed/1, required: true}]
+    outputs: [{name: armed, schema_id: swarm.schedule.GateArmed/1, required: true}]
     context: {skills: [], tools: [], files: [], write_scope: ["swarm/runs/<run>/wake/"]}
     max_attempts: 2
 edges:

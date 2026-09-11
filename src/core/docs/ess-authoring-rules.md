@@ -1,14 +1,14 @@
-# ess/1 authoring rules for swarm2 (ess 0.22.2, probed 2026-09-11)
+# ess/1 authoring rules for swarm (ess 0.22.2, probed 2026-09-11)
 
 Read this before writing a domain file. Every line is either from the `ess-specify:specify` skill,
 from `../ess/examples/billing/domains/invoice.yaml`, or from a refusal observed on this machine.
 
 ## Layout and validation
 
-- Legacy layout: `swarm2/system.yaml` + every `*.yaml` under `swarm2/` recursively. The header's
+- Legacy layout: `swarm/system.yaml` + every `*.yaml` under `swarm/` recursively. The header's
   `domains:` list and the files must agree in both directions; either half alone is refused.
-- Validate a **directory**: `ess specify validate --path <dir>`. Expected: `swarm2 v1 — N file(s), valid`, exit 0.
-- To validate one new domain before the others exist: copy `swarm2/` to a scratch dir with a
+- Validate a **directory**: `ess specify validate --path <dir>`. Expected: `swarm v1 — N file(s), valid`, exit 0.
+- To validate one new domain before the others exist: copy `swarm/` to a scratch dir with a
   session-unique name under `~/.cache/` (never `/tmp`, never a fixed name), edit the scratch
   `system.yaml` `domains:` list to the domains present there, validate there. Relay every refusal
   verbatim; do not stop at the first.
@@ -62,7 +62,7 @@ from `../ess/examples/billing/domains/invoice.yaml`, or from a refusal observed 
 - Types: `kind: newtype|struct|enum|union`; struct fields may nest structs and `List<T>`,
   `Map<String, String>`, `Optional<T>`. Primitives: `String Integer Decimal Boolean Uuid Timestamp
   Duration Bytes`. Enum type of an entity's lifecycle state is `<Entity>.State`.
-- Cross-domain type references (`type: swarm2.config.Harness` from another domain) — allowed for
+- Cross-domain type references (`type: swarm.config.Harness` from another domain) — allowed for
   enums/structs as far as probed; if refused, declare the type locally and report it.
 
 ## Provenance
@@ -72,5 +72,5 @@ from `../ess/examples/billing/domains/invoice.yaml`, or from a refusal observed 
   rather than cite line numbers (WORKING-RULES §6).
 - What no source says is `# UNMAPPED: <what would settle it>` at the place it would go, and is
   listed in the report. Never invent a type, state or edge to make the file validate.
-- No `/tmp`. Scratch under `~/.cache/swarm2-<yourname>-<pid>/`. Write only the one file you own.
+- No `/tmp`. Scratch under `~/.cache/swarm-<yourname>-<pid>/`. Write only the one file you own.
   No commits.

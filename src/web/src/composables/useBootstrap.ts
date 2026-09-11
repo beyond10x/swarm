@@ -14,12 +14,12 @@ import type { Agent, Box, Edge, Flow, Port, Schema, Step, StepKind } from '../mo
 export const SWARM_HOME = '~/beyond10x/harness-builder'
 
 export const SCHEMA = {
-  messagePosted: 'swarm2.board.MessagePosted/1',
-  agentEvent: 'swarm2.agent.AgentEvent/1',
-  gateFired: 'swarm2.schedule.GateFired/1',
-  decisionRaised: 'swarm2.decision.DecisionRaised/1',
-  decisionAnswered: 'swarm2.decision.DecisionAnswered/1',
-  assignmentPosted: 'swarm2.agent.AssignmentPosted/1',
+  messagePosted: 'swarm.board.MessagePosted/1',
+  agentEvent: 'swarm.agent.AgentEvent/1',
+  gateFired: 'swarm.schedule.GateFired/1',
+  decisionRaised: 'swarm.decision.DecisionRaised/1',
+  decisionAnswered: 'swarm.decision.DecisionAnswered/1',
+  assignmentPosted: 'swarm.agent.AssignmentPosted/1',
 } as const
 
 /** `b10x forward 2026-09-11` → `b10x-forward-2026-09-11`. */
@@ -48,12 +48,12 @@ const schema = (schemaId: string, name: string, sourceFile: string, sourceName: 
 
 export function bootstrapSchemas(): Schema[] {
   return [
-    schema(SCHEMA.messagePosted, 'MessagePosted', 'swarm2/domains/board.yaml', 'swarm2.board.MessagePosted'),
+    schema(SCHEMA.messagePosted, 'MessagePosted', 'swarm/domains/board.yaml', 'swarm.board.MessagePosted'),
     schema(SCHEMA.agentEvent, 'AgentEvent', 'swarm/bin/eventlog.sh', 'the seven kinds of WORKING-RULES.md §10'),
-    schema(SCHEMA.gateFired, 'GateFired', 'swarm2/domains/schedule.yaml', 'swarm2.schedule.GateFired'),
-    schema(SCHEMA.decisionRaised, 'DecisionRaised', 'swarm2/domains/decision.yaml', 'swarm2.decision.DecisionRaised'),
-    schema(SCHEMA.decisionAnswered, 'DecisionAnswered', 'swarm2/domains/decision.yaml', 'swarm2.decision.DecisionAnswered'),
-    schema(SCHEMA.assignmentPosted, 'AssignmentPosted', 'swarm2/domains/agent.yaml', 'swarm2.agent.AssignmentPosted'),
+    schema(SCHEMA.gateFired, 'GateFired', 'swarm/domains/schedule.yaml', 'swarm.schedule.GateFired'),
+    schema(SCHEMA.decisionRaised, 'DecisionRaised', 'swarm/domains/decision.yaml', 'swarm.decision.DecisionRaised'),
+    schema(SCHEMA.decisionAnswered, 'DecisionAnswered', 'swarm/domains/decision.yaml', 'swarm.decision.DecisionAnswered'),
+    schema(SCHEMA.assignmentPosted, 'AssignmentPosted', 'swarm/domains/agent.yaml', 'swarm.agent.AssignmentPosted'),
   ]
 }
 
@@ -111,7 +111,7 @@ function flow(flowId: string, binds: Flow['binds'], specs: StepSpec[]): Flow {
 }
 
 export function bootstrapFlows(): Flow[] {
-  const generation = { entity: 'swarm2.orchestrator.Generation', state: 'Ticking' }
+  const generation = { entity: 'swarm.orchestrator.Generation', state: 'Ticking' }
   return [
     // swarm/AGENTS.md §1 — the ingestion cycle, every tick, in this order
     flow('orchestrator.check-in', generation, [
@@ -148,7 +148,7 @@ export function bootstrapFlows(): Flow[] {
         prompt: 'Record `defers: N` in `## 0 Generation`. Hard cap 3 consecutive defers; on the 4th tick write the in-flight question into decisions.md as a numbered binary row with its default-on-silence, then restart from step 2.' },
     ]),
     // swarm/AGENTS.md §4 — spawning a swarm member
-    flow('agent.spawn', { entity: 'swarm2.agent.Agent', state: 'Spawned' }, [
+    flow('agent.spawn', { entity: 'swarm.agent.Agent', state: 'Spawned' }, [
       { id: 'pick-role', name: 'pick a role', kind: 'llm',
         prompt: 'Pick a definition from .agents/ — one file per role. Do not hand-write a new role when one fits; if none fits, write the definition first, then spawn.',
         context: { files: ['.agents/README.md'] } },
@@ -164,7 +164,7 @@ export function bootstrapFlows(): Flow[] {
         prompt: 'The orchestrator commands, everyone else informs (AGENTS.md §2); communication goes through the inbox (§3).' },
     ]),
     // swarm/wake.d/improver.conf — WAKE_PROMPT
-    flow('agent.wake-pass', { entity: 'swarm2.agent.Agent', state: 'Working' }, [
+    flow('agent.wake-pass', { entity: 'swarm.agent.Agent', state: 'Working' }, [
       { id: 'drain-inbox', name: 'drain inbox', kind: 'command',
         run: 'swarm/bin/board.sh read --agent <slug>  # it MARKS READ, so act on what it returns',
         inputs: [port('gate.fired', SCHEMA.gateFired)] },

@@ -129,7 +129,7 @@ const modalOpen = ref(false)
 const modalName = ref('')
 
 const name = ref('harness-builder')
-const objective = ref('Build the swarm2 web UI: splash, swarm canvas, flow editor, component library.')
+const objective = ref('Build the swarm web UI: splash, swarm canvas, flow editor, component library.')
 const cwd = ref('/home/timo/beyond10x/harness-builder')
 const budget = ref<number | undefined>(200000)
 const maxAgents = ref<number | undefined>(undefined)
@@ -228,7 +228,7 @@ const states = ['Running', 'Working', 'Succeeded', 'Answered', 'Blocked', 'Parke
         <p class="desc">{{ m.UiTile.desc }}</p>
         <div class="stage">
           <div class="grid">
-            <UiTile title="harness-builder" subtitle="Build the swarm2 web UI: splash, swarm canvas, flow editor and the component library, all against the seed." accent="accent" clickable @click="note('UiTile harness-builder click')">
+            <UiTile title="harness-builder" subtitle="Build the swarm web UI: splash, swarm canvas, flow editor and the component library, all against the seed." accent="accent" clickable @click="note('UiTile harness-builder click')">
               <div class="row"><UiStateBadge state="Running" /><UiBadge tone="muted" text="4 agents" /></div>
               <template #footer><span class="muted">started 2 h ago</span></template>
             </UiTile>

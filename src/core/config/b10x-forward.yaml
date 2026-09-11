@@ -1,4 +1,4 @@
-# One swarm2.config.Config record: the runtime configuration the 2026-09-11 swarm (`b10x-forward`)
+# One swarm.config.Config record: the runtime configuration the 2026-09-11 swarm (`b10x-forward`)
 # runs with, every value read from the file named beside it. Validated against the JSON Schema
 # `ess generate --kind schema` projects from domains/config.yaml (see generated/schema/).
 # The swarm_id is the seed swarm's id, shared with website/public/data/seed.json.

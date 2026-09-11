@@ -1,12 +1,14 @@
-# swarm2.manager — the outer system. Its members are Swarms.
+# swarm.manager — the outer system. Its members are Swarms.
 #
-# A Swarm is what ./swarm is one instance of: one tmux session, one home
-# repository (harness-builder), one run record directory (swarm/runs/<run>/), one orchestrator
-# window and N agent windows. The session name is the fact every script keys on (swarm/README.md:
-# "The session name is hard-coded in two scripts"), so it is a required field here and NOT the
-# identity: a swarm can be stopped and started again under the same session name, and two records
-# for one name is the mismatch `assign.sh` already has to detect for windows.
-domain: swarm2.manager
+# A Swarm is one session with one home directory and one coordinator. The session name is the fact
+# every launcher keys on, so it is a required field here and NOT the identity: a swarm can be
+# stopped and started again under the same session name, and two records for one name is a mismatch
+# the implementation detects rather than a shape this file permits.
+#
+# What a swarm is pursuing is a `swarm.goal.Goal` — an entity with a lifecycle whose back-edge is
+# the loop, not a list of free text. It replaced a `Goal` struct on 2026-09-11, because a goal
+# nothing can mark reached cannot end a loop.
+domain: swarm.manager
 
 summary: Many swarms, each created, started, paused, stopped and deleted here.
 
@@ -14,21 +16,8 @@ naming:
   wire: swarms
   display: Swarm manager
 
-types:
-  # One of Timo's ordered goals for a run (swarm/AGENTS.md §6 "Goals (Timo, 11:15, in his order)":
-  # G1..G4, each with a note naming the owning window or "owner unassigned").
-  - name: swarm2.manager.Goal
-    kind: struct
-    fields:
-      - name: number
-        type: String
-      - name: text
-        type: String
-      - name: owner_agent
-        type: Optional<String>
-
 entities:
-  - name: swarm2.manager.Swarm
+  - name: swarm.manager.Swarm
     identity:
       name: swarm_id
       type: Uuid
@@ -40,12 +29,13 @@ entities:
       # swarm/domains/board.yaml round 24: `unknown field unique`).
       - name: tmux_session
         type: String
-      # The repository whose swarm/ directory holds the records. swarm/AGENTS.md: "Home repository
-      # of the orchestrator session."
+      # The directory the swarm works in and writes its records under.
       - name: home
         type: String
-      - name: goals
-        type: List<swarm2.manager.Goal>
+      # Timestamps are handed in, never read from a clock inside the model: ESS determines what an
+      # outcome writes but not what time it is, so the runtime reads the clock at the edge and
+      # passes it as an input. Every one of them is also carried on the event that sets it, so the
+      # log alone can rebuild this record.
       - name: created_at
         type: Timestamp
       - name: started_at
@@ -53,78 +43,42 @@ entities:
       - name: stopped_at
         type: Optional<Timestamp>
       # The configuration the swarm runs with now. Written by `AdoptConfig`, which a binding
-      # invokes from `swarm2.config.ConfigActivated`; Optional because a Created swarm has none yet.
+      # invokes from `swarm.config.ConfigActivated`; Optional because a Created swarm has none yet.
       - name: active_config_id
         type: Optional<Uuid>
     relations:
-      # The swarm's members. An agent is a role running in one of this swarm's windows and has no
-      # meaning outside it (swarm/AGENTS.md §4: spawned by this swarm's orchestrator, its slug is
-      # the identity the board, the event log and AEP_ACTOR use inside this swarm).
+      # The swarm's members. At birth there is exactly one — the coordinator. Every other agent is
+      # one the coordinator spawned, and has no meaning outside the swarm that spawned it.
       - name: agents
         kind: owns
-        target: swarm2.agent.Agent
+        target: swarm.agent.Agent
         cardinality: many
         via: swarm_id
-      # Numbered decisions are minted by this swarm's orchestrator and numbered per run
-      # (WORKING-RULES §9: numbers are stable and never reused — within one ledger).
-      - name: decisions
-        kind: owns
-        target: swarm2.decision.Decision
-        cardinality: many
-        via: swarm_id
-      # A run is one session of this swarm (swarm/runs/<run>/); the orchestrator's generations hang
-      # off the run. Declared here at integration (orchestrator.yaml names it as deferred).
-      - name: runs
-        kind: owns
-        target: swarm2.orchestrator.Run
-        cardinality: many
-        via: swarm_id
-      # What this swarm's agents build: flows (DAGs) and, in swarm2.blackbox, the boxes and
-      # connections between them. Timo, 2026-09-11: "they build workflows/systems themselves".
-      - name: flows
-        kind: owns
-        target: swarm2.flow.Flow
-        cardinality: many
-        via: swarm_id
+      # What this swarm draws for itself. Timo, 2026-09-11: "they build workflows/systems
+      # themselves". A tool, an MCP server, a UI panel, a loop and the goal are all Boxes; what may
+      # reach what is a Connection between them. This is the whole extension mechanism: a swarm
+      # grows by drawing boxes and wiring them, never by gaining a domain.
       - name: boxes
         kind: owns
-        target: swarm2.blackbox.Box
+        target: swarm.blackbox.Box
         cardinality: many
         via: swarm_id
       - name: schemas
         kind: owns
-        target: swarm2.blackbox.Schema
-        cardinality: many
-        via: swarm_id
-      # Faults are this swarm's incidents (swarm/AGENTS.md §6 "Open incidents and hazards" is per run).
-      - name: faults
-        kind: owns
-        target: swarm2.fault.Fault
-        cardinality: many
-        via: swarm_id
-      # The schedulers: one wake gate per agent and the orchestrator's crons, all per swarm
-      # (swarm/wake.d/<slug>.conf and SEED.md §1 are read per session).
-      - name: gates
-        kind: owns
-        target: swarm2.schedule.WakeGate
-        cardinality: many
-        via: swarm_id
-      - name: crons
-        kind: owns
-        target: swarm2.schedule.Cron
+        target: swarm.blackbox.Schema
         cardinality: many
         via: swarm_id
       # A configuration has no meaning without the swarm it configures.
       - name: configs
         kind: owns
-        target: swarm2.config.Config
+        target: swarm.config.Config
         cardinality: many
         via: swarm_id
       # The one it runs with. `references`, not `owns`: the same rows are already owned above, and
       # this edge only says which of them is current.
       - name: active_config
         kind: references
-        target: swarm2.config.Config
+        target: swarm.config.Config
         cardinality: one
         via: active_config_id
     lifecycle:
@@ -156,22 +110,22 @@ entities:
           to: Deleted
 
 errors:
-  - name: swarm2.manager.SwarmStateConflict
+  - name: swarm.manager.SwarmStateConflict
     summary: The swarm is not in a state this command acts from, so nothing moved.
     fields:
       - name: state
-        type: swarm2.manager.Swarm.State
+        type: swarm.manager.Swarm.State
   # Raised by the implementation of `CreateSwarm` when the session name is already a swarm's.
   # Not an outcome: "a row with this session exists" is a lookup, not a function of the input
-  # (ESS-COMMAND-003, the same limit `swarm2.board.CreateInbox` documents).
-  - name: swarm2.manager.SwarmSessionTaken
+  # (ESS-COMMAND-003, the same limit `swarm.board.CreateInbox` documents).
+  - name: swarm.manager.SwarmSessionTaken
     summary: Another swarm already owns this tmux session name, so nothing was created.
     fields:
       - name: tmux_session
         type: String
 
 commands:
-  - name: swarm2.manager.CreateSwarm
+  - name: swarm.manager.CreateSwarm
     naming:
       wire: create-swarm
       display: Create a swarm
@@ -182,54 +136,54 @@ commands:
         type: String
       - name: home
         type: String
-      - name: goals
-        type: List<swarm2.manager.Goal>
+      - name: created_at
+        type: Timestamp
     outcomes:
       - name: created
-        creates: swarm2.manager.Swarm
+        creates: swarm.manager.Swarm
         instance: swarm_id
         emits:
-          - swarm2.manager.SwarmCreated
+          - swarm.manager.SwarmCreated
         payload:
-          swarm2.manager.SwarmCreated:
+          swarm.manager.SwarmCreated:
+            display_name: input.display_name
             tmux_session: input.tmux_session
             home: input.home
+            created_at: input.created_at
         sets:
           display_name: input.display_name
           tmux_session: input.tmux_session
           home: input.home
-          goals: input.goals
+          created_at: input.created_at
         summary: The swarm exists in Created, with no config and no run.
 
-  - name: swarm2.manager.UpdateSwarm
+  - name: swarm.manager.UpdateSwarm
     naming:
       wire: update-swarm
-      display: Update a swarm's name or goals
+      display: Rename a swarm
     input:
       - name: swarm_id
         type: Uuid
       - name: display_name
         type: String
-      - name: goals
-        type: List<swarm2.manager.Goal>
     outcomes:
       - name: updated
-        updates: swarm2.manager.Swarm
+        updates: swarm.manager.Swarm
         instance: swarm_id
         emits:
-          - swarm2.manager.SwarmUpdated
+          - swarm.manager.SwarmUpdated
         payload:
-          swarm2.manager.SwarmUpdated:
+          swarm.manager.SwarmUpdated:
             swarm_id: input.swarm_id
+            display_name: input.display_name
         sets:
           display_name: input.display_name
-          goals: input.goals
-        summary: Name and goals are replaced; the state is unchanged.
+        summary: The name is replaced; the state is unchanged.
 
-  # Invoked by the binding on `swarm2.config.ConfigActivated`, never typed: the config domain
+  # Invoked by the binding on `swarm.config.ConfigActivated`, never typed: the config domain
   # decides which config is active, and this is how the swarm record learns it. A cross-entity
   # `sets:` is not expressible, so the fact crosses as an event and lands as its own command.
-  - name: swarm2.manager.AdoptConfig
+  - name: swarm.manager.AdoptConfig
     naming:
       wire: adopt-config
       display: Adopt an activated config
@@ -240,41 +194,47 @@ commands:
         type: Uuid
     outcomes:
       - name: adopted
-        updates: swarm2.manager.Swarm
+        updates: swarm.manager.Swarm
         instance: swarm_id
         emits:
-          - swarm2.manager.ConfigAdopted
+          - swarm.manager.ConfigAdopted
         payload:
-          swarm2.manager.ConfigAdopted:
+          swarm.manager.ConfigAdopted:
             swarm_id: input.swarm_id
             config_id: input.config_id
+            active_config_id: input.config_id
         sets:
           active_config_id: input.config_id
         summary: The swarm's active_config_id points at the config that was just activated.
 
-  - name: swarm2.manager.StartSwarm
+  - name: swarm.manager.StartSwarm
     naming:
       wire: start-swarm
       display: Start a swarm
     input:
       - name: swarm_id
         type: Uuid
+      - name: started_at
+        type: Timestamp
     outcomes:
       - name: started
-        moves: swarm2.manager.Swarm.start
+        moves: swarm.manager.Swarm.start
         instance: swarm_id
         emits:
-          - swarm2.manager.SwarmStarted
+          - swarm.manager.SwarmStarted
         payload:
-          swarm2.manager.SwarmStarted:
+          swarm.manager.SwarmStarted:
             swarm_id: input.swarm_id
+            started_at: input.started_at
+        sets:
+          started_at: input.started_at
         summary: The session is up; a binding opens the orchestrator's run.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.manager.SwarmStateConflict
+        error: swarm.manager.SwarmStateConflict
         summary: The swarm is Running, Paused or Deleted, so nothing started.
 
-  - name: swarm2.manager.PauseSwarm
+  - name: swarm.manager.PauseSwarm
     naming:
       wire: pause-swarm
       display: Pause a swarm
@@ -283,20 +243,20 @@ commands:
         type: Uuid
     outcomes:
       - name: paused
-        moves: swarm2.manager.Swarm.pause
+        moves: swarm.manager.Swarm.pause
         instance: swarm_id
         emits:
-          - swarm2.manager.SwarmPaused
+          - swarm.manager.SwarmPaused
         payload:
-          swarm2.manager.SwarmPaused:
+          swarm.manager.SwarmPaused:
             swarm_id: input.swarm_id
         summary: Crons are cancelled and gates are not evaluated; windows stay.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.manager.SwarmStateConflict
+        error: swarm.manager.SwarmStateConflict
         summary: Only a Running swarm can be paused.
 
-  - name: swarm2.manager.ResumeSwarm
+  - name: swarm.manager.ResumeSwarm
     naming:
       wire: resume-swarm
       display: Resume a paused swarm
@@ -305,42 +265,47 @@ commands:
         type: Uuid
     outcomes:
       - name: resumed
-        moves: swarm2.manager.Swarm.resume
+        moves: swarm.manager.Swarm.resume
         instance: swarm_id
         emits:
-          - swarm2.manager.SwarmResumed
+          - swarm.manager.SwarmResumed
         payload:
-          swarm2.manager.SwarmResumed:
+          swarm.manager.SwarmResumed:
             swarm_id: input.swarm_id
         summary: Crons are recreated and gates are evaluated again.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.manager.SwarmStateConflict
+        error: swarm.manager.SwarmStateConflict
         summary: Only a Paused swarm can be resumed.
 
-  - name: swarm2.manager.StopSwarm
+  - name: swarm.manager.StopSwarm
     naming:
       wire: stop-swarm
       display: Stop a swarm
     input:
       - name: swarm_id
         type: Uuid
+      - name: stopped_at
+        type: Timestamp
     outcomes:
       - name: stopped
-        moves: swarm2.manager.Swarm.stop
+        moves: swarm.manager.Swarm.stop
         instance: swarm_id
         emits:
-          - swarm2.manager.SwarmStopped
+          - swarm.manager.SwarmStopped
         payload:
-          swarm2.manager.SwarmStopped:
+          swarm.manager.SwarmStopped:
             swarm_id: input.swarm_id
+            stopped_at: input.stopped_at
+        sets:
+          stopped_at: input.stopped_at
         summary: The session is torn down; records, board and event log stay on disk.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.manager.SwarmStateConflict
+        error: swarm.manager.SwarmStateConflict
         summary: The swarm was not Running or Paused, so nothing stopped.
 
-  - name: swarm2.manager.DeleteSwarm
+  - name: swarm.manager.DeleteSwarm
     naming:
       wire: delete-swarm
       display: Delete a swarm
@@ -349,62 +314,74 @@ commands:
         type: Uuid
     outcomes:
       - name: deleted
-        moves: swarm2.manager.Swarm.delete
+        moves: swarm.manager.Swarm.delete
         instance: swarm_id
         emits:
-          - swarm2.manager.SwarmDeleted
+          - swarm.manager.SwarmDeleted
         payload:
-          swarm2.manager.SwarmDeleted:
+          swarm.manager.SwarmDeleted:
             swarm_id: input.swarm_id
         summary: The swarm is retired; it no longer appears in the swarms list.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.manager.SwarmStateConflict
+        error: swarm.manager.SwarmStateConflict
         summary: A Running or Paused swarm is not deleted; stop it first.
 
 events:
-  - name: swarm2.manager.SwarmCreated
+  - name: swarm.manager.SwarmCreated
     fields:
       - name: swarm_id
         type: Uuid
+      - name: display_name
+        type: String
       - name: tmux_session
         type: String
       - name: home
         type: String
-  - name: swarm2.manager.SwarmUpdated
+      - name: created_at
+        type: Timestamp
+  - name: swarm.manager.SwarmUpdated
     fields:
       - name: swarm_id
         type: Uuid
-  - name: swarm2.manager.ConfigAdopted
+      - name: display_name
+        type: String
+  - name: swarm.manager.ConfigAdopted
     fields:
       - name: swarm_id
         type: Uuid
       - name: config_id
         type: Uuid
-  - name: swarm2.manager.SwarmStarted
+      - name: active_config_id
+        type: Optional<Uuid>
+  - name: swarm.manager.SwarmStarted
     fields:
       - name: swarm_id
         type: Uuid
-  - name: swarm2.manager.SwarmPaused
+      - name: started_at
+        type: Timestamp
+  - name: swarm.manager.SwarmPaused
     fields:
       - name: swarm_id
         type: Uuid
-  - name: swarm2.manager.SwarmResumed
+  - name: swarm.manager.SwarmResumed
     fields:
       - name: swarm_id
         type: Uuid
-  - name: swarm2.manager.SwarmStopped
+  - name: swarm.manager.SwarmStopped
     fields:
       - name: swarm_id
         type: Uuid
-  - name: swarm2.manager.SwarmDeleted
+      - name: stopped_at
+        type: Timestamp
+  - name: swarm.manager.SwarmDeleted
     fields:
       - name: swarm_id
         type: Uuid
 
 views:
-  - name: swarm2.manager.Swarms
-    source: swarm2.manager.Swarm
+  - name: swarm.manager.Swarms
+    source: swarm.manager.Swarm
     consistency: read_your_writes
     order_by:
       - created_at desc
@@ -421,8 +398,8 @@ views:
       wire: swarms
       display: All swarms, newest first
 
-  - name: swarm2.manager.RunningSwarms
-    source: swarm2.manager.Swarm
+  - name: swarm.manager.RunningSwarms
+    source: swarm.manager.Swarm
     consistency: read_your_writes
     filter: state == Running
     fields:
@@ -438,8 +415,8 @@ views:
       wire: running
       display: Swarms that are running
 
-  - name: swarm2.manager.SwarmById
-    source: swarm2.manager.Swarm
+  - name: swarm.manager.SwarmById
+    source: swarm.manager.Swarm
     consistency: eventual
     fields:
       - name: swarm_id
@@ -450,14 +427,6 @@ views:
         type: String
       - name: home
         type: String
-      - name: goals
-        type: List<swarm2.manager.Goal>
-      - name: created_at
-        type: Timestamp
-      - name: started_at
-        type: Optional<Timestamp>
-      - name: stopped_at
-        type: Optional<Timestamp>
       - name: active_config_id
         type: Optional<Uuid>
     naming:
@@ -467,20 +436,20 @@ views:
 actors:
   # Timo, or a UI/CLI acting for him. The manager is the one surface reached across a process
   # boundary (components.yaml: `reached_by: network`).
-  - name: swarm2.manager.Operator
+  - name: swarm.manager.Operator
     may:
-      - swarm2.manager.CreateSwarm
-      - swarm2.manager.UpdateSwarm
-      - swarm2.manager.StartSwarm
-      - swarm2.manager.PauseSwarm
-      - swarm2.manager.ResumeSwarm
-      - swarm2.manager.StopSwarm
-      - swarm2.manager.DeleteSwarm
+      - swarm.manager.CreateSwarm
+      - swarm.manager.UpdateSwarm
+      - swarm.manager.StartSwarm
+      - swarm.manager.PauseSwarm
+      - swarm.manager.ResumeSwarm
+      - swarm.manager.StopSwarm
+      - swarm.manager.DeleteSwarm
     naming:
       display: Operator
   # The bindings' actor: what the system does to itself.
-  - name: swarm2.manager.Manager
+  - name: swarm.manager.Manager
     may:
-      - swarm2.manager.AdoptConfig
+      - swarm.manager.AdoptConfig
     naming:
       display: Swarm manager

@@ -1,6 +1,6 @@
-# One swarm2.flow.Flow record: the coordinator's 15-minute generational cycle,
+# One swarm.flow.Flow record: the coordinator's 15-minute generational cycle,
 # swarm/coordinator/CHARTER.md §5, steps 1–7 in its order. Runs inside
-# swarm2.orchestrator.Generation / Ticking, started by the binding on MemoryTicked. The gate step
+# swarm.orchestrator.Generation / Ticking, started by the binding on MemoryTicked. The gate step
 # (coord-budget.sh) has max_attempts 1 and no edge out on a red exit: a red gate fails the run and
 # nothing restarts (§5.4 "Never restart on a red gate").
 flow_id: orchestrator.memory-tick
@@ -11,11 +11,11 @@ version: 1
 owner_agent: orchestrator
 state: Published
 published_at: "2026-09-11T18:40:00+02:00"
-binds: {entity: swarm2.orchestrator.Generation, state: Ticking}
+binds: {entity: swarm.orchestrator.Generation, state: Ticking}
 inputs:
-  - {name: generation_id, schema_id: swarm2.orchestrator.Generation/1, required: true}
+  - {name: generation_id, schema_id: swarm.orchestrator.Generation/1, required: true}
 outputs:
-  - {name: restarted, schema_id: swarm2.orchestrator.GenerationRestarting/1, required: false}
+  - {name: restarted, schema_id: swarm.orchestrator.GenerationRestarting/1, required: false}
 context:
   skills: []
   tools: [Bash]
@@ -73,7 +73,7 @@ steps:
     kind: Command
     run: [swarm/bin/coord-restart.sh]
     inputs: []
-    outputs: [{name: restarted, schema_id: swarm2.orchestrator.GenerationRestarting/1, required: true}]
+    outputs: [{name: restarted, schema_id: swarm.orchestrator.GenerationRestarting/1, required: true}]
     context: {skills: [], tools: [], files: [], write_scope: []}
     max_attempts: 1
   - step_id: defer

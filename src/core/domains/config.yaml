@@ -1,8 +1,8 @@
-# swarm2.config — the runtime configuration a swarm runs with, as a first-class record.
+# swarm.config — the runtime configuration a swarm runs with, as a first-class record.
 #
 # Timo, 2026-09-11: "add some config as 1st class domain describing the runtime config of the
 # system". Every number the scripts of ./swarm hard-code today is a FIELD here; the VALUES live in
-# a config document (swarm2/config/<swarm>.yaml) validated against the JSON Schema `ess generate`
+# a config document (swarm/config/<swarm>.yaml) validated against the JSON Schema `ess generate`
 # projects from this entity — the same rule the board uses for its records. Where a value is read
 # from is written beside the field, so a later change can be traced to what it changed.
 #
@@ -10,7 +10,7 @@
 # `ActivateConfig`, which supersedes the previously active row in the same transaction: a binding
 # cannot do it, because `ConfigActivated` does not carry the PREVIOUS config's id, and a `when`
 # cannot read board state (ESS-COMMAND-003). Recorded as a rough edge, not guessed around.
-domain: swarm2.config
+domain: swarm.config
 
 summary: The runtime configuration a swarm runs with — paths, launch line, schedules, budgets, board defaults — drafted, activated one at a time, superseded.
 
@@ -21,7 +21,7 @@ naming:
 types:
   # Which harness an agent window runs. The three kinds `metaharness run` accepts
   # (`metaharness run --help`, 0.6.4): claude, codex, b10x.
-  - name: swarm2.config.Harness
+  - name: swarm.config.Harness
     kind: enum
     variants: [Claude, Codex, B10x]
     naming:
@@ -31,7 +31,7 @@ types:
   # (bin/, runs/), swarm/docs/eventlog.md (events, projection), .skills/swarm-inbox/SKILL.md
   # (board), swarm/WORKING-RULES.md §2 (planning store), swarm/docs/wake-gate.md (wake.d),
   # .agents/README.md (roles), swarm/coordinator/CHARTER.md §4 (memory file), §1 (decisions).
-  - name: swarm2.config.Paths
+  - name: swarm.config.Paths
     kind: struct
     fields:
       - name: runs_dir
@@ -60,11 +60,11 @@ types:
 
   # How a window is launched. swarm/AGENTS.md §6: "Each window runs `claude
   # --dangerously-skip-permissions --model opus`".
-  - name: swarm2.config.HarnessLaunch
+  - name: swarm.config.HarnessLaunch
     kind: struct
     fields:
       - name: harness
-        type: swarm2.config.Harness
+        type: swarm.config.Harness
       - name: binary
         type: String
       - name: model
@@ -76,7 +76,7 @@ types:
 
   # When things fire. swarm/coordinator/SEED.md §1 (the two crons, 7-day expiry),
   # swarm/docs/wake-gate.md (waked.sh polls every 60 s; WAKE_MIN_INTERVAL=300 in every wake.d conf).
-  - name: swarm2.config.Schedules
+  - name: swarm.config.Schedules
     kind: struct
     fields:
       - name: check_in_cron
@@ -100,7 +100,7 @@ types:
   # (ASSIGN_STALE_SECONDS=7200, measured), swarm/docs/eventlog.md (msg ≤ 500 chars; 900 s event
   # staleness in swarm-state.sh), swarm/AGENTS.md §6 (disk warden 40G floor / 80G target),
   # .agents/swarm-improver.md (~30 tool calls per round).
-  - name: swarm2.config.Budgets
+  - name: swarm.config.Budgets
     kind: struct
     fields:
       - name: memory_file_bytes
@@ -129,7 +129,7 @@ types:
 
   # Board conventions. WORKING-RULES §4 ("The coordinator is `orchestrator` / `main`"),
   # .skills/swarm-inbox/SKILL.md (BOARD_BROADCAST_PREFER default `main,orchestrator,inbox,rounds`).
-  - name: swarm2.config.BoardDefaults
+  - name: swarm.config.BoardDefaults
     kind: struct
     fields:
       - name: orchestrator_slug
@@ -140,27 +140,27 @@ types:
         type: List<String>
 
 entities:
-  - name: swarm2.config.Config
+  - name: swarm.config.Config
     identity:
       name: config_id
       type: Uuid
     fields:
-      # The swarm this configures; the `via` of `swarm2.manager.Swarm.configs`.
+      # The swarm this configures; the `via` of `swarm.manager.Swarm.configs`.
       - name: swarm_id
         type: Uuid
       # Monotonic per swarm, assigned by the implementation at draft time. Prose, not checked.
       - name: version
         type: Integer
       - name: paths
-        type: swarm2.config.Paths
+        type: swarm.config.Paths
       - name: launch
-        type: swarm2.config.HarnessLaunch
+        type: swarm.config.HarnessLaunch
       - name: schedules
-        type: swarm2.config.Schedules
+        type: swarm.config.Schedules
       - name: budgets
-        type: swarm2.config.Budgets
+        type: swarm.config.Budgets
       - name: board
-        type: swarm2.config.BoardDefaults
+        type: swarm.config.BoardDefaults
       - name: note
         type: Optional<String>
       - name: drafted_at
@@ -191,14 +191,14 @@ entities:
           to: Discarded
 
 errors:
-  - name: swarm2.config.ConfigStateConflict
+  - name: swarm.config.ConfigStateConflict
     summary: The config is not in a state this command acts from, so nothing moved.
     fields:
       - name: state
-        type: swarm2.config.Config.State
+        type: swarm.config.Config.State
 
 commands:
-  - name: swarm2.config.DraftConfig
+  - name: swarm.config.DraftConfig
     naming:
       wire: draft-config
       display: Draft a configuration
@@ -206,26 +206,32 @@ commands:
       - name: swarm_id
         type: Uuid
       - name: paths
-        type: swarm2.config.Paths
+        type: swarm.config.Paths
       - name: launch
-        type: swarm2.config.HarnessLaunch
+        type: swarm.config.HarnessLaunch
       - name: schedules
-        type: swarm2.config.Schedules
+        type: swarm.config.Schedules
       - name: budgets
-        type: swarm2.config.Budgets
+        type: swarm.config.Budgets
       - name: board
-        type: swarm2.config.BoardDefaults
+        type: swarm.config.BoardDefaults
       - name: note
         type: Optional<String>
     outcomes:
       - name: drafted
-        creates: swarm2.config.Config
+        creates: swarm.config.Config
         instance: config_id
         emits:
-          - swarm2.config.ConfigDrafted
+          - swarm.config.ConfigDrafted
         payload:
-          swarm2.config.ConfigDrafted:
+          swarm.config.ConfigDrafted:
             swarm_id: input.swarm_id
+            paths: input.paths
+            launch: input.launch
+            schedules: input.schedules
+            budgets: input.budgets
+            board: input.board
+            note: input.note
         sets:
           swarm_id: input.swarm_id
           paths: input.paths
@@ -236,7 +242,7 @@ commands:
           note: input.note
         summary: The config exists in Draft with the next version number for its swarm.
 
-  - name: swarm2.config.ActivateConfig
+  - name: swarm.config.ActivateConfig
     naming:
       wire: activate-config
       display: Activate a configuration
@@ -245,22 +251,22 @@ commands:
         type: Uuid
     outcomes:
       - name: activated
-        moves: swarm2.config.Config.activate
+        moves: swarm.config.Config.activate
         instance: config_id
         emits:
-          - swarm2.config.ConfigActivated
+          - swarm.config.ConfigActivated
         payload:
-          swarm2.config.ConfigActivated:
+          swarm.config.ConfigActivated:
             config_id: input.config_id
         summary: >-
           The config is in force; the previously active one for the same swarm is superseded in
           the same transaction, and a binding tells the swarm record which config it now runs with.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.config.ConfigStateConflict
+        error: swarm.config.ConfigStateConflict
         summary: Only a Draft can be activated.
 
-  - name: swarm2.config.SupersedeConfig
+  - name: swarm.config.SupersedeConfig
     naming:
       wire: supersede-config
       display: Supersede the active configuration
@@ -269,20 +275,20 @@ commands:
         type: Uuid
     outcomes:
       - name: superseded
-        moves: swarm2.config.Config.supersede
+        moves: swarm.config.Config.supersede
         instance: config_id
         emits:
-          - swarm2.config.ConfigSuperseded
+          - swarm.config.ConfigSuperseded
         payload:
-          swarm2.config.ConfigSuperseded:
+          swarm.config.ConfigSuperseded:
             config_id: input.config_id
         summary: The config is no longer in force and is kept as a record.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.config.ConfigStateConflict
+        error: swarm.config.ConfigStateConflict
         summary: Only an Active config can be superseded.
 
-  - name: swarm2.config.DiscardConfig
+  - name: swarm.config.DiscardConfig
     naming:
       wire: discard-config
       display: Discard a draft
@@ -291,21 +297,21 @@ commands:
         type: Uuid
     outcomes:
       - name: discarded
-        moves: swarm2.config.Config.discard
+        moves: swarm.config.Config.discard
         instance: config_id
         emits:
-          - swarm2.config.ConfigDiscarded
+          - swarm.config.ConfigDiscarded
         payload:
-          swarm2.config.ConfigDiscarded:
+          swarm.config.ConfigDiscarded:
             config_id: input.config_id
         summary: The draft is closed without ever being in force.
       - name: wrong-state
         wrong_state: true
-        error: swarm2.config.ConfigStateConflict
+        error: swarm.config.ConfigStateConflict
         summary: Only a Draft can be discarded.
 
 events:
-  - name: swarm2.config.ConfigDrafted
+  - name: swarm.config.ConfigDrafted
     fields:
       - name: config_id
         type: Uuid
@@ -313,27 +319,39 @@ events:
         type: Uuid
       - name: version
         type: Integer
-  # Carries `swarm_id` although the input does not: the binding to `swarm2.manager.AdoptConfig`
+  # Carries `swarm_id` although the input does not: the binding to `swarm.manager.AdoptConfig`
   # needs both halves, and a binding maps one event field per input.
-  - name: swarm2.config.ConfigActivated
+      - name: paths
+        type: swarm.config.Paths
+      - name: launch
+        type: swarm.config.HarnessLaunch
+      - name: schedules
+        type: swarm.config.Schedules
+      - name: budgets
+        type: swarm.config.Budgets
+      - name: board
+        type: swarm.config.BoardDefaults
+      - name: note
+        type: Optional<String>
+  - name: swarm.config.ConfigActivated
     fields:
       - name: config_id
         type: Uuid
       - name: swarm_id
         type: Uuid
-  - name: swarm2.config.ConfigSuperseded
+  - name: swarm.config.ConfigSuperseded
     fields:
       - name: config_id
         type: Uuid
-  - name: swarm2.config.ConfigDiscarded
+  - name: swarm.config.ConfigDiscarded
     fields:
       - name: config_id
         type: Uuid
 
 views:
   # Keyed by the caller's swarm_id; the filter is the one equality ess/1 allows.
-  - name: swarm2.config.ActiveConfig
-    source: swarm2.config.Config
+  - name: swarm.config.ActiveConfig
+    source: swarm.config.Config
     consistency: read_your_writes
     filter: state == Active
     fields:
@@ -344,23 +362,23 @@ views:
       - name: version
         type: Integer
       - name: paths
-        type: swarm2.config.Paths
+        type: swarm.config.Paths
       - name: launch
-        type: swarm2.config.HarnessLaunch
+        type: swarm.config.HarnessLaunch
       - name: schedules
-        type: swarm2.config.Schedules
+        type: swarm.config.Schedules
       - name: budgets
-        type: swarm2.config.Budgets
+        type: swarm.config.Budgets
       - name: board
-        type: swarm2.config.BoardDefaults
+        type: swarm.config.BoardDefaults
       - name: activated_at
         type: Optional<Timestamp>
     naming:
       wire: active
       display: The configuration in force
 
-  - name: swarm2.config.ConfigHistory
-    source: swarm2.config.Config
+  - name: swarm.config.ConfigHistory
+    source: swarm.config.Config
     consistency: eventual
     order_by:
       - version desc
@@ -384,11 +402,11 @@ views:
       display: Every configuration a swarm has had, newest first
 
 actors:
-  - name: swarm2.config.Operator
+  - name: swarm.config.Operator
     may:
-      - swarm2.config.DraftConfig
-      - swarm2.config.ActivateConfig
-      - swarm2.config.SupersedeConfig
-      - swarm2.config.DiscardConfig
+      - swarm.config.DraftConfig
+      - swarm.config.ActivateConfig
+      - swarm.config.SupersedeConfig
+      - swarm.config.DiscardConfig
     naming:
       display: Operator

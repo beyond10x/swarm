@@ -1,5 +1,5 @@
-# One swarm2.flow.Flow record: spawning a swarm member, swarm/AGENTS.md §4 steps 1–5. Runs inside
-# swarm2.agent.Agent / Spawned, started by the binding on AgentSpawned. Timo, 2026-09-11: "the
+# One swarm.flow.Flow record: spawning a swarm member, swarm/AGENTS.md §4 steps 1–5. Runs inside
+# swarm.agent.Agent / Spawned, started by the binding on AgentSpawned. Timo, 2026-09-11: "the
 # orchestrator needs to be able to create the agents and they can basically build anything anyway".
 flow_id: agent.spawn
 swarm_id: a0eae637-d85f-43b8-8072-389a06954fa6
@@ -9,12 +9,12 @@ version: 1
 owner_agent: orchestrator
 state: Published
 published_at: "2026-09-11T18:40:00+02:00"
-binds: {entity: swarm2.agent.Agent, state: Spawned}
+binds: {entity: swarm.agent.Agent, state: Spawned}
 inputs:
-  - {name: agent, schema_id: swarm2.agent.AgentSpawned/1, required: true}
-  - {name: assignment, schema_id: swarm2.agent.AssignmentPosted/1, required: true}
+  - {name: agent, schema_id: swarm.agent.AgentSpawned/1, required: true}
+  - {name: assignment, schema_id: swarm.agent.AssignmentPosted/1, required: true}
 outputs:
-  - {name: inbox, schema_id: swarm2.board.InboxCreated/1, required: true}
+  - {name: inbox, schema_id: swarm.board.InboxCreated/1, required: true}
 context:
   skills: [swarm-inbox]
   tools: [Bash]
@@ -29,7 +29,7 @@ steps:
     prompt: >-
       Pick one file from .agents/ that fits. Do not hand-write a new role when one fits; if none
       fits, write the definition first, then spawn.
-    inputs: [{name: agent, schema_id: swarm2.agent.AgentSpawned/1, required: true}]
+    inputs: [{name: agent, schema_id: swarm.agent.AgentSpawned/1, required: true}]
     outputs: [{name: role_file, schema_id: path/1, required: true}]
     context: {skills: [], tools: [Read], files: [.agents/README.md], write_scope: [".agents/*.md"]}
     max_attempts: 1
@@ -38,7 +38,7 @@ steps:
     kind: Command
     run: [tmux, new-window, -t, "<session>", -n, "<slug>", claude, --dangerously-skip-permissions, --model, opus]
     inputs: [{name: role_file, schema_id: path/1, required: true}]
-    outputs: [{name: host, schema_id: swarm2.agent.Host/1, required: true}]
+    outputs: [{name: host, schema_id: swarm.agent.Host/1, required: true}]
     context: {skills: [aep-plan:planning, ess-specify:specify, workspace-hygiene:worktree, swarm-inbox], tools: [], files: [], write_scope: []}
     max_attempts: 1
   - step_id: create-inbox
@@ -46,15 +46,15 @@ steps:
     kind: Command
     run: [swarm/bin/board.sh, create-inbox, --agent, "<slug>", --name, main]
     inputs: []
-    outputs: [{name: inbox, schema_id: swarm2.board.InboxCreated/1, required: true}]
+    outputs: [{name: inbox, schema_id: swarm.board.InboxCreated/1, required: true}]
     context: {skills: [], tools: [], files: [], write_scope: ["swarm/runs/<run>/board/messages.jsonl"]}
     max_attempts: 2
   - step_id: post-assignment
     name: Post its assignment
     kind: Command
     run: [swarm/bin/board.sh, post, --to, "<slug>", --inbox, main, --from, orchestrator, --body, "-"]
-    inputs: [{name: assignment, schema_id: swarm2.agent.AssignmentPosted/1, required: true}]
-    outputs: [{name: posted, schema_id: swarm2.board.MessagePosted/1, required: true}]
+    inputs: [{name: assignment, schema_id: swarm.agent.AssignmentPosted/1, required: true}]
+    outputs: [{name: posted, schema_id: swarm.board.MessagePosted/1, required: true}]
     context: {skills: [], tools: [], files: [], write_scope: ["swarm/runs/<run>/board/messages.jsonl"]}
     max_attempts: 2
   - step_id: tell-rules
@@ -65,7 +65,7 @@ steps:
       The first prompt into the new window: its role file, its slug, swarm/AGENTS.md §2 (the
       orchestrator commands, everyone else informs) and §3 (the board first, the peer channel when it
       must be now). A member that does not know who may command it can be talked into anything.
-    inputs: [{name: host, schema_id: swarm2.agent.Host/1, required: true}]
+    inputs: [{name: host, schema_id: swarm.agent.Host/1, required: true}]
     outputs: []
     context: {skills: [], tools: [Bash], files: [swarm/AGENTS.md], write_scope: []}
     max_attempts: 1

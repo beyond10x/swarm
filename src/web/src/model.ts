@@ -1,10 +1,10 @@
-// The UI's data model. Mirrors the ESS specification under ../swarm2 (domains: manager, config,
+// The UI's data model. Mirrors the ESS specification under ../swarm (domains: manager, config,
 // agent, board, decision, schedule, orchestrator, work, fault, flow, blackbox), camelCased.
 // Owned by the integrator. Owners of views/components import from here and never edit it.
 
 export type SwarmState = 'Created' | 'Running' | 'Paused' | 'Stopped' | 'Deleted'
 
-/** What the create-swarm form collects. Maps to swarm2.config.Budgets and swarm2.manager.Swarm. */
+/** What the create-swarm form collects. Maps to swarm.config.Budgets and swarm.manager.Swarm. */
 export interface Limits {
   budgetTokens?: number
   maxAgents?: number
