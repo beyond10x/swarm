@@ -1,0 +1,305 @@
+# swarm.goal — what a swarm is for, and the loop that turns until it is met.
+#
+# The whole shape of a newborn swarm is three nodes:
+#
+#     [loop] --> [coordinator] --> [goal]
+#
+# The loop is not a Flow and could not be: a Flow in ess/1 is an acyclic DAG of steps, and this has
+# to come back on itself. It is a LIFECYCLE, whose back-edge `pursue: Evaluating -> Pursuing` is the
+# loop and whose guarded `finish: Pursuing -> Reached` is the exit. ess/1 supports cyclic,
+# guarded lifecycles — the same shape the earlier draft's `fault.regress` used — so the loop needs
+# no engine outside the model.
+#
+# Reading the cycle:
+#   Open        a goal exists; nothing has worked on it.
+#   Pursuing    the coordinator is working. One turn of the loop.
+#   Evaluating  the coordinator reported, and its verdict was "not yet". The loop box watches this
+#               state: a goal resting here is one the next tick should pick up.
+#   Reached     terminal. The verdict was "yes".
+#   Abandoned   terminal. Somebody stopped it. A goal with no way to end but success is a goal that
+#               cannot be given up on, which is not a property anybody wants.
+#
+# The exit condition is `reached == true` on `Evaluate`'s INPUT. ESS-COMMAND-003: a `when` reads the
+# command's input and nothing else, so the coordinator's verdict has to arrive as an argument. This
+# is also why the first spelling of it, `goal.reached($goal)`, has no home in ess/1 — it is a method
+# call on a variable, and the grammar admits neither.
+#
+# There is no `reached` FIELD. The lifecycle already answers it: a goal in Reached is reached, one
+# in Evaluating is not, and a Boolean beside the state would be a second copy of the same fact and
+# the two would eventually disagree. The verdict is recorded by which transition was taken and which
+# event was emitted.
+#
+# `iterations` is handed in for the same reason the timestamps are: ess/1 has no arithmetic, so
+# nothing in the model can add one to a counter. The runtime counts the turns it has driven and
+# passes the number.
+domain: swarm.goal
+
+summary: One goal per swarm, pursued in a loop that stops when it is reached.
+
+naming:
+  wire: goals
+  display: Goals
+
+entities:
+  - name: swarm.goal.Goal
+    identity:
+      name: goal_id
+      type: Uuid
+    fields:
+      - name: swarm_id
+        type: Uuid
+      # What is wanted, in words. The coordinator reads this; nothing else decides for it what
+      # "done" means, and nothing computes an answer from this text.
+      - name: text
+        type: String
+      # How many turns of the loop have been driven. Supplied by the runtime; see the header.
+      # Optional because a goal nobody has picked up has not turned the loop once, and 0 would be a
+      # claim rather than an absence.
+      - name: iterations
+        type: Optional<Integer>
+    relations:
+      - name: swarm
+        kind: references
+        target: swarm.manager.Swarm
+        cardinality: one
+        via: swarm_id
+    lifecycle:
+      initial: Open
+      states: [Open, Pursuing, Evaluating, Reached, Abandoned]
+      terminal: [Reached, Abandoned]
+      transitions:
+        # The loop's tick. From Open it is the first turn; from Evaluating it is the back-edge, and
+        # the reason this lifecycle is a cycle rather than a ladder.
+        - name: pursue
+          from: [Open, Evaluating]
+          to: Pursuing
+        # A verdict of "not yet" — the goal comes to rest where the next tick will find it.
+        - name: settle
+          from: [Pursuing]
+          to: Evaluating
+        # The exit. Guarded on the verdict that `Evaluate` was given.
+        - name: finish
+          from: [Pursuing]
+          to: Reached
+        - name: abandon
+          from: [Open, Pursuing, Evaluating]
+          to: Abandoned
+
+errors:
+  - name: swarm.goal.GoalStateConflict
+    summary: The goal is not in a state this command acts from, so nothing moved.
+    fields:
+      - name: state
+        type: swarm.goal.Goal.State
+
+commands:
+  - name: swarm.goal.SetGoal
+    naming:
+      wire: set-goal
+      display: Set a swarm's goal
+    input:
+      - name: swarm_id
+        type: Uuid
+      - name: text
+        type: String
+    outcomes:
+      - name: set
+        creates: swarm.goal.Goal
+        instance: goal_id
+        emits:
+          - swarm.goal.GoalSet
+        payload:
+          swarm.goal.GoalSet:
+            swarm_id: input.swarm_id
+            text: input.text
+        sets:
+          swarm_id: input.swarm_id
+          text: input.text
+        summary: The goal exists in Open. Nothing is pursuing it until the loop ticks.
+
+  # The loop's tick, and the only command that runs the coordinator. Invoked from Open for the
+  # first turn and from Evaluating for every turn after — one command, because a tick is a tick and
+  # the state it comes from is the lifecycle's business, not the caller's.
+  - name: swarm.goal.Pursue
+    naming:
+      wire: pursue
+      display: Turn the loop once
+    input:
+      - name: goal_id
+        type: Uuid
+      - name: iterations
+        type: Integer
+    outcomes:
+      - name: pursuing
+        moves: swarm.goal.Goal.pursue
+        instance: goal_id
+        emits:
+          - swarm.goal.GoalPursued
+        payload:
+          swarm.goal.GoalPursued:
+            goal_id: input.goal_id
+            iterations: input.iterations
+        sets:
+          iterations: input.iterations
+        summary: The coordinator has the goal and is working. One turn of the loop is under way.
+      - name: wrong-state
+        wrong_state: true
+        error: swarm.goal.GoalStateConflict
+        summary: The goal is already Pursuing, or it is terminal, so no turn started.
+
+  # The coordinator's verdict, and the exit condition. Two outcomes and exactly one of them
+  # unconditional — ESS-COMMAND-005 refuses a command whose branches are all guarded.
+  - name: swarm.goal.Evaluate
+    naming:
+      wire: evaluate
+      display: Report whether the goal is reached
+    input:
+      - name: goal_id
+        type: Uuid
+      - name: reached
+        type: Boolean
+    outcomes:
+      # THE EXIT. Everything else in this file exists to make this one line checkable.
+      - name: reached
+        when: reached == true
+        moves: swarm.goal.Goal.finish
+        instance: goal_id
+        emits:
+          - swarm.goal.GoalReached
+        payload:
+          swarm.goal.GoalReached:
+            goal_id: input.goal_id
+        summary: The verdict was yes. The goal is terminal and the loop stops.
+      - name: not-yet
+        moves: swarm.goal.Goal.settle
+        instance: goal_id
+        emits:
+          - swarm.goal.GoalNotReached
+        payload:
+          swarm.goal.GoalNotReached:
+            goal_id: input.goal_id
+        summary: The verdict was no. The goal rests in Evaluating and the next tick picks it up.
+      - name: wrong-state
+        wrong_state: true
+        error: swarm.goal.GoalStateConflict
+        summary: Nothing was pursuing this goal, so there was no turn to report on.
+
+  - name: swarm.goal.AbandonGoal
+    naming:
+      wire: abandon-goal
+      display: Abandon a goal
+    input:
+      - name: goal_id
+        type: Uuid
+      - name: why
+        type: String
+    outcomes:
+      - name: abandoned
+        moves: swarm.goal.Goal.abandon
+        instance: goal_id
+        emits:
+          - swarm.goal.GoalAbandoned
+        payload:
+          swarm.goal.GoalAbandoned:
+            goal_id: input.goal_id
+            why: input.why
+        summary: The goal is terminal and the loop stops, without it having been met.
+      - name: wrong-state
+        wrong_state: true
+        error: swarm.goal.GoalStateConflict
+        summary: The goal is already terminal.
+
+events:
+  - name: swarm.goal.GoalSet
+    fields:
+      - name: goal_id
+        type: Uuid
+      - name: swarm_id
+        type: Uuid
+      - name: text
+        type: String
+  - name: swarm.goal.GoalPursued
+    fields:
+      - name: goal_id
+        type: Uuid
+      - name: iterations
+        type: Integer
+  - name: swarm.goal.GoalReached
+    fields:
+      - name: goal_id
+        type: Uuid
+  - name: swarm.goal.GoalNotReached
+    fields:
+      - name: goal_id
+        type: Uuid
+  - name: swarm.goal.GoalAbandoned
+    fields:
+      - name: goal_id
+        type: Uuid
+      - name: why
+        type: String
+
+views:
+  # What the loop box reads to decide whether to fire. A goal resting in Evaluating is one whose
+  # last verdict was "not yet"; a goal in Open has never been picked up. Both want a tick.
+  - name: swarm.goal.GoalsAwaitingATick
+    source: swarm.goal.Goal
+    consistency: read_your_writes
+    filter: state == Evaluating
+    fields:
+      - name: goal_id
+        type: Uuid
+      - name: swarm_id
+        type: Uuid
+      - name: text
+        type: String
+      - name: iterations
+        type: Optional<Integer>
+      - name: state
+        type: swarm.goal.Goal.State
+    naming:
+      wire: awaiting-a-tick
+      display: Goals the next tick should pick up
+
+  - name: swarm.goal.GoalById
+    source: swarm.goal.Goal
+    consistency: read_your_writes
+    fields:
+      - name: goal_id
+        type: Uuid
+      - name: swarm_id
+        type: Uuid
+      - name: text
+        type: String
+      - name: iterations
+        type: Optional<Integer>
+      - name: state
+        type: swarm.goal.Goal.State
+    naming:
+      wire: by-id
+      display: One goal, whole
+
+actors:
+  # The loop box. It may start a turn and nothing else — it cannot decide that a goal is met, which
+  # is the point of separating it from the coordinator.
+  - name: swarm.goal.Loop
+    may:
+      - swarm.goal.Pursue
+    naming:
+      display: The loop
+
+  # The coordinator reports; it does not tick itself. An agent that could both decide it is done and
+  # start its own next turn is an agent with no loop around it.
+  - name: swarm.goal.Coordinator
+    may:
+      - swarm.goal.Evaluate
+    naming:
+      display: Coordinator
+
+  # A person sets the goal and may give up on it. Neither is something the swarm does to itself.
+  - name: swarm.goal.Operator
+    may:
+      - swarm.goal.SetGoal
+      - swarm.goal.AbandonGoal
+    naming:
+      display: Operator

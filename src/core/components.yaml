@@ -27,6 +27,7 @@ components:
       domains:
         - swarm.manager
         - swarm.config
+        - swarm.goal
     accepts:
       commands:
         - swarm.manager.CreateSwarm
@@ -41,6 +42,10 @@ components:
         - swarm.config.ActivateConfig
         - swarm.config.SupersedeConfig
         - swarm.config.DiscardConfig
+        - swarm.goal.SetGoal
+        - swarm.goal.Pursue
+        - swarm.goal.Evaluate
+        - swarm.goal.AbandonGoal
     publishes:
       events:
         - swarm.manager.SwarmCreated
@@ -55,6 +60,11 @@ components:
         - swarm.config.ConfigActivated
         - swarm.config.ConfigSuperseded
         - swarm.config.ConfigDiscarded
+        - swarm.goal.GoalSet
+        - swarm.goal.GoalPursued
+        - swarm.goal.GoalReached
+        - swarm.goal.GoalNotReached
+        - swarm.goal.GoalAbandoned
     reached_by: network
 
   - component: agent-runtime

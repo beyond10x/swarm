@@ -8,6 +8,7 @@ specification:
   - domains/agent.yaml
   - domains/blackbox.yaml
   - domains/config.yaml
+  - domains/goal.yaml
   - domains/manager.yaml
   - components.yaml
   - topology.yaml

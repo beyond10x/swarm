@@ -26,3 +26,4 @@ domains:
   - swarm.config
   - swarm.agent
   - swarm.blackbox
+  - swarm.goal
