@@ -47,6 +47,8 @@ pub struct Instance {
     pub entity: String,
     /// The identity value, rendered as text — the form a fact path reads it in.
     pub id: String,
+    /// What the entity calls its identity, so a view can project it by name.
+    pub identity_field: String,
     /// The lifecycle state it currently rests in.
     pub state: String,
     /// Every declared field, including the ones nothing has written.
@@ -59,6 +61,7 @@ impl Instance {
     /// A new instance in its lifecycle's initial state, with every field undetermined.
     pub fn created(
         entity: impl Into<String>,
+        identity_field: impl Into<String>,
         id: impl Into<String>,
         state: impl Into<String>,
         declared: impl IntoIterator<Item = String>,
@@ -66,6 +69,7 @@ impl Instance {
         Self {
             entity: entity.into(),
             id: id.into(),
+            identity_field: identity_field.into(),
             state: state.into(),
             fields: declared
                 .into_iter()

@@ -124,6 +124,7 @@ mod tests {
 
         let mut goal = Instance::created(
             "swarm.goal.Goal",
+            "goal_id",
             "g1",
             "Evaluating",
             ["text".to_owned(), "iterations".to_owned()],
@@ -137,8 +138,13 @@ mod tests {
     #[test]
     fn an_undetermined_field_is_unknown_on_an_instance_too() {
         let guard = Predicate::parse_expression("iterations > 0").expect("a valid predicate");
-        let mut goal =
-            Instance::created("swarm.goal.Goal", "g1", "Open", ["iterations".to_owned()]);
+        let mut goal = Instance::created(
+            "swarm.goal.Goal",
+            "goal_id",
+            "g1",
+            "Open",
+            ["iterations".to_owned()],
+        );
         assert_eq!(guard.evaluate(&Observed::new(&goal)), Truth::Unknown);
 
         goal.set("iterations", json!(2)).expect("a declared field");
@@ -147,7 +153,13 @@ mod tests {
 
     #[test]
     fn a_field_the_entity_does_not_declare_is_refused() {
-        let mut goal = Instance::created("swarm.goal.Goal", "g1", "Open", ["text".to_owned()]);
+        let mut goal = Instance::created(
+            "swarm.goal.Goal",
+            "goal_id",
+            "g1",
+            "Open",
+            ["text".to_owned()],
+        );
         let refused = goal.set("invented", json!(1)).unwrap_err();
         assert_eq!(refused.field, "invented");
     }

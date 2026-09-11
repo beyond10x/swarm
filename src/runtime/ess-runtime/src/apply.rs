@@ -386,6 +386,7 @@ fn act(
 
             Instance::created(
                 entity_name.clone(),
+                entity.identity.name.as_str(),
                 id,
                 entity.lifecycle.initial.as_str(),
                 entity
