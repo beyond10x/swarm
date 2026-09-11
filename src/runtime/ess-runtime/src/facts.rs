@@ -137,12 +137,8 @@ mod tests {
     #[test]
     fn an_undetermined_field_is_unknown_on_an_instance_too() {
         let guard = Predicate::parse_expression("iterations > 0").expect("a valid predicate");
-        let mut goal = Instance::created(
-            "swarm.goal.Goal",
-            "g1",
-            "Open",
-            ["iterations".to_owned()],
-        );
+        let mut goal =
+            Instance::created("swarm.goal.Goal", "g1", "Open", ["iterations".to_owned()]);
         assert_eq!(guard.evaluate(&Observed::new(&goal)), Truth::Unknown);
 
         goal.set("iterations", json!(2)).expect("a declared field");
