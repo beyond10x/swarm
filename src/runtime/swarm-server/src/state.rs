@@ -118,6 +118,14 @@ impl Server {
                         .iter()
                         .map(|state| state.as_str().to_owned())
                         .collect(),
+                    // Which states are ends. A canvas draws a finished instance differently, and
+                    // deriving that from a name would be guessing at what the lifecycle declares.
+                    terminal: entity
+                        .lifecycle
+                        .terminal
+                        .iter()
+                        .map(|state| state.as_str().to_owned())
+                        .collect(),
                     fields: entity
                         .fields
                         .iter()
@@ -159,6 +167,7 @@ pub struct EntityShape {
     pub name: String,
     pub identity: String,
     pub states: Vec<String>,
+    pub terminal: Vec<String>,
     pub fields: Vec<String>,
 }
 

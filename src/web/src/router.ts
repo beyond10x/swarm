@@ -5,9 +5,8 @@ import { createRouter, createWebHistory } from 'vue-router'
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/', name: 'splash', component: () => import('./views/SplashView.vue') },                       // W1
-    { path: '/swarm/:id', name: 'swarm', component: () => import('./views/SwarmView.vue'), props: true }, // W1 (embeds SwarmCanvas, W2)
-    { path: '/swarm/:id/flow/:flowId', name: 'flow', component: () => import('./views/FlowView.vue'), props: true }, // W2
-    { path: '/ui', name: 'ui', component: () => import('./views/ComponentsView.vue') },                   // W3
+    { path: '/', name: 'splash', component: () => import('./views/SplashView.vue') },                       
+    { path: '/swarm/:id', name: 'swarm', component: () => import('./views/SwarmView.vue'), props: true }, // one swarm: its canvas and its instances
+    { path: '/ui', name: 'ui', component: () => import('./views/ComponentsView.vue') },                   // the component library
   ],
 })

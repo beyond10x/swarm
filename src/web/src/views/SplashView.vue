@@ -1,61 +1,30 @@
 <script setup lang="ts">
-// The splash: big tiles in the middle, one per swarm, plus one that creates a new swarm from a
-// name, an objective and its limits. The orchestrator bootstraps the rest on Start (SwarmView).
+// Every swarm the runtime holds, and the way to make another.
+//
+// A swarm is named and given a goal, and that is all. There are no limits to set and no roster to
+// pick, because a swarm starts bare: one coordinator, one goal, and whatever it builds for itself.
+// The form asks for the two things nothing else can supply.
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useSwarmStore, field, type Held } from '@/stores/swarms'
 import {
-  UiButton, UiEmptyState, UiModal, UiNumberInput, UiSpinner, UiStateBadge, UiTextArea, UiTextInput, UiTile,
+  UiButton, UiField, UiModal, UiSpinner, UiStateBadge, UiTextArea, UiTextInput, UiTile,
 } from '@/components/ui'
-import type { Limits, Swarm } from '@/model'
-import { useSwarmStore } from '@/stores/swarms'
 
 const store = useSwarmStore()
 const router = useRouter()
-onMounted(() => { void store.load() })
 
 const swarms = computed(() => store.visible)
-
-function openDecisions(s: Swarm): number {
-  return s.decisions.filter((d) => d.state === 'Open').length
-}
-
-function accentFor(s: Swarm): string {
-  switch (s.state) {
-    case 'Running': return 'var(--color-ok)'
-    case 'Paused': return 'var(--color-warn)'
-    case 'Created': return 'var(--color-info)'
-    default: return 'var(--color-text-muted)'
-  }
-}
-
-function open(s: Swarm): void {
-  void router.push({ name: 'swarm', params: { id: s.swarmId } })
-}
-
-// --- new-swarm form -------------------------------------------------------------------------
-// Defaults are the real swarm's: CHARTER.md §4 (8192 bytes), §5.7 (3 defers), AGENTS.md §6 (40G floor).
-interface FormState {
-  displayName: string
-  objective: string
-  budgetTokens: number | undefined
-  maxAgents: number | undefined
-  diskFloorGb: number | undefined
-  memoryFileBytes: number | undefined
-  maxDefers: number | undefined
-}
-const DEFAULTS: FormState = {
-  displayName: '', objective: '',
-  budgetTokens: undefined, maxAgents: undefined, diskFloorGb: 40, memoryFileBytes: 8192, maxDefers: 3,
-}
-const form = reactive<FormState>({ ...DEFAULTS })
 const modalOpen = ref(false)
 const submitted = ref(false)
+const busy = ref(false)
 
-const valid = computed(() => form.displayName.trim() !== '' && form.objective.trim() !== '')
-const errors = computed(() => ({
-  displayName: submitted.value && form.displayName.trim() === '' ? 'A name is required' : '',
-  objective: submitted.value && form.objective.trim() === '' ? 'An objective is required' : '',
-}))
+const DEFAULTS = { displayName: '', goal: '' }
+const form = reactive({ ...DEFAULTS })
+
+const valid = computed(() => form.displayName.trim().length > 0)
+
+onMounted(() => void store.load())
 
 function openNew(): void {
   Object.assign(form, DEFAULTS)
@@ -63,18 +32,34 @@ function openNew(): void {
   modalOpen.value = true
 }
 
-function submit(): void {
+async function submit(): Promise<void> {
   submitted.value = true
-  if (!valid.value) return
-  const limits: Limits = {}
-  if (form.budgetTokens !== undefined) limits.budgetTokens = form.budgetTokens
-  if (form.maxAgents !== undefined) limits.maxAgents = form.maxAgents
-  if (form.diskFloorGb !== undefined) limits.diskFloorGb = form.diskFloorGb
-  if (form.memoryFileBytes !== undefined) limits.memoryFileBytes = form.memoryFileBytes
-  if (form.maxDefers !== undefined) limits.maxDefers = form.maxDefers
-  const swarm = store.createSwarm({ displayName: form.displayName, objective: form.objective, limits })
+  if (!valid.value || busy.value) return
+  busy.value = true
+  const slug = await store.createSwarm({ displayName: form.displayName, goal: form.goal })
+  busy.value = false
+  if (!slug) return
   modalOpen.value = false
-  void router.push({ name: 'swarm', params: { id: swarm.swarmId } })
+  void router.push({ name: 'swarm', params: { id: slug } })
+}
+
+function open(swarm: Held): void {
+  void router.push({ name: 'swarm', params: { id: swarm.slug } })
+}
+
+/** What the swarm is pursuing, when it has been given something. */
+function goalText(swarm: Held): string {
+  const goal = swarm.canvas['swarm.goal.Goal']?.[0]
+  return (field(goal, 'text') as string | undefined) ?? 'no goal yet'
+}
+
+/** How many instances the swarm holds — the honest measure of how much it has built. */
+function built(swarm: Held): number {
+  return Object.values(swarm.canvas).reduce((total, held) => total + held.length, 0)
+}
+
+function displayName(swarm: Held): string {
+  return (field(swarm.record, 'display_name') as string | undefined) ?? swarm.slug
 }
 </script>
 
@@ -83,72 +68,61 @@ function submit(): void {
     <UiSpinner v-if="!store.loaded" size="md" />
 
     <template v-else>
-      <div v-if="swarms.length" class="grid">
+      <p v-if="store.problem" class="problem" role="alert">
+        {{ store.problem }}
+        <span class="hint">Is the runtime running? <code>cargo run -p swarm-server</code></span>
+      </p>
+
+      <div class="grid">
         <UiTile
           v-for="s in swarms"
-          :key="s.swarmId"
-          :title="s.displayName"
-          :subtitle="s.objective"
-          :accent="accentFor(s)"
+          :key="s.slug"
+          :title="displayName(s)"
+          :subtitle="goalText(s)"
           big
           clickable
           @click="open(s)"
         >
           <template #footer>
             <span class="foot">
-              <UiStateBadge :state="s.state" />
-              <span class="stat">{{ s.agents.length }} agents</span>
-              <span class="stat">{{ openDecisions(s) }} open decisions</span>
+              <UiStateBadge :state="s.record?.state ?? 'Uncreated'" />
+              <span class="stat">{{ built(s) }} on the canvas</span>
             </span>
           </template>
         </UiTile>
 
         <UiTile
           title="＋ New swarm"
-          subtitle="Name, objective, limits. The orchestrator bootstraps the rest."
-          accent="var(--color-accent-2)"
+          subtitle="A name and a goal. It builds the rest."
           big
           clickable
           @click="openNew"
         />
       </div>
-
-      <UiEmptyState
-        v-else
-        title="No swarms yet"
-        text="Give one a name, an objective and its limits; the orchestrator bootstraps everything else and makes sure the members can communicate."
-        icon="＋"
-      >
-        <UiButton variant="primary" size="lg" @click="openNew">New swarm</UiButton>
-      </UiEmptyState>
     </template>
 
-    <UiModal :open="modalOpen" title="New swarm" width="600px" @close="modalOpen = false">
+    <UiModal v-model:open="modalOpen" title="New swarm">
       <form class="form" @submit.prevent="submit">
-        <UiTextInput
-          v-model="form.displayName"
+        <UiField
           label="Name"
-          placeholder="b10x forward"
-          :error="errors.displayName"
-        />
-        <UiTextArea
-          v-model="form.objective"
-          label="Objective"
-          placeholder="What this swarm is for — the goals, in its owner's order"
-          :rows="3"
-          :error="errors.objective"
-        />
-        <div class="limits">
-          <UiNumberInput v-model="form.budgetTokens" label="Budget" unit="tokens" :min="0" :step="1000" />
-          <UiNumberInput v-model="form.maxAgents" label="Max agents" :min="1" :step="1" />
-          <UiNumberInput v-model="form.diskFloorGb" label="Disk floor" unit="GB" :min="0" :step="1" />
-          <UiNumberInput v-model="form.memoryFileBytes" label="Memory file" unit="bytes" :min="0" :step="512" />
-          <UiNumberInput v-model="form.maxDefers" label="Max defers" :min="0" :step="1" />
-        </div>
+          :error="submitted && !valid ? 'A swarm needs a name.' : undefined"
+        >
+          <UiTextInput v-model="form.displayName" placeholder="What to call it" />
+        </UiField>
+
+        <UiField
+          label="Goal"
+          hint="What it is for, in words. The coordinator reads this and decides when it is met."
+        >
+          <UiTextArea v-model="form.goal" :rows="3" placeholder="Leave empty to set one later" />
+        </UiField>
       </form>
+
       <template #footer>
         <UiButton variant="ghost" @click="modalOpen = false">Cancel</UiButton>
-        <UiButton variant="primary" :disabled="submitted && !valid" @click="submit">Create swarm</UiButton>
+        <UiButton :disabled="busy" @click="submit">
+          {{ busy ? 'Creating…' : 'Create' }}
+        </UiButton>
       </template>
     </UiModal>
   </section>
@@ -156,26 +130,44 @@ function submit(): void {
 
 <style scoped>
 .splash {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-6);
+  padding: 1.5rem;
+  display: grid;
+  gap: 1rem;
+  align-content: start;
 }
+
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 380px));
-  justify-content: center;
-  gap: var(--space-5);
-  width: min(100%, 1240px);
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: 1rem;
 }
-.foot { display: inline-flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
-.stat { color: var(--color-text-muted); }
-.form { display: flex; flex-direction: column; gap: var(--space-4); }
-.limits {
+
+.foot {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.stat {
+  font-size: 0.8125rem;
+  opacity: 0.7;
+}
+
+.problem {
+  border: 1px solid var(--color-fault, #ff6b6b);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: var(--space-3);
+  gap: 0.25rem;
+}
+
+.problem .hint {
+  font-size: 0.8125rem;
+  opacity: 0.75;
+}
+
+.form {
+  display: grid;
+  gap: 1rem;
 }
 </style>

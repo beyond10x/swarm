@@ -1,190 +1,182 @@
 <script setup lang="ts">
-// One swarm: its lifecycle in the toolbar, then tabs — canvas (W2's SwarmCanvas), agents, flows,
-// decisions, limits.
-import { computed, onMounted, ref } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
+// One swarm: what it is pursuing, what is on its canvas, and the lifecycle commands.
+//
+// The tabs are not a fixed list. One is the canvas; the rest are the entities the specification
+// declares, so a domain added to `src/core` gets a tab without this file being edited. That is the
+// same argument the canvas makes about node types, one level up.
+import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   UiButton, UiEmptyState, UiKeyValue, UiSpinner, UiStateBadge, UiTable, UiTabs, UiToolbar,
 } from '@/components/ui'
-import type { Swarm } from '@/model'
-import { canTransition, useSwarmStore, type SwarmAction } from '@/stores/swarms'
+import { useSwarmStore, field, type SwarmAction } from '@/stores/swarms'
 import SwarmCanvas from '@/views/SwarmCanvas.vue'
 
 const props = defineProps<{ id: string }>()
 const store = useSwarmStore()
 const router = useRouter()
-onMounted(() => { void store.load() })
 
-const swarm = computed<Swarm | undefined>(() => store.getSwarm(props.id))
+onMounted(() => void store.load())
+onBeforeUnmount(() => store.unfollow())
+
+const swarm = computed(() => store.getSwarm(props.id))
+const record = computed(() => swarm.value?.record)
+const goal = computed(() => swarm.value?.canvas['swarm.goal.Goal']?.[0])
+
+const displayName = computed(
+  () => (field(record.value, 'display_name') as string | undefined) ?? props.id,
+)
+
+/** Every entity that holds at least one instance, in the order the specification declares them. */
+const populated = computed(() =>
+  Object.entries(swarm.value?.canvas ?? {})
+    .filter(([, held]) => held.length > 0)
+    .map(([entity, held]) => ({
+      entity,
+      label: entity.split('.').pop() ?? entity,
+      count: held.length,
+      held,
+    })),
+)
 
 const tab = ref('canvas')
-const tabs = [
+const tabs = computed(() => [
   { value: 'canvas', label: 'Canvas' },
-  { value: 'agents', label: 'Agents' },
-  { value: 'flows', label: 'Flows' },
-  { value: 'decisions', label: 'Decisions' },
-  { value: 'limits', label: 'Limits' },
-]
+  ...populated.value.map((group) => ({
+    value: group.entity,
+    label: `${group.label} (${group.count})`,
+  })),
+])
 
-// --- lifecycle ------------------------------------------------------------------------------
-const can = (action: SwarmAction): boolean => canTransition(swarm.value, action)
+const shown = computed(() => populated.value.find((group) => group.entity === tab.value))
 
-function act(action: SwarmAction): void {
-  const id = props.id
-  switch (action) {
-    case 'start': store.startSwarm(id); break        // the orchestrator bootstraps everything
-    case 'pause': store.pauseSwarm(id); break
-    case 'resume': store.resumeSwarm(id); break
-    case 'stop': store.stopSwarm(id); break
-    case 'delete':
-      if (store.deleteSwarm(id)) void router.push({ name: 'splash' })
-      break
+/** A table of instances: identity, state, and whatever fields something has written. */
+const fieldNames = computed(() => {
+  if (!shown.value) return [] as string[]
+  const names = new Set<string>()
+  for (const instance of shown.value.held) {
+    for (const [name, value] of Object.entries(instance.fields)) {
+      if (value !== null) names.add(name)
+    }
   }
-}
-
-function goHome(): void {
-  void router.push({ name: 'splash' })
-}
-
-// --- tables ---------------------------------------------------------------------------------
-type Column = { key: string; label: string; width?: string; align?: 'left' | 'center' | 'right' }
-const agentColumns: Column[] = [
-  { key: 'agentId', label: 'Agent' },
-  { key: 'role', label: 'Role' },
-  { key: 'harness', label: 'Harness', width: '90px' },
-  { key: 'state', label: 'State', width: '120px' },
-  { key: 'window', label: 'Window', width: '90px', align: 'right' },
-  { key: 'blockedOn', label: 'Blocked on' },
-  { key: 'unread', label: 'Unread', width: '80px', align: 'right' },
-]
-const agentRows = computed<Record<string, unknown>[]>(() =>
-  (swarm.value?.agents ?? []).map((a) => ({
-    agentId: a.agentId,
-    role: a.role,
-    harness: a.harness,
-    state: a.state,
-    window: a.host?.windowIndex ?? a.host?.tmuxWindowId ?? '',
-    blockedOn: a.blockedOn ?? '',
-    unread: a.unread ?? 0,
-  })),
-)
-
-const flowColumns: Column[] = [
-  { key: 'name', label: 'Flow' },
-  { key: 'binds', label: 'Binds' },
-  { key: 'steps', label: 'Steps', width: '80px', align: 'right' },
-]
-const flowRows = computed<Record<string, unknown>[]>(() =>
-  (swarm.value?.flows ?? []).map((f) => ({
-    flowId: f.flowId,
-    name: f.name,
-    binds: f.binds ? `${f.binds.entity} · ${f.binds.state}` : '',
-    steps: f.steps.length,
-  })),
-)
-
-const decisionColumns: Column[] = [
-  { key: 'number', label: '#', width: '56px', align: 'right' },
-  { key: 'question', label: 'Decision' },
-  { key: 'defaultOnSilence', label: 'Default on silence' },
-  { key: 'state', label: 'State', width: '110px' },
-]
-const decisionRows = computed<Record<string, unknown>[]>(() =>
-  (swarm.value?.decisions ?? []).map((d) => ({
-    number: d.number,
-    question: d.question,
-    defaultOnSilence: d.defaultOnSilence,
-    state: d.state,
-  })),
-)
-
-const fmt = (n: number | undefined, unit = ''): string =>
-  n === undefined ? '—' : `${n.toLocaleString()}${unit ? ` ${unit}` : ''}`
-
-const limitItems = computed(() => {
-  const s = swarm.value
-  if (!s) return []
-  return [
-    { key: 'budget', value: fmt(s.limits.budgetTokens, 'tokens') },
-    { key: 'max agents', value: fmt(s.limits.maxAgents) },
-    { key: 'disk floor', value: fmt(s.limits.diskFloorGb, 'GB') },
-    { key: 'memory file', value: fmt(s.limits.memoryFileBytes, 'bytes') },
-    { key: 'max defers', value: fmt(s.limits.maxDefers) },
-    { key: 'tmux session', value: s.tmuxSession },
-    { key: 'home', value: s.home },
-    { key: 'created', value: s.createdAt },
-    { key: 'started', value: s.startedAt ?? '—' },
-  ]
+  return [...names]
 })
+
+const columns = computed(() => [
+  { key: 'id', label: 'id' },
+  { key: 'state', label: 'state' },
+  ...fieldNames.value.map((name) => ({ key: name, label: name })),
+])
+
+const rows = computed(() =>
+  (shown.value?.held ?? []).map((instance) => {
+    const row: Record<string, unknown> = {
+      id: instance.id.split('-')[0],
+      state: instance.state,
+    }
+    for (const name of fieldNames.value) row[name] = instance.fields[name] ?? '—'
+    return row
+  }),
+)
+
+const ACTIONS: SwarmAction[] = ['start', 'pause', 'resume', 'stop', 'delete']
+const can = (action: SwarmAction): boolean => store.canAct(props.id, action)
+
+async function act(action: SwarmAction): Promise<void> {
+  const ok = await store[
+    `${action}Swarm` as 'startSwarm' | 'pauseSwarm' | 'resumeSwarm' | 'stopSwarm' | 'deleteSwarm'
+  ](props.id)
+  if (ok && action === 'delete') void router.push({ name: 'splash' })
+}
 </script>
 
 <template>
-  <div class="page">
+  <section class="swarm">
     <UiSpinner v-if="!store.loaded" size="md" />
 
-    <UiEmptyState v-else-if="!swarm" title="Swarm not found" :text="`No swarm with id ${id}.`" icon="?">
-      <UiButton variant="secondary" @click="goHome">Back to swarms</UiButton>
-    </UiEmptyState>
+    <UiEmptyState
+      v-else-if="!swarm"
+      title="No such swarm"
+      description="The runtime does not hold one by that name."
+    />
 
     <template v-else>
       <UiToolbar>
-        <div class="head">
-          <div class="title">
-            <h1 class="name">{{ swarm.displayName }}</h1>
-            <UiStateBadge :state="swarm.state" />
-          </div>
-          <p class="objective">{{ swarm.objective }}</p>
-        </div>
-        <template #right>
-          <UiButton variant="primary" :disabled="!can('start')" @click="act('start')">Start</UiButton>
-          <UiButton variant="secondary" :disabled="!can('pause')" @click="act('pause')">Pause</UiButton>
-          <UiButton variant="secondary" :disabled="!can('resume')" @click="act('resume')">Resume</UiButton>
-          <UiButton variant="secondary" :disabled="!can('stop')" @click="act('stop')">Stop</UiButton>
-          <UiButton variant="danger" :disabled="!can('delete')" @click="act('delete')">Delete</UiButton>
+        <template #start>
+          <h1>{{ displayName }}</h1>
+          <UiStateBadge :state="record?.state ?? 'Uncreated'" />
+        </template>
+        <template #end>
+          <UiButton
+            v-for="action in ACTIONS"
+            :key="action"
+            :variant="action === 'delete' ? 'danger' : 'secondary'"
+            :disabled="!can(action)"
+            @click="act(action)"
+          >
+            {{ action }}
+          </UiButton>
         </template>
       </UiToolbar>
 
+      <p v-if="store.problem" class="problem" role="alert">{{ store.problem }}</p>
+
+      <!-- What the swarm is for, and how far the loop has got. -->
+      <UiKeyValue
+        v-if="goal"
+        class="goal"
+        :items="[
+          { key: 'Goal', value: String(field(goal, 'text') ?? '—') },
+          { key: 'State', value: goal.state },
+          { key: 'Turns', value: String(field(goal, 'iterations') ?? 'none yet') },
+        ]"
+      />
+
       <UiTabs v-model="tab" :tabs="tabs" />
 
-      <section class="body">
-        <SwarmCanvas v-if="tab === 'canvas'" :swarm="swarm" />
-
-        <UiTable v-else-if="tab === 'agents'" :columns="agentColumns" :rows="agentRows" row-key="agentId">
-          <template #cell-state="{ row }">
-            <UiStateBadge :state="String(row.state)" />
-          </template>
-          <template #empty>No agents yet — Start the swarm and the orchestrator spawns them.</template>
-        </UiTable>
-
-        <UiTable v-else-if="tab === 'flows'" :columns="flowColumns" :rows="flowRows" row-key="flowId">
-          <template #cell-name="{ row }">
-            <RouterLink class="link" :to="{ name: 'flow', params: { id: swarm.swarmId, flowId: String(row.flowId) } }">
-              {{ row.name }}
-            </RouterLink>
-          </template>
-          <template #empty>No flows yet — Start the swarm and the orchestrator installs its four.</template>
-        </UiTable>
-
-        <UiTable v-else-if="tab === 'decisions'" :columns="decisionColumns" :rows="decisionRows" row-key="number">
-          <template #cell-state="{ row }">
-            <UiStateBadge :state="String(row.state)" />
-          </template>
-          <template #empty>Nothing waits on Timo.</template>
-        </UiTable>
-
-        <UiKeyValue v-else-if="tab === 'limits'" :items="limitItems" mono />
-      </section>
+      <div class="panel">
+        <SwarmCanvas
+          v-if="tab === 'canvas'"
+          :canvas="swarm.canvas"
+          :shape="store.shape"
+          :flow-id="props.id"
+        />
+        <UiTable v-else-if="shown" :columns="columns" :rows="rows" />
+      </div>
     </template>
-  </div>
+  </section>
 </template>
 
 <style scoped>
-.page { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.head { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
-.title { display: flex; align-items: center; gap: var(--space-3); }
-.name { margin: 0; font-size: 18px; font-weight: 600; }
-.objective { margin: 0; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.body { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: var(--space-4); }
-.link { color: var(--color-accent); text-decoration: none; }
-.link:hover { text-decoration: underline; }
+.swarm {
+  display: grid;
+  grid-template-rows: auto auto auto auto 1fr;
+  gap: 0.75rem;
+  height: 100%;
+  padding: 1rem;
+  align-content: start;
+}
+
+h1 {
+  font-size: 1.125rem;
+  margin: 0;
+}
+
+.goal {
+  max-width: 60rem;
+}
+
+.panel {
+  min-height: 24rem;
+  border: 1px solid var(--border, #2a3240);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.problem {
+  border: 1px solid var(--color-fault, #ff6b6b);
+  border-radius: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  margin: 0;
+}
 </style>
