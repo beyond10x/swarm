@@ -36,24 +36,6 @@ types:
     naming:
       display: Role
 
-  # Tool access, as a typed loadout. Timo, 2026-09-11: "you need to solve tool access, orchestrator
-  # needs to be able to create the agents and they can basically build anything anyway". Every
-  # member loads aep + ess + worktree + .skills/swarm-inbox (swarm/AGENTS.md §4 step 2); a role file
-  # lists only what it adds (.agents/README.md). `tools` are harness tools or CLIs by name,
-  # `skills` are plugin skills (`aep-plan:planning`, `ess-specify:specify`), `mcp_servers` are MCP
-  # servers the harness is launched with, `plugin_dirs` are `--plugin-dir` values (metaharness).
-  - name: swarm.agent.Loadout
-    kind: struct
-    fields:
-      - name: skills
-        type: List<String>
-      - name: tools
-        type: List<String>
-      - name: mcp_servers
-        type: List<String>
-      - name: plugin_dirs
-        type: List<String>
-
   # Where the role runs NOW. Every field Optional, for the reason the board gave when it held
   # these fields: "a role can exist with no window alive (the brief file is the role; the window
   # is its current host)". Mutable: `Restart` replaces the whole struct.
@@ -110,9 +92,6 @@ entities:
       # accepts). Cross-domain enum reference, as the authoring rules allow.
       - name: harness
         type: swarm.config.Harness
-      # What it may reach: the loadout it was spawned with (see the Loadout type).
-      - name: loadout
-        type: swarm.agent.Loadout
       # Free text for a human list (kept from the board's Agent block, unchanged).
       - name: display_name
         type: String
@@ -341,8 +320,6 @@ commands:
         type: swarm.agent.Role
       - name: harness
         type: swarm.config.Harness
-      - name: loadout
-        type: swarm.agent.Loadout
       - name: display_name
         type: String
       - name: host
@@ -360,16 +337,14 @@ commands:
             role: input.role
             harness: input.harness
             display_name: input.display_name
-            loadout: input.loadout
             host: input.host
         sets:
           swarm_id: input.swarm_id
           role: input.role
           harness: input.harness
-          loadout: input.loadout
           display_name: input.display_name
           host: input.host
-        summary: The member exists in Spawned with a window, its loadout, and no assignment yet.
+        summary: The member exists in Spawned with a window and no assignment yet.
 
   # swarm/AGENTS.md §4 step 4: "Post its assignment to its inbox ... naming the one outcome, the
   # sign-off it is running under (verbatim, from Timo), and what it may not do." One outcome has
@@ -917,8 +892,6 @@ events:
   # What the bindings in components.yaml fan out: to `swarm.board.PostMessage` (the inbox post)
   # and to `swarm.agent.RecordAssignment` (the record). Carries every input so a binding maps
   # one event field per command input.
-      - name: loadout
-        type: swarm.agent.Loadout
       - name: host
         type: swarm.agent.Host
   - name: swarm.agent.AssignmentPosted

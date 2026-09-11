@@ -47,15 +47,29 @@ naming:
   display: Blackbox canvas
 
 types:
-  # model.ts `BoxKind = 'flow' | 'service' | 'tool' | 'store' | 'agent' | 'swarm'`. A Flow's
-  # internals live in swarm.flow (model.ts `Flow`, "A DAG that runs inside one workflow state");
-  # a Service is a running process with a surface; a Tool is a CLI or built-in tool; a Store is a
-  # file, jsonl or db. An Agent and a Swarm are boxes too — Timo: "the orchestrator will then also
-  # (individually per swarm) build things - agents can do too", so the thing that builds and the
-  # thing built compose the same way, and a whole swarm is one box on a bigger canvas.
+  # Everything a swarm has is a box, and what it may reach is a Connection between two of them.
+  # Granting a tool is drawing an edge; revoking it is removing one.
+  #
+  #   Service  a running process with a surface.        Store  a file, a log or a database.
+  #   Tool     a CLI or a built-in.                     Agent  a member of this swarm.
+  #   Swarm    a whole swarm, as one box on a bigger canvas — Timo: "the orchestrator will then
+  #            also (individually per swarm) build things - agents can do too", so the thing that
+  #            builds and the thing built compose the same way.
+  #   Loop     a trigger. It fires and something runs. The `[loop]` of the birth graph.
+  #   Goal     what the swarm is for, standing for one `swarm.goal.Goal`.
+  #   Mcp      an MCP server. Named here because it is a real thing in the world; note that a
+  #            metaharness-launched agent cannot be given one through a plugin directory —
+  #            `--strict-mcp-config` is passed unconditionally and suppresses plugin MCP discovery
+  #            (probed 2026-09-11) — so its reach is served through the launch's `allow_program`
+  #            until metaharness offers a way to name a server.
+  #   Ui       a panel a person looks at. Presentation is state the agents write and read back,
+  #            which is the same argument `Position` already makes below.
+  #
+  # `Flow` was a variant until 2026-09-11 and is gone with the flow domain: a DAG is something a
+  # swarm draws for itself, not a kind the kernel knows.
   - name: swarm.blackbox.BoxKind
     kind: enum
-    variants: [Flow, Service, Tool, Store, Agent, Swarm]
+    variants: [Service, Tool, Store, Agent, Swarm, Loop, Goal, Mcp, Ui]
     naming:
       display: Box kind
 
@@ -202,10 +216,10 @@ entities:
         type: List<swarm.blackbox.Port>
       - name: outputs
         type: List<swarm.blackbox.Port>
-      # model.ts `flowId?: string // when kind === 'flow', the Flow that is its internals`. A
-      # String and not a relation because swarm.flow is not in this file's base.
-      # DEFERRED-RELATION: references swarm.flow.Flow via flow_id (Optional)
-      - name: flow_id
+      # What this box stands for, when its kind stands for something: a `goal_id` for a Goal, a
+      # component name for a Ui, a server name for an Mcp. A String and not a relation because the
+      # referent's type depends on the kind, and ess/1 has one target per relation.
+      - name: ref_id
         type: Optional<String>
       # When kind is Agent: the agent this box stands for, by slug (model.ts `Agent.agentId`).
       # UNMAPPED: model.ts `Box` has `flowId` for a Flow and nothing for an Agent; this field is
@@ -481,8 +495,8 @@ commands:
 
   # ---- Box ---------------------------------------------------------------------------------
   # "they build workflows/systems themselfs". The implementation checks every port's `schema_id`
-  # names a schema in `PublishedSchemas` or Draft of the same swarm, and that `flow_id` is given
-  # exactly when `kind` is Flow and `agent_id` exactly when `kind` is Agent — a `when:` compares
+  # names a schema in `PublishedSchemas` or Draft of the same swarm, and that `ref_id` is given
+  # exactly when the kind stands for something and `agent_id` exactly when `kind` is Agent — a `when:` compares
   # one input to a literal and cannot pair two inputs, so those are prose.
   - name: swarm.blackbox.DraftBox
     naming:
@@ -503,7 +517,7 @@ commands:
         type: List<swarm.blackbox.Port>
       - name: outputs
         type: List<swarm.blackbox.Port>
-      - name: flow_id
+      - name: ref_id
         type: Optional<String>
       - name: agent_id
         type: Optional<String>
@@ -524,7 +538,7 @@ commands:
             summary: input.summary
             inputs: input.inputs
             outputs: input.outputs
-            flow_id: input.flow_id
+            ref_id: input.ref_id
             agent_id: input.agent_id
             position: input.position
         sets:
@@ -535,7 +549,7 @@ commands:
           summary: input.summary
           inputs: input.inputs
           outputs: input.outputs
-          flow_id: input.flow_id
+          ref_id: input.ref_id
           agent_id: input.agent_id
           position: input.position
         summary: The box is on the canvas in Draft, at version 1, with its ports as given.
@@ -879,7 +893,7 @@ events:
         type: List<swarm.blackbox.Port>
       - name: outputs
         type: List<swarm.blackbox.Port>
-      - name: flow_id
+      - name: ref_id
         type: Optional<String>
       - name: agent_id
         type: Optional<String>
@@ -1032,7 +1046,7 @@ views:
         type: List<swarm.blackbox.Port>
       - name: outputs
         type: List<swarm.blackbox.Port>
-      - name: flow_id
+      - name: ref_id
         type: Optional<String>
       - name: agent_id
         type: Optional<String>
@@ -1094,7 +1108,7 @@ views:
         type: List<swarm.blackbox.Port>
       - name: outputs
         type: List<swarm.blackbox.Port>
-      - name: flow_id
+      - name: ref_id
         type: Optional<String>
       - name: agent_id
         type: Optional<String>

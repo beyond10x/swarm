@@ -58,8 +58,20 @@ types:
       - name: scratch_dir
         type: String
 
-  # How a window is launched. swarm/AGENTS.md §6: "Each window runs `claude
-  # --dangerously-skip-permissions --model opus`".
+  # Which tools an agent is launched holding. `Vendor` leaves the harness's own catalogue in place;
+  # `Owned` replaces it, and then `allow_program` is the whole of what the served `run` tool may
+  # start. Probed 2026-09-11: `Owned` is the route by which a coordinator reaches this system,
+  # because metaharness passes `--strict-mcp-config` unconditionally and a plugin directory's MCP
+  # server is therefore never discovered.
+  - name: swarm.config.ToolSurface
+    kind: enum
+    variants: [Vendor, Owned]
+    naming:
+      display: Tool surface
+
+  # How an agent is launched. What it may reach once running is not here — that is a Connection
+  # between boxes. This is only what it starts holding, which nothing in the swarm's own graph can
+  # grant because the graph is not reachable until the agent is up.
   - name: swarm.config.HarnessLaunch
     kind: struct
     fields:
@@ -73,6 +85,11 @@ types:
         type: List<String>
       - name: skip_permissions
         type: Boolean
+      - name: tool_surface
+        type: swarm.config.ToolSurface
+      # Programs the served `run` tool may start. Empty publishes no `run` at all.
+      - name: allow_program
+        type: List<String>
 
   # When things fire. swarm/coordinator/SEED.md §1 (the two crons, 7-day expiry),
   # swarm/docs/wake-gate.md (waked.sh polls every 60 s; WAKE_MIN_INTERVAL=300 in every wake.d conf).
