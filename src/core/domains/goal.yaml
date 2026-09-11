@@ -242,12 +242,24 @@ events:
         type: String
 
 views:
-  # What the loop box reads to decide whether to fire. A goal resting in Evaluating is one whose
-  # last verdict was "not yet"; a goal in Open has never been picked up. Both want a tick.
+  # What the loop box reads to decide whether to fire.
+  #
+  # Both non-terminal resting states are here, and the `any:` is load-bearing rather than tidy. A
+  # goal in Evaluating had a turn that ended "not yet"; a goal in Open has never been picked up at
+  # all. Filtering on Evaluating alone — which this view did until 2026-09-12 — means the trigger
+  # never starts a FIRST turn, so a goal is set and then sits there forever waiting for a tick that
+  # is only ever sent to goals that have already had one.
+  #
+  # Pursuing and the two terminal states are absent on purpose: a goal being worked on does not want
+  # a second turn (`overlap: serial_per_instance` says the same thing from the binding's side), and
+  # a goal that is Reached or Abandoned is done.
   - name: swarm.goal.GoalsAwaitingATick
     source: swarm.goal.Goal
     consistency: read_your_writes
-    filter: state == Evaluating
+    filter:
+      any:
+        - state == Open
+        - state == Evaluating
     fields:
       - name: goal_id
         type: Uuid

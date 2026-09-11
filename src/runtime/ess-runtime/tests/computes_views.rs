@@ -50,22 +50,31 @@ fn the_loop_is_offered_only_the_goals_waiting_for_a_turn() {
     let waiting =
         view(spec.ir(), &world, "swarm.goal.GoalsAwaitingATick").expect("the view exists");
 
-    let ids: Vec<&str> = waiting
+    let mut ids: Vec<&str> = waiting
         .rows
         .iter()
         .filter_map(|row| row["goal_id"].as_str())
         .collect();
-    assert_eq!(
-        ids,
-        vec!["g-waiting"],
-        "only a goal resting in Evaluating is waiting for a turn"
-    );
+    ids.sort_unstable();
+
+    // Both resting states, and the `any:` in the filter is what puts g-open here. A view that
+    // offered only Evaluating would never start a goal's FIRST turn — it would be set, and then
+    // wait forever for a tick only sent to goals that had already had one.
+    assert_eq!(ids, vec!["g-open", "g-waiting"]);
+
+    // A goal being worked on does not want a second turn, and a finished one wants none.
+    assert!(!ids.contains(&"g-running"), "Pursuing is not waiting");
+    assert!(!ids.contains(&"g-done"), "Reached is not waiting");
 
     // The identity is projected from the instance, not from the field map, because an identity is
     // not a field anybody can write.
-    assert_eq!(waiting.rows[0]["goal_id"], json!("g-waiting"));
-    assert_eq!(waiting.rows[0]["state"], json!("Evaluating"));
-    assert_eq!(waiting.rows[0]["text"], json!("not yet"));
+    let evaluating = waiting
+        .rows
+        .iter()
+        .find(|row| row["state"] == json!("Evaluating"))
+        .expect("the waiting goal is in the view");
+    assert_eq!(evaluating["goal_id"], json!("g-waiting"));
+    assert_eq!(evaluating["text"], json!("not yet"));
 }
 
 #[test]
