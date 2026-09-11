@@ -5,8 +5,10 @@
 // `src/core` appears here the moment the server serves it. `markRaw` matters — Vue Flow keeps the
 // registry in its store, and a reactive component definition is both a warning and a waste.
 //
-// Edges come from `swarm.blackbox.Connection` instances, which is the specification's own answer to
-// what may reach what: a connection between two boxes is the edge, and drawing one is how a swarm
+// Edges are the specification's, from two sources and no others. A declared RELATION is an edge —
+// `swarm.goal.Goal references swarm.manager.Swarm via swarm_id` is already written down, so a goal
+// is drawn joined to the swarm it belongs to without anybody saying so twice. A
+// `swarm.blackbox.Connection` is the other: a wire one box drew to another, which is how a swarm
 // grants itself reach.
 import { computed, markRaw } from 'vue'
 import { VueFlow, type Edge, type Node, type NodeTypesObject } from '@vue-flow/core'
@@ -59,11 +61,11 @@ const nodes = computed<Node[]>(() => {
       width: NODE_W,
       height: NODE_H,
     })),
-    connections.value.flatMap((connection) => {
-      const from = connection.fields.from_box
-      const to = connection.fields.to_box
-      return typeof from === 'string' && typeof to === 'string' ? [{ from, to }] : []
-    }),
+    edges.value.flatMap((edge) =>
+      typeof edge.source === 'string' && typeof edge.target === 'string'
+        ? [{ from: edge.source, to: edge.target }]
+        : [],
+    ),
     'LR',
   )
 
@@ -78,7 +80,40 @@ const nodes = computed<Node[]>(() => {
   }))
 })
 
-const edges = computed<Edge[]>(() =>
+/** Every instance by id, so a relation's target can be found. */
+const byId = computed(() => new Map(instances.value.map((instance) => [instance.id, instance])))
+
+/** The relations the specification declares, per entity. */
+const relations = computed(
+  () => new Map((props.shape?.entities ?? []).map((entity) => [entity.name, entity.relations])),
+)
+
+/** Edges from declared relations: a goal to its swarm, an agent to its swarm, a config to its own. */
+const related = computed<Edge[]>(() =>
+  instances.value.flatMap((instance) =>
+    (relations.value.get(instance.entity) ?? []).flatMap((relation) => {
+      const target = instance.fields[relation.via]
+      // A relation whose field nothing has written is not an edge that is missing; it is an edge
+      // that does not exist yet, and drawing it would be inventing a connection.
+      if (typeof target !== 'string' || !byId.value.has(target)) return []
+      return [
+        {
+          id: `${instance.id}:${relation.name}`,
+          source: target,
+          target: instance.id,
+          label: relation.name,
+          // An owned thing is joined more firmly than a referenced one, and the specification is
+          // where that difference is declared.
+          style: relation.owns ? undefined : { strokeDasharray: '4 4' },
+          class: 'relation-edge',
+        },
+      ]
+    }),
+  ),
+)
+
+/** Edges from connections a swarm drew for itself. */
+const wired = computed<Edge[]>(() =>
   connections.value.flatMap((connection) => {
     const from = connection.fields.from_box
     const to = connection.fields.to_box
@@ -94,6 +129,8 @@ const edges = computed<Edge[]>(() =>
     ]
   }),
 )
+
+const edges = computed<Edge[]>(() => [...related.value, ...wired.value])
 </script>
 
 <template>

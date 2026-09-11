@@ -131,6 +131,19 @@ impl Server {
                         .iter()
                         .map(|field| field.name.as_str().to_owned())
                         .collect(),
+                    // What this entity points at, and through which field. A canvas draws these as
+                    // edges: the specification already says a goal references the swarm it belongs
+                    // to, so nothing has to be told that twice.
+                    relations: entity
+                        .relations
+                        .iter()
+                        .map(|relation| RelationShape {
+                            name: relation.name.clone(),
+                            target: relation.target.name().to_string(),
+                            via: relation.via.clone(),
+                            owns: matches!(relation.kind, ess_domain::entity::RelationKind::Owns),
+                        })
+                        .collect(),
                 })
                 .collect(),
             commands: ir
@@ -169,6 +182,18 @@ pub struct EntityShape {
     pub states: Vec<String>,
     pub terminal: Vec<String>,
     pub fields: Vec<String>,
+    pub relations: Vec<RelationShape>,
+}
+
+/// One edge the specification declares between two entities.
+#[derive(Debug, Serialize)]
+pub struct RelationShape {
+    pub name: String,
+    pub target: String,
+    /// The field holding the other instance's identity.
+    pub via: String,
+    /// `owns` rather than `references`: the target does not outlive this one.
+    pub owns: bool,
 }
 
 #[derive(Debug, Serialize)]

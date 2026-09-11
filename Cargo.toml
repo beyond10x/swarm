@@ -27,7 +27,7 @@ eventlog-core = { git = "https://github.com/beyond10x/eventlog", tag = "0.2.1" }
 eventlog-sqlite = { git = "https://github.com/beyond10x/eventlog", tag = "0.2.1" }
 
 serde = { version = "1", features = ["derive"] }
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "sync"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "sync", "process", "io-util", "time", "net"] }
 time = "0.3"
 axum = "0.8"
 tower-http = { version = "0.6", features = ["cors", "trace"] }

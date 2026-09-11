@@ -27,6 +27,35 @@ const displayName = computed(
   () => (field(record.value, 'display_name') as string | undefined) ?? props.id,
 )
 
+/**
+ * What the swarm is waiting on, in one sentence.
+ *
+ * A loop that is between turns looks exactly like a loop that is broken, so this says which it is.
+ * Every case here is a real resting place in the goal's lifecycle rather than a guess.
+ */
+const waitingOn = computed(() => {
+  const state = record.value?.state
+  if (!record.value) return 'This swarm has no record yet.'
+  if (state !== 'Running')
+    return `The swarm is ${state}. The loop only turns while it is Running — press start.`
+  if (!goal.value) return 'No goal yet. A swarm with nothing to pursue has nothing to turn.'
+
+  switch (goal.value.state) {
+    case 'Open':
+      return 'Waiting for the first tick. The loop turns every 30 seconds.'
+    case 'Pursuing':
+      return 'A turn is under way: the coordinator is deciding whether the goal is met. Without one configured, it waits here.'
+    case 'Evaluating':
+      return 'The last turn reported "not yet". The next tick picks it up again.'
+    case 'Reached':
+      return 'The goal is met and the loop has stopped.'
+    case 'Abandoned':
+      return 'The goal was given up on.'
+    default:
+      return ''
+  }
+})
+
 /** Every entity that holds at least one instance, in the order the specification declares them. */
 const populated = computed(() =>
   Object.entries(swarm.value?.canvas ?? {})
@@ -97,16 +126,15 @@ async function act(action: SwarmAction): Promise<void> {
     <UiEmptyState
       v-else-if="!swarm"
       title="No such swarm"
-      description="The runtime does not hold one by that name."
+      text="The runtime does not hold one by that name."
     />
 
     <template v-else>
       <UiToolbar>
-        <template #start>
-          <h1>{{ displayName }}</h1>
-          <UiStateBadge :state="record?.state ?? 'Uncreated'" />
-        </template>
-        <template #end>
+        <h1>{{ displayName }}</h1>
+        <UiStateBadge :state="record?.state ?? 'Uncreated'" />
+
+        <template #right>
           <UiButton
             v-for="action in ACTIONS"
             :key="action"
@@ -132,6 +160,8 @@ async function act(action: SwarmAction): Promise<void> {
         ]"
       />
 
+      <p class="waiting">{{ waitingOn }}</p>
+
       <UiTabs v-model="tab" :tabs="tabs" />
 
       <div class="panel">
@@ -150,7 +180,7 @@ async function act(action: SwarmAction): Promise<void> {
 <style scoped>
 .swarm {
   display: grid;
-  grid-template-rows: auto auto auto auto 1fr;
+  grid-template-rows: auto auto auto auto auto 1fr;
   gap: 0.75rem;
   height: 100%;
   padding: 1rem;
@@ -171,6 +201,15 @@ h1 {
   border: 1px solid var(--border, #2a3240);
   border-radius: 0.5rem;
   overflow: hidden;
+}
+
+.waiting {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-left: 2px solid var(--color-accent, #4f8cff);
+  background: color-mix(in srgb, var(--color-accent, #4f8cff) 8%, transparent);
+  border-radius: 0 0.25rem 0.25rem 0;
+  font-size: 0.875rem;
 }
 
 .problem {

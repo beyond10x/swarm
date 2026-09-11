@@ -19,6 +19,7 @@ use serde_json::{Map, Value as Json};
 
 use ess_runtime::route::Occurrence;
 
+use crate::coordinator;
 use crate::state::Server;
 use crate::swarm::Swarm;
 
@@ -59,6 +60,50 @@ pub async fn run(server: Arc<Server>) {
                     tracing::warn!(swarm = %swarm.slug(), binding = %binding, error = %why,
                                    "an occurrence could not be delivered");
                 }
+            }
+            // A turn the loop started is a turn something has to finish. This is the middle arrow
+            // of `[loop] -> [coordinator] -> [goal]`, and it is run after the tick rather than
+            // inside it because the tick's job ends when the goal is Pursuing.
+            ask_the_coordinator(&swarm).await;
+        }
+    }
+}
+
+/// Asks the coordinator about every goal that is mid-turn.
+///
+/// Goals already in `Pursuing` are picked up too, not only ones this cycle started — a turn
+/// interrupted by a restart is still a turn nobody answered.
+async fn ask_the_coordinator(swarm: &Arc<Swarm>) {
+    for instance in swarm.instances("swarm.goal.Goal").await {
+        if instance.get("state").and_then(Json::as_str) != Some("Pursuing") {
+            continue;
+        }
+        let Some(id) = instance.get("id").and_then(Json::as_str) else {
+            continue;
+        };
+        let fields = instance.get("fields");
+        let goal = fields
+            .and_then(|f| f.get("text"))
+            .and_then(Json::as_str)
+            .unwrap_or_default();
+        let iterations = fields
+            .and_then(|f| f.get("iterations"))
+            .and_then(Json::as_u64)
+            .unwrap_or_default();
+
+        match coordinator::take_a_turn(swarm, id, goal, iterations).await {
+            Ok(reached) => {
+                tracing::info!(swarm = %swarm.slug(), goal = %id, reached, "a turn was answered");
+            }
+            // Not configured is the ordinary state of a swarm nobody has given a coordinator, and
+            // logging it every period would bury everything else.
+            Err(coordinator::Unfinished::NoCoordinator) => {
+                tracing::debug!(swarm = %swarm.slug(), goal = %id,
+                                "waiting for a coordinator");
+            }
+            Err(why) => {
+                tracing::warn!(swarm = %swarm.slug(), goal = %id, error = %why,
+                               "the turn could not be finished");
             }
         }
     }

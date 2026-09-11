@@ -101,7 +101,7 @@ function displayName(swarm: Held): string {
       </div>
     </template>
 
-    <UiModal v-model:open="modalOpen" title="New swarm">
+    <UiModal :open="modalOpen" title="New swarm" @close="modalOpen = false">
       <form class="form" @submit.prevent="submit">
         <UiField
           label="Name"

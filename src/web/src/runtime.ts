@@ -34,6 +34,8 @@ export interface Shape {
     /** The states that are ends. A canvas draws a finished instance differently. */
     terminal: string[]
     fields: string[]
+    /** What this entity points at, and through which field. These are the canvas's edges. */
+    relations: { name: string; target: string; via: string; owns: boolean }[]
   }[]
   commands: { name: string; input: { name: string; optional: boolean }[] }[]
   views: string[]
