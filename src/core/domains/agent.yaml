@@ -416,6 +416,8 @@ commands:
             signoff: input.signoff
             forbidden: input.forbidden
             artifact_ref: input.artifact_ref
+            assignment_id:
+              generated: true
         sets:
           agent_id: input.agent_id
           outcome: input.outcome
@@ -702,6 +704,8 @@ commands:
           swarm.agent.AgentWoken:
             agent_id: input.agent_id
             reason: input.reason
+            swarm_id:
+              generated: true
         summary: The member is Working again on what it already holds.
       - name: wrong-state
         wrong_state: true
@@ -733,6 +737,8 @@ commands:
             agent_id: input.agent_id
             kind: input.kind
             msg: input.msg
+            swarm_id:
+              generated: true
         summary: The member is Faulted; §8 says fix it, or report it if fixing needs Timo.
       - name: wrong-state
         wrong_state: true

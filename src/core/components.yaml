@@ -165,3 +165,48 @@ bindings:
       config_id: event.config_id
     delivery: at_least_once
     on_failure: retry
+
+  # The [loop] of the birth graph, declared rather than hand-built.
+  #
+  # ess/1 0.23.0 carries a periodic cause, so the tick is part of the specification and not a timer
+  # buried in the runtime: the cadence, the overlap bound and the missed-tick policy are reviewable
+  # here, beside everything else the system promises. Each profile word admits exactly one value, so
+  # the only real choice in this block is `every`.
+  #
+  # `serial_per_instance` is the one that matters. It says one turn of one goal at a time, which is
+  # the property that keeps a slow coordinator from being asked to pursue the same goal twice, and
+  # it is a rule worth having stated rather than reimplemented. `one_pending_drop_excess`: a tick
+  # missed while a turn was running is taken once when it finishes, not banked and replayed.
+  #
+  # The host supplies which goal to turn and how many turns it has had. That is the runtime reading
+  # `swarm.goal.GoalsAwaitingATick` — goals resting in Evaluating, which is where a turn that ended
+  # "not yet" leaves them — and `eligibility: host_boolean` is where a paused or stopped swarm is
+  # excluded, because whether a swarm is running is not a fact this binding can read.
+  - id: turn-the-loop
+    summary: A goal waiting for a turn gets one.
+    when:
+      periodic:
+        every: PT30S
+        anchor: host_activation
+        first: after_period
+        cadence: fixed_rate
+        overlap: serial_per_instance
+        missed: one_pending_drop_excess
+        lifetime: host_instance
+        cancellation: stop_acknowledged
+        host:
+          owner: swarm-manager
+          authority: turn-the-loop
+          eligibility: host_boolean
+          context_fields:
+            - name: goal_id
+              type: Uuid
+          read_fields:
+            - name: iterations
+              type: Integer
+    invoke: {command: swarm.goal.Pursue}
+    mapping:
+      goal_id: host_context.goal_id
+      iterations: host_read.iterations
+    delivery: at_most_once
+    on_failure: drop

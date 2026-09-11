@@ -6,9 +6,15 @@ projection is rebuilt by replaying them. So an outcome that writes a field witho
 field on an event writes a fact the log cannot recover, and an event that does not carry its
 subject's identity is a fact nobody can attribute.
 
-Neither rule is one ess/1 enforces — ESS is a specification format and says nothing about how state
-is stored. They are this system's rules, and they are not retrofittable: once a log exists, the
-events in it are already missing whatever they were allowed to omit.
+Neither rule is one ess/4 enforces, and the difference is narrow enough to be worth stating. ess/4
+requires every field ON an emitted event to declare a source — a mapping, or `{generated: true}`.
+This requires every field an outcome WRITES to reach an event at all. An outcome that sets a field
+the event does not declare passes ess/4, because there is no event field for it to check, and fails
+here, because a replay would never see the write.
+
+So the two are complementary: ess/4 makes the events honest about where their values come from, and
+this makes the entity rebuildable from them. Neither is retrofittable — once a log exists, the events
+in it are already missing whatever they were allowed to omit.
 
 Two checks, both over `ess specify compile --format json`:
 

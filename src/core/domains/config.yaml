@@ -249,6 +249,10 @@ commands:
             budgets: input.budgets
             board: input.board
             note: input.note
+            config_id:
+              generated: true
+            version:
+              generated: true
         sets:
           swarm_id: input.swarm_id
           paths: input.paths
@@ -275,6 +279,8 @@ commands:
         payload:
           swarm.config.ConfigActivated:
             config_id: input.config_id
+            swarm_id:
+              generated: true
         summary: >-
           The config is in force; the previously active one for the same swarm is superseded in
           the same transaction, and a binding tells the swarm record which config it now runs with.

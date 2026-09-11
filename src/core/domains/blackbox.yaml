@@ -432,6 +432,8 @@ commands:
             json_schema: input.json_schema
             owner_agent: input.owner_agent
             summary: input.summary
+            schema_id:
+              generated: true
         sets:
           swarm_id: input.swarm_id
           name: input.name
@@ -541,6 +543,8 @@ commands:
             ref_id: input.ref_id
             agent_id: input.agent_id
             position: input.position
+            box_id:
+              generated: true
         sets:
           swarm_id: input.swarm_id
           name: input.name
@@ -736,6 +740,8 @@ commands:
             on_failure: input.on_failure
             escalation_event: input.escalation_event
             made_by: input.made_by
+            connection_id:
+              generated: true
         sets:
           swarm_id: input.swarm_id
           from_box_id: input.from_box_id

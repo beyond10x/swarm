@@ -112,6 +112,8 @@ commands:
           swarm.goal.GoalSet:
             swarm_id: input.swarm_id
             text: input.text
+            goal_id:
+              generated: true
         sets:
           swarm_id: input.swarm_id
           text: input.text

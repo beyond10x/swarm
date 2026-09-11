@@ -12,7 +12,7 @@
 #
 # Levels: the MANAGER holds many Swarms. A Swarm has one Coordinator and, later, the agents the
 # coordinator spawns. What anything may reach is a Connection between Boxes. Specification only.
-format: ess/1
+format: ess/4
 system: swarm
 version: v1
 

@@ -150,6 +150,8 @@ commands:
             tmux_session: input.tmux_session
             home: input.home
             created_at: input.created_at
+            swarm_id:
+              generated: true
         sets:
           display_name: input.display_name
           tmux_session: input.tmux_session
