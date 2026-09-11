@@ -20,6 +20,14 @@ ess-compiler = { git = "https://github.com/beyond10x/ess", tag = "0.23.0" }
 ess-primitives = { git = "https://github.com/beyond10x/ess", tag = "0.23.0" }
 ess-domain = { git = "https://github.com/beyond10x/ess", tag = "0.23.0" }
 
+# The event store. Pinned by tag for the same reason ess is: the sibling checkout at ../../eventlog
+# is on 0.2.0 and two commits behind its origin, and 0.2.1 is the release that corrected the README
+# the earlier research was read from.
+eventlog-core = { git = "https://github.com/beyond10x/eventlog", tag = "0.2.1" }
+eventlog-sqlite = { git = "https://github.com/beyond10x/eventlog", tag = "0.2.1" }
+
 serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "sync"] }
+time = "0.3"
 serde_json = "1"
 serde_yaml = "0.9"

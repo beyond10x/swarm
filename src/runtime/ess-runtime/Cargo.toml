@@ -13,3 +13,7 @@ ess-domain.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
+eventlog-core.workspace = true
+eventlog-sqlite.workspace = true
+tokio.workspace = true
+time.workspace = true
