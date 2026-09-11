@@ -1,0 +1,59 @@
+# Semantic runtime requirements, per swarm (ess/examples/billing/topology.yaml: "a statement about
+# the design, not a Kubernetes manifest"). Floors and ceilings are read from ./swarm:
+#   - orchestrator `min 1, max 1`: CHARTER §5.5 "Never leave two coordinators running"; the seed
+#     hook says TWO COORDINATORS when it finds a second `claude` with CC_COORD=1.
+#   - agent-runtime `min 1`, no ceiling: the orchestrator is itself an agent, so one is the floor;
+#     the 2026-09-11 run had 16 (website/public/data/seed.json).
+#   - board, scheduler, decision-console, flow-engine, blackbox-bus `min 1, max 1`: one jsonl store
+#     each per swarm (board/messages.jsonl, events-*.jsonl, decisions.md, wake/), and a second writer
+#     on an append-only file is the fault WORKING-RULES §2.3 describes for journal.jsonl.
+#   - swarm-manager `min 1, max 1`: one manager holds many swarms; nothing here says it is
+#     replicated, so the honest floor is one.
+# `stateless: false` everywhere: every one of these holds a file that outlives a request.
+topology:
+  workloads:
+    swarm-manager:
+      replicas: {min: 1, max: 1}
+      stateless: false
+      requires:
+        - store: swarms-record
+    orchestrator:
+      replicas: {min: 1, max: 1}
+      stateless: false
+      requires:
+        - tmux: swarm-session
+        - store: run-record
+        - store: planning-store
+    agent-runtime:
+      replicas: {min: 1}
+      stateless: false
+      requires:
+        - tmux: swarm-session
+        - worktree: managed-tree
+    board:
+      replicas: {min: 1, max: 1}
+      stateless: false
+      requires:
+        - store: board-jsonl
+    scheduler:
+      replicas: {min: 1, max: 1}
+      stateless: false
+      requires:
+        - store: wake-stamps
+        - cron: harness-session
+    decision-console:
+      replicas: {min: 1, max: 1}
+      stateless: false
+      requires:
+        - store: decisions-ledger
+        - store: events-jsonl
+    flow-engine:
+      replicas: {min: 1, max: 1}
+      stateless: false
+      requires:
+        - store: run-record
+    blackbox-bus:
+      replicas: {min: 1, max: 1}
+      stateless: false
+      requires:
+        - store: canvas-record

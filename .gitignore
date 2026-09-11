@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Rust
+target/
+
+# Docusaurus
+website/build/
+website/.docusaurus/
+website/.cache-loader/
+
+# Vite
+src/web/dist/
+
+# ESS projections — derived from src/core, regenerate with `ess generate`
+src/core/generated/
+
+# Runtime state — per-swarm event logs
+data/swarms/*/eventlog.sqlite3
+data/swarms/*/eventlog.sqlite3-wal
+data/swarms/*/eventlog.sqlite3-shm
+data/generated/
+
+# Misc
+.DS_Store
+*.log

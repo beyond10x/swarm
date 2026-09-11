@@ -1,0 +1,394 @@
+# swarm2.config — the runtime configuration a swarm runs with, as a first-class record.
+#
+# Timo, 2026-09-11: "add some config as 1st class domain describing the runtime config of the
+# system". Every number the scripts of ./swarm hard-code today is a FIELD here; the VALUES live in
+# a config document (swarm2/config/<swarm>.yaml) validated against the JSON Schema `ess generate`
+# projects from this entity — the same rule the board uses for its records. Where a value is read
+# from is written beside the field, so a later change can be traced to what it changed.
+#
+# One config is Active per swarm at a time. That is prose plus the implementation of
+# `ActivateConfig`, which supersedes the previously active row in the same transaction: a binding
+# cannot do it, because `ConfigActivated` does not carry the PREVIOUS config's id, and a `when`
+# cannot read board state (ESS-COMMAND-003). Recorded as a rough edge, not guessed around.
+domain: swarm2.config
+
+summary: The runtime configuration a swarm runs with — paths, launch line, schedules, budgets, board defaults — drafted, activated one at a time, superseded.
+
+naming:
+  wire: config
+  display: Runtime configuration
+
+types:
+  # Which harness an agent window runs. The three kinds `metaharness run` accepts
+  # (`metaharness run --help`, 0.6.4): claude, codex, b10x.
+  - name: swarm2.config.Harness
+    kind: enum
+    variants: [Claude, Codex, B10x]
+    naming:
+      display: Harness kind
+
+  # Where the swarm's records live, relative to the swarm's `home`. Sources: swarm/README.md
+  # (bin/, runs/), swarm/docs/eventlog.md (events, projection), .skills/swarm-inbox/SKILL.md
+  # (board), swarm/WORKING-RULES.md §2 (planning store), swarm/docs/wake-gate.md (wake.d),
+  # .agents/README.md (roles), swarm/coordinator/CHARTER.md §4 (memory file), §1 (decisions).
+  - name: swarm2.config.Paths
+    kind: struct
+    fields:
+      - name: runs_dir
+        type: String
+      - name: board_store
+        type: String
+      - name: events_store
+        type: String
+      - name: agent_state_projection
+        type: String
+      - name: planning_store
+        type: String
+      - name: wake_dir
+        type: String
+      - name: roles_dir
+        type: String
+      - name: rules_file
+        type: String
+      - name: memory_file
+        type: String
+      - name: decisions_file
+        type: String
+      # Scratch root. Never /tmp (CLAUDE.md: 25G per-user quota on the tmpfs; WORKING-RULES §5).
+      - name: scratch_dir
+        type: String
+
+  # How a window is launched. swarm/AGENTS.md §6: "Each window runs `claude
+  # --dangerously-skip-permissions --model opus`".
+  - name: swarm2.config.HarnessLaunch
+    kind: struct
+    fields:
+      - name: harness
+        type: swarm2.config.Harness
+      - name: binary
+        type: String
+      - name: model
+        type: String
+      - name: args
+        type: List<String>
+      - name: skip_permissions
+        type: Boolean
+
+  # When things fire. swarm/coordinator/SEED.md §1 (the two crons, 7-day expiry),
+  # swarm/docs/wake-gate.md (waked.sh polls every 60 s; WAKE_MIN_INTERVAL=300 in every wake.d conf).
+  - name: swarm2.config.Schedules
+    kind: struct
+    fields:
+      - name: check_in_cron
+        type: String
+      - name: memory_tick_cron
+        type: String
+      - name: cron_ttl_days
+        type: Integer
+      - name: wake_poll_seconds
+        type: Integer
+      - name: wake_min_interval_seconds
+        type: Integer
+      - name: wake_max_idle_seconds
+        type: Integer
+    invariants:
+      - wake_poll_seconds > 0
+      - wake_min_interval_seconds >= 0
+      - cron_ttl_days > 0
+
+  # Ceilings and floors. CHARTER §4 (8192-byte memory file), §5.7 (3 defers), swarm/bin/assign.sh
+  # (ASSIGN_STALE_SECONDS=7200, measured), swarm/docs/eventlog.md (msg ≤ 500 chars; 900 s event
+  # staleness in swarm-state.sh), swarm/AGENTS.md §6 (disk warden 40G floor / 80G target),
+  # .agents/swarm-improver.md (~30 tool calls per round).
+  - name: swarm2.config.Budgets
+    kind: struct
+    fields:
+      - name: memory_file_bytes
+        type: Integer
+      - name: max_defers
+        type: Integer
+      - name: assignment_stale_seconds
+        type: Integer
+      - name: event_stale_seconds
+        type: Integer
+      - name: event_msg_max_chars
+        type: Integer
+      - name: disk_floor_gb
+        type: Integer
+      - name: disk_target_gb
+        type: Integer
+      - name: subagent_tool_calls_per_round
+        type: Integer
+    invariants:
+      - memory_file_bytes > 0
+      - max_defers >= 0
+      - assignment_stale_seconds > 0
+      # `disk_target_gb >= disk_floor_gb` is refused: an invariant's right-hand side is a literal,
+      # never a second field (ESS-TYPE-002, probed 2026-09-11). Floor <= target is prose.
+      - disk_floor_gb >= 0
+
+  # Board conventions. WORKING-RULES §4 ("The coordinator is `orchestrator` / `main`"),
+  # .skills/swarm-inbox/SKILL.md (BOARD_BROADCAST_PREFER default `main,orchestrator,inbox,rounds`).
+  - name: swarm2.config.BoardDefaults
+    kind: struct
+    fields:
+      - name: orchestrator_slug
+        type: String
+      - name: default_inbox
+        type: String
+      - name: broadcast_prefer
+        type: List<String>
+
+entities:
+  - name: swarm2.config.Config
+    identity:
+      name: config_id
+      type: Uuid
+    fields:
+      # The swarm this configures; the `via` of `swarm2.manager.Swarm.configs`.
+      - name: swarm_id
+        type: Uuid
+      # Monotonic per swarm, assigned by the implementation at draft time. Prose, not checked.
+      - name: version
+        type: Integer
+      - name: paths
+        type: swarm2.config.Paths
+      - name: launch
+        type: swarm2.config.HarnessLaunch
+      - name: schedules
+        type: swarm2.config.Schedules
+      - name: budgets
+        type: swarm2.config.Budgets
+      - name: board
+        type: swarm2.config.BoardDefaults
+      - name: note
+        type: Optional<String>
+      - name: drafted_at
+        type: Timestamp
+      - name: activated_at
+        type: Optional<Timestamp>
+      - name: superseded_at
+        type: Optional<Timestamp>
+    invariants:
+      - version > 0
+    lifecycle:
+      # Draft: written, not in force. Active: what the swarm runs with (one per swarm). Superseded:
+      # was active, replaced — kept, because a value that was in force during a run is evidence.
+      # Discarded: a draft nobody activated. Both terminal: a config never comes back into force;
+      # a new draft is copied from it instead.
+      initial: Draft
+      states: [Draft, Active, Superseded, Discarded]
+      terminal: [Superseded, Discarded]
+      transitions:
+        - name: activate
+          from: [Draft]
+          to: Active
+        - name: supersede
+          from: [Active]
+          to: Superseded
+        - name: discard
+          from: [Draft]
+          to: Discarded
+
+errors:
+  - name: swarm2.config.ConfigStateConflict
+    summary: The config is not in a state this command acts from, so nothing moved.
+    fields:
+      - name: state
+        type: swarm2.config.Config.State
+
+commands:
+  - name: swarm2.config.DraftConfig
+    naming:
+      wire: draft-config
+      display: Draft a configuration
+    input:
+      - name: swarm_id
+        type: Uuid
+      - name: paths
+        type: swarm2.config.Paths
+      - name: launch
+        type: swarm2.config.HarnessLaunch
+      - name: schedules
+        type: swarm2.config.Schedules
+      - name: budgets
+        type: swarm2.config.Budgets
+      - name: board
+        type: swarm2.config.BoardDefaults
+      - name: note
+        type: Optional<String>
+    outcomes:
+      - name: drafted
+        creates: swarm2.config.Config
+        instance: config_id
+        emits:
+          - swarm2.config.ConfigDrafted
+        payload:
+          swarm2.config.ConfigDrafted:
+            swarm_id: input.swarm_id
+        sets:
+          swarm_id: input.swarm_id
+          paths: input.paths
+          launch: input.launch
+          schedules: input.schedules
+          budgets: input.budgets
+          board: input.board
+          note: input.note
+        summary: The config exists in Draft with the next version number for its swarm.
+
+  - name: swarm2.config.ActivateConfig
+    naming:
+      wire: activate-config
+      display: Activate a configuration
+    input:
+      - name: config_id
+        type: Uuid
+    outcomes:
+      - name: activated
+        moves: swarm2.config.Config.activate
+        instance: config_id
+        emits:
+          - swarm2.config.ConfigActivated
+        payload:
+          swarm2.config.ConfigActivated:
+            config_id: input.config_id
+        summary: >-
+          The config is in force; the previously active one for the same swarm is superseded in
+          the same transaction, and a binding tells the swarm record which config it now runs with.
+      - name: wrong-state
+        wrong_state: true
+        error: swarm2.config.ConfigStateConflict
+        summary: Only a Draft can be activated.
+
+  - name: swarm2.config.SupersedeConfig
+    naming:
+      wire: supersede-config
+      display: Supersede the active configuration
+    input:
+      - name: config_id
+        type: Uuid
+    outcomes:
+      - name: superseded
+        moves: swarm2.config.Config.supersede
+        instance: config_id
+        emits:
+          - swarm2.config.ConfigSuperseded
+        payload:
+          swarm2.config.ConfigSuperseded:
+            config_id: input.config_id
+        summary: The config is no longer in force and is kept as a record.
+      - name: wrong-state
+        wrong_state: true
+        error: swarm2.config.ConfigStateConflict
+        summary: Only an Active config can be superseded.
+
+  - name: swarm2.config.DiscardConfig
+    naming:
+      wire: discard-config
+      display: Discard a draft
+    input:
+      - name: config_id
+        type: Uuid
+    outcomes:
+      - name: discarded
+        moves: swarm2.config.Config.discard
+        instance: config_id
+        emits:
+          - swarm2.config.ConfigDiscarded
+        payload:
+          swarm2.config.ConfigDiscarded:
+            config_id: input.config_id
+        summary: The draft is closed without ever being in force.
+      - name: wrong-state
+        wrong_state: true
+        error: swarm2.config.ConfigStateConflict
+        summary: Only a Draft can be discarded.
+
+events:
+  - name: swarm2.config.ConfigDrafted
+    fields:
+      - name: config_id
+        type: Uuid
+      - name: swarm_id
+        type: Uuid
+      - name: version
+        type: Integer
+  # Carries `swarm_id` although the input does not: the binding to `swarm2.manager.AdoptConfig`
+  # needs both halves, and a binding maps one event field per input.
+  - name: swarm2.config.ConfigActivated
+    fields:
+      - name: config_id
+        type: Uuid
+      - name: swarm_id
+        type: Uuid
+  - name: swarm2.config.ConfigSuperseded
+    fields:
+      - name: config_id
+        type: Uuid
+  - name: swarm2.config.ConfigDiscarded
+    fields:
+      - name: config_id
+        type: Uuid
+
+views:
+  # Keyed by the caller's swarm_id; the filter is the one equality ess/1 allows.
+  - name: swarm2.config.ActiveConfig
+    source: swarm2.config.Config
+    consistency: read_your_writes
+    filter: state == Active
+    fields:
+      - name: config_id
+        type: Uuid
+      - name: swarm_id
+        type: Uuid
+      - name: version
+        type: Integer
+      - name: paths
+        type: swarm2.config.Paths
+      - name: launch
+        type: swarm2.config.HarnessLaunch
+      - name: schedules
+        type: swarm2.config.Schedules
+      - name: budgets
+        type: swarm2.config.Budgets
+      - name: board
+        type: swarm2.config.BoardDefaults
+      - name: activated_at
+        type: Optional<Timestamp>
+    naming:
+      wire: active
+      display: The configuration in force
+
+  - name: swarm2.config.ConfigHistory
+    source: swarm2.config.Config
+    consistency: eventual
+    order_by:
+      - version desc
+    fields:
+      - name: config_id
+        type: Uuid
+      - name: swarm_id
+        type: Uuid
+      - name: version
+        type: Integer
+      - name: note
+        type: Optional<String>
+      - name: drafted_at
+        type: Timestamp
+      - name: activated_at
+        type: Optional<Timestamp>
+      - name: superseded_at
+        type: Optional<Timestamp>
+    naming:
+      wire: history
+      display: Every configuration a swarm has had, newest first
+
+actors:
+  - name: swarm2.config.Operator
+    may:
+      - swarm2.config.DraftConfig
+      - swarm2.config.ActivateConfig
+      - swarm2.config.SupersedeConfig
+      - swarm2.config.DiscardConfig
+    naming:
+      display: Operator

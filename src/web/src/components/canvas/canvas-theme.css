@@ -1,0 +1,45 @@
+/* Dark-theme overrides for Vue Flow, expressed only in the shared tokens. Imported (unscoped) by
+   the two canvas views; Vue Flow's own style.css / theme-default.css are imported alongside. */
+.b10x-canvas .vue-flow {
+  --vf-node-bg: var(--color-surface);
+  --vf-node-text: var(--color-text);
+  --vf-connection-path: var(--color-accent);
+  --vf-handle: var(--color-text-muted);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font);
+}
+.b10x-canvas .vue-flow__background { background: var(--color-bg); }
+.b10x-canvas .vue-flow__edge-path { stroke: var(--color-text-muted); stroke-width: 1.5; }
+.b10x-canvas .vue-flow__edge:hover .vue-flow__edge-path { stroke: var(--color-accent); }
+.b10x-canvas .vue-flow__edge.selected .vue-flow__edge-path,
+.b10x-canvas .vue-flow__edge:focus .vue-flow__edge-path { stroke: var(--color-accent); stroke-width: 2; }
+.b10x-canvas .vue-flow__edge-text { fill: var(--color-text); font-family: var(--font-mono); font-size: 10px; }
+.b10x-canvas .vue-flow__edge-textbg { fill: var(--color-surface-2); }
+.b10x-canvas .vue-flow__connection-path { stroke: var(--color-accent); stroke-width: 1.5; }
+.b10x-canvas .vue-flow__arrowhead polyline { stroke: var(--color-text-muted); fill: var(--color-text-muted); }
+
+.b10x-canvas .vue-flow__handle {
+  width: 10px; height: 10px;
+  background: var(--color-surface-2);
+  border: 1.5px solid var(--color-text-muted);
+}
+.b10x-canvas .vue-flow__handle:hover,
+.b10x-canvas .vue-flow__handle.connecting,
+.b10x-canvas .vue-flow__handle.valid { border-color: var(--color-accent); background: var(--color-accent); }
+
+.b10x-canvas .vue-flow__controls { box-shadow: var(--shadow-1); border-radius: var(--radius-1); overflow: hidden; }
+.b10x-canvas .vue-flow__controls-button {
+  background: var(--color-surface); border-bottom: 1px solid var(--color-border); color: var(--color-text);
+}
+.b10x-canvas .vue-flow__controls-button:hover { background: var(--color-surface-2); }
+.b10x-canvas .vue-flow__controls-button svg { fill: var(--color-text); }
+
+.b10x-canvas .vue-flow__minimap {
+  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-1);
+}
+.b10x-canvas .vue-flow__minimap-mask { fill: rgba(15, 17, 21, 0.7); }
+
+.b10x-canvas .vue-flow__nodesselection-rect,
+.b10x-canvas .vue-flow__selection { background: rgba(110, 168, 254, 0.08); border: 1px dotted var(--color-accent); }
+.b10x-canvas .vue-flow__panel { margin: var(--space-3); }

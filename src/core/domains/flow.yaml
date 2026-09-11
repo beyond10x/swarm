@@ -1,0 +1,1359 @@
+# swarm2.flow — the DAG meta-model. A Flow is a DAG of Steps (command | tool | llm | subflow) with
+# typed input/output ports and a context, bound to one workflow state. A Run is one execution of a
+# Flow; a StepRun is one execution of one Step inside a Run.
+#
+# Timo, 2026-09-11: "composing the bigger system (the harness) of multiple smaller sub-systems down
+# to single dag-workflows executing steps, commands, build in tools, etc. input+output+context -
+# structure!"
+#
+# Where the shape is read from:
+#   * ../aep/drivers/development/default.yaml — a step map is "states → ordered steps"; a step is
+#     `kind: llm` with `harness`, `skills`, `scope` (paths + `write: allowed|denied`) and `prompt`,
+#     or `kind: command` with `run: [argv]` and `evidence: {kind, suite, verifier}`. Its header:
+#     "an `llm` step has no `evidence:` key and cannot be given one. Anything a model is supposed
+#     to have achieved that is *checkable* is observed by the command step after it."
+#   * ../aep/workflows/README.md — "State machines work moves through, one document each. States
+#     declare *phases*". The workflow says WHICH states; the flow says what runs INSIDE one. That
+#     is `Flow.binds` below.
+#   * Four concrete flows already run in ./swarm, none of them written as one yet:
+#     - swarm/AGENTS.md §1 "The ingestion cycle": six steps "Every tick, in this order" — take the
+#       inbox (command), take the ledger (command), take the pane state (command), classify each
+#       window (llm), route (llm), report (llm).
+#     - swarm/coordinator/CHARTER.md §5 "The 15-minute cycle": seven steps "In order, every tick" —
+#       defer check, refresh the derived section (`coord-windows.sh --write`), rewrite sections,
+#       gate (`coord-budget.sh`, "Exit 0 or fix the file"), single-coordinator check, restart,
+#       defer. Step 1 branches to step 7 — an `Edge.when`. Step 4 is a command step whose exit
+#       code decides — `StepRun.exit_code`.
+#     - swarm/AGENTS.md §4 "Spawning a swarm member": five steps — pick a definition, guarantee
+#       the loadout, create its inbox (`board.sh create-inbox`), post its assignment, tell it the
+#       rules.
+#     - swarm/wake.d/improver.conf WAKE_PROMPT: "drain your inbox ..., re-read
+#       .agents/swarm-improver.md, and do one improvement round, then stop. End the pass with
+#       `swarm/bin/wakegate.sh improver --arm <files you wrote>`" — drain (command), re-read
+#       (llm), one round (llm, or a subflow), arm (command).
+#   * website/src/model.ts — the UI's mirror (Flow, Step, Edge, Wire, Port, StepContext,
+#     StepKind). Names here are the snake_case of the camelCase there.
+#
+# Two DAG facts ess/1 cannot check, so they are the ENGINE's checks and are stated here as prose:
+#   1. `Flow.edges` is acyclic and every `Edge.from_step`/`to_step` and `Wire.from_step` names a
+#      `step_id` in `Flow.steps`. An invariant is `field op literal` (ESS-TYPE-002 for anything
+#      else, probed on swarm2.config.Budgets), and no invariant reads inside a List.
+#   2. `Step.subflow_id` names another Flow, but cannot be a checked relation: a relation is
+#      declared on an entity, and Step is a struct inside a List on the entity.
+domain: swarm2.flow
+
+summary: >-
+  Flows — DAGs of command, tool, llm and subflow steps with typed ports and a context, each bound
+  to one workflow state — drafted, published, revised and retired; their Runs and the StepRuns
+  inside them, driven by an engine.
+
+naming:
+  wire: flow
+  display: Flows
+
+types:
+  # website/src/model.ts `StepKind = 'command' | 'tool' | 'llm' | 'subflow'`; the aep step map has
+  # `kind: llm` and `kind: command` (default.yaml `receive`, `establish_verifiers`). `Tool` is a
+  # built-in the engine calls in-process ("build in tools" — Timo). `Subflow` runs another Flow
+  # as one step; the composition. Variants are PascalCase here because an ess enum variant is;
+  # the wire form is the lowercase of model.ts.
+  - name: swarm2.flow.StepKind
+    kind: enum
+    variants: [Command, Tool, Llm, Subflow]
+    naming:
+      display: Step kind
+
+  # A typed port. model.ts: "A typed port on a blackbox or a step. `schemaId` names a Schema known
+  # to everyone." `schema_id` is a String and not a relation: it names a schema in the blackbox
+  # domain's registry, and a relation can only be declared on an entity, never from inside a
+  # struct. The engine resolves it; ess does not check it.
+  - name: swarm2.flow.Port
+    kind: struct
+    fields:
+      - name: name
+        type: String
+      - name: schema_id
+        type: String
+      - name: required
+        type: Boolean
+
+  # What a step (or a whole flow) runs with. model.ts `StepContext`. `skills` from the aep step
+  # map's `skills: [planning]` and swarm/AGENTS.md §4.2 "Guarantee the loadout" (aep, ess,
+  # worktree, plus the role's own); `files` from the step map's retired `context:` ("a file a step
+  # genuinely reads throughout"); `write_scope` is the step map's `scope:` list flattened to the
+  # paths a step may write ("First match wins and the last rule is a catch-all"); `budget_tokens`
+  # from swarm/AGENTS.md §6 "One sub-agent per improver round, bounded tasks"; `cwd` from the
+  # host. `tools` — the built-ins a Tool step may call. UNMAPPED: whether `write_scope` needs the
+  # step map's ordered allowed/denied pairs rather than one allowed list; the four flows read so
+  # far never deny a path a sibling allows.
+  - name: swarm2.flow.Context
+    kind: struct
+    fields:
+      - name: skills
+        type: List<String>
+      - name: tools
+        type: List<String>
+      - name: files
+        type: List<String>
+      - name: write_scope
+        type: List<String>
+      - name: budget_tokens
+        type: Optional<Integer>
+      - name: cwd
+        type: Optional<String>
+
+  # What a command step leaves behind. default.yaml: `evidence: {kind: test_result, suite: unit,
+  # verifier: test-runner}`, `{kind: diff, verifier: git}` — `suite` is absent on the diff step,
+  # so Optional. Only a Command step carries one: "an `llm` step has no `evidence:` key".
+  - name: swarm2.flow.Evidence
+    kind: struct
+    fields:
+      - name: kind
+        type: String
+      - name: suite
+        type: Optional<String>
+      - name: verifier
+        type: Optional<String>
+
+  # One node of the DAG. model.ts `Step`. Exactly one of `run` / `tool` / `prompt` / `subflow_id`
+  # is meaningful, chosen by `kind`; ess/1 has no per-variant struct, so the unused three are
+  # empty and the engine refuses a step whose `kind` and payload disagree (prose, not checked).
+  # `run` is the step map's `run: [cargo, test, --workspace]` — an argv list, never a shell
+  # string (model.ts has `run?: string`; the argv form is the one the driver executes).
+  # `evidence` is Optional because "an `llm` step has no `evidence:` key and cannot be given one".
+  # `max_attempts` — the retry budget the engine copies onto every StepRun ("the engine's own
+  # visit and attempt budgets bound the loop", default.yaml header).
+  - name: swarm2.flow.Step
+    kind: struct
+    fields:
+      - name: step_id
+        type: String
+      - name: name
+        type: String
+      - name: kind
+        type: swarm2.flow.StepKind
+      - name: inputs
+        type: List<swarm2.flow.Port>
+      - name: outputs
+        type: List<swarm2.flow.Port>
+      - name: context
+        type: swarm2.flow.Context
+      - name: run
+        type: List<String>
+      - name: tool
+        type: Optional<String>
+      - name: prompt
+        type: Optional<String>
+      - name: subflow_id
+        type: Optional<String>
+      - name: evidence
+        type: Optional<swarm2.flow.Evidence>
+      - name: max_attempts
+        type: Integer
+
+  # One output feeding one input along an edge. model.ts `Wire { fromOutput, toInput }`;
+  # `from_step` is added here so a wire can also take a value from an earlier step than the
+  # edge's own `from_step` (the memory tick's step 4 gate reads what step 2 wrote). Names a
+  # `step_id`; engine-checked.
+  - name: swarm2.flow.Wire
+    kind: struct
+    fields:
+      - name: from_step
+        type: String
+      - name: from_output
+        type: String
+      - name: to_input
+        type: String
+
+  # An ordering edge, with an optional guard. model.ts `Edge { from, to, when?, wires? }`. `when`
+  # is an expression over the from-step's outputs the ENGINE evaluates (CHARTER §5.1: "If yes, go
+  # to step 7"); it is a String here because ess's own `when` grammar reads command input only.
+  - name: swarm2.flow.Edge
+    kind: struct
+    fields:
+      - name: from_step
+        type: String
+      - name: to_step
+        type: String
+      - name: when
+        type: Optional<String>
+      - name: wires
+        type: List<swarm2.flow.Wire>
+
+  # Which workflow state this flow runs inside. model.ts `binds?: { entity; state }`; the aep
+  # step map's `states: receive: steps: [...]` is the same fact keyed the other way round. `entity`
+  # is a lifecycle entity's full name (`swarm2.orchestrator.Generation`), `state` one of its
+  # lifecycle states (`Ticking`). Both Strings: a state name of ANOTHER entity is not a type ess
+  # can name from here, and the entity may be in a domain not yet written.
+  - name: swarm2.flow.Binding
+    kind: struct
+    fields:
+      - name: entity
+        type: String
+      - name: state
+        type: String
+
+  # How a finished Run or StepRun ended, as a value a view or an event can carry without being
+  # the lifecycle state itself. `Skipped` applies to a StepRun only. No field in this domain
+  # carries it yet: it exists for the work/fault domains, which report a subflow's result
+  # without depending on `swarm2.flow.Run.State`.
+  - name: swarm2.flow.RunStatus
+    kind: enum
+    variants: [Succeeded, Failed, Skipped]
+    naming:
+      display: Run status
+
+entities:
+  # A Flow definition. Identity is a String the author picks (`orchestrator.check-in`,
+  # `coordinator.memory-tick`, `coordinator.spawn`, `improver.wake-pass`) because the bindings in
+  # components.yaml invoke `StartRun` with a literal `flow_id`, and a literal has to be spellable.
+  - name: swarm2.flow.Flow
+    identity:
+      name: flow_id
+      type: String
+    fields:
+      - name: swarm_id
+        type: Uuid
+      - name: name
+        type: String
+      - name: summary
+        type: String
+      # Bumped by `ReviseFlow`'s implementation on every Published → Draft; prose, not checked
+      # beyond `> 0`, same as swarm2.config.Config.version.
+      - name: version
+        type: Integer
+      # Agents build flows too (swarm/AGENTS.md §1: the coordinator "dispatches ... a build ... to
+      # a tmux window with a brief"; the improver's round IS a flow it wrote for itself). The
+      # orchestrator's own flows have none.
+      - name: owner_agent
+        type: Optional<String>
+      # Optional: a flow an agent calls by hand, or a subflow, binds to no workflow state.
+      - name: binds
+        type: Optional<swarm2.flow.Binding>
+      - name: inputs
+        type: List<swarm2.flow.Port>
+      - name: outputs
+        type: List<swarm2.flow.Port>
+      # The flow-wide context every step inherits; a step's own `context` narrows it.
+      - name: context
+        type: swarm2.flow.Context
+      - name: steps
+        type: List<swarm2.flow.Step>
+      - name: edges
+        type: List<swarm2.flow.Edge>
+      - name: published_at
+        type: Optional<Timestamp>
+    invariants:
+      - version > 0
+    relations:
+      # Declared at integration: who wrote it. `references` with an Optional via (the same shape as
+      # `Run.parent` below): a flow the orchestrator drafted has no owner agent, and an agent that
+      # retires leaves its flows behind — they are the swarm's, not the author's.
+      - name: author
+        kind: references
+        target: swarm2.agent.Agent
+        cardinality: one
+        via: owner_agent
+      # A run has no meaning without the flow it executed.
+      - name: runs
+        kind: owns
+        target: swarm2.flow.Run
+        cardinality: many
+        via: flow_id
+    lifecycle:
+      # Draft: being written; the canvas edits it; nothing starts it. Published: the engine may
+      # start a Run of it, and a binding may. Retired: terminal, kept — a Run that executed it is
+      # evidence. `revise` goes Published → Draft on the SAME flow id with `version` bumped, not a
+      # new id: the bindings hold a literal `flow_id` and must keep pointing at the flow after a
+      # revision, which a `-v2` id would break.
+      initial: Draft
+      states: [Draft, Published, Retired]
+      terminal: [Retired]
+      transitions:
+        - name: publish
+          from: [Draft]
+          to: Published
+        - name: revise
+          from: [Published]
+          to: Draft
+        - name: retire
+          from: [Published, Draft]
+          to: Retired
+
+  # One execution of a Flow. Started by an agent (`started_by` = its slug) or by a binding
+  # (`started_by` = `binding`) — the four level-3→4 bindings in components.yaml call `StartRun`
+  # with a literal `flow_id` when a workflow enters the bound state. A Subflow step starts a child
+  # Run with `parent_run_id`/`parent_step_id` set: that is the composition at runtime.
+  - name: swarm2.flow.Run
+    identity:
+      name: run_id
+      type: Uuid
+    fields:
+      - name: flow_id
+        type: String
+      - name: swarm_id
+        type: Uuid
+      - name: started_by
+        type: String
+      - name: parent_run_id
+        type: Optional<Uuid>
+      - name: parent_step_id
+        type: Optional<String>
+      # Values by port name, serialised. `Map<String, String>` and not a typed struct: the ports'
+      # schemas are data (`Port.schema_id`), so the values' shape is not known to ess.
+      - name: input_values
+        type: Map<String, String>
+      - name: output_values
+        type: Map<String, String>
+      # The flow's context as resolved for this run (cwd, budget); a snapshot, because the Flow
+      # may be revised while the run is still going.
+      - name: context
+        type: swarm2.flow.Context
+      # Written by `CompleteRun`; the count the engine took over its StepRuns in Failed. The
+      # `succeeded` branch reads it from the input because a `when` cannot count rows.
+      - name: failed_steps
+        type: Integer
+      - name: started_at
+        type: Timestamp
+      - name: finished_at
+        type: Optional<Timestamp>
+    invariants:
+      - failed_steps >= 0
+    relations:
+      # A step run has no meaning without its run.
+      - name: step_runs
+        kind: owns
+        target: swarm2.flow.StepRun
+        cardinality: many
+        via: run_id
+      # The subflow composition. `references`, cardinality one, `via` the Optional<Uuid> on the
+      # source side — the same shape as swarm2.board.Message.reply_to.
+      - name: parent
+        kind: references
+        target: swarm2.flow.Run
+        cardinality: one
+        via: parent_run_id
+    lifecycle:
+      # Pending: created, no step has started (the engine is still enqueuing). Running: at least
+      # one StepRun started. Succeeded / Failed / Cancelled: terminal; `finished_at` is stamped.
+      initial: Pending
+      states: [Pending, Running, Succeeded, Failed, Cancelled]
+      terminal: [Succeeded, Failed, Cancelled]
+      transitions:
+        - name: start
+          from: [Pending]
+          to: Running
+        - name: succeed
+          from: [Running]
+          to: Succeeded
+        - name: fail
+          from: [Running]
+          to: Failed
+        - name: cancel
+          from: [Pending, Running]
+          to: Cancelled
+
+  # One execution attempt-series of one Step inside one Run. The engine enqueues one per step at
+  # run start with `unsatisfied_deps` = the number of incoming edges; each upstream success
+  # decrements it (`MarkReady`); at zero it is Ready and the engine's queue (`ReadySteps`) picks
+  # it up.
+  - name: swarm2.flow.StepRun
+    identity:
+      name: step_run_id
+      type: Uuid
+    fields:
+      - name: run_id
+        type: Uuid
+      - name: step_id
+        type: String
+      - name: kind
+        type: swarm2.flow.StepKind
+      # 0 until the first `StartStep`; `RetryStep` increments it. `max_attempts` is copied from
+      # `Step.max_attempts` at enqueue time so the retry decision needs no lookup into the Flow.
+      - name: attempt
+        type: Integer
+      - name: max_attempts
+        type: Integer
+      - name: unsatisfied_deps
+        type: Integer
+      - name: input_values
+        type: Map<String, String>
+      - name: output_values
+        type: Map<String, String>
+      # A Command step's process exit (CHARTER §5.4: "Exit 0 or fix the file"); the engine maps a
+      # Tool/Llm/Subflow step's result onto 0 / non-zero the same way.
+      - name: exit_code
+        type: Optional<Integer>
+      # Where the `Evidence` record landed (a path or an id); Command steps only.
+      - name: evidence_ref
+        type: Optional<String>
+      # For a Subflow step: the child Run this step started (`AttachChildRun`).
+      - name: child_run_id
+        type: Optional<Uuid>
+      - name: started_at
+        type: Optional<Timestamp>
+      - name: finished_at
+        type: Optional<Timestamp>
+    invariants:
+      - attempt >= 0
+      - unsatisfied_deps >= 0
+      - max_attempts >= 0
+    lifecycle:
+      # Pending: enqueued, upstream not done. Ready: every dependency succeeded; queued. Running:
+      # executing. Succeeded: done, outputs available. Failed: the attempt failed; the ONLY way
+      # out is `retry` back to Ready. A Failed step that is not retried stays Failed and the RUN
+      # fails (`CompleteRun.failed`) — so Failed is where a step rests when retries are exhausted,
+      # and it is listed terminal AND has an exit. Probed 2026-09-11 on ess 0.23.0: valid with
+      # Failed in `terminal:` and valid without it; the only lifecycle check that fires is
+      # ESS-ENTITY-005 `missing_causation` (a transition no outcome takes). `terminal:` is not
+      # cross-checked against `transitions.from`, so the list here says what the ENGINE treats
+      # as at-rest, and nothing more. Skipped: an `Edge.when` was false, or the run was cancelled
+      # before the step started; terminal.
+      initial: Pending
+      states: [Pending, Ready, Running, Succeeded, Failed, Skipped]
+      terminal: [Succeeded, Failed, Skipped]
+      transitions:
+        - name: ready
+          from: [Pending]
+          to: Ready
+        - name: start
+          from: [Ready]
+          to: Running
+        - name: succeed
+          from: [Running]
+          to: Succeeded
+        - name: fail
+          from: [Running]
+          to: Failed
+        - name: retry
+          from: [Failed]
+          to: Ready
+        - name: skip
+          from: [Pending, Ready]
+          to: Skipped
+
+errors:
+  - name: swarm2.flow.FlowStateConflict
+    summary: The flow is not in a state this command acts from, so nothing moved.
+    fields:
+      - name: state
+        type: swarm2.flow.Flow.State
+  - name: swarm2.flow.RunStateConflict
+    summary: The run is not in a state this command acts from, so nothing moved.
+    fields:
+      - name: state
+        type: swarm2.flow.Run.State
+  - name: swarm2.flow.StepStateConflict
+    summary: The step run is not in a state this command acts from, so nothing moved.
+    fields:
+      - name: state
+        type: swarm2.flow.StepRun.State
+  # Raised by `RetryStep` when the attempt count has reached the step's budget; the step stays
+  # Failed and the run fails at `CompleteRun`.
+  - name: swarm2.flow.RetriesExhausted
+    summary: The step has used every attempt it was given, so it was not re-queued.
+    fields:
+      - name: attempt
+        type: Integer
+      - name: max_attempts
+        type: Integer
+
+commands:
+  # ---- Flow definitions (Author) ---------------------------------------------------------------
+
+  # The author names the flow: `flow_id` is an input AND the identity, not an assigned Uuid.
+  # Probed 2026-09-11 on ess 0.23.0: `instance: flow_id` with the payload line
+  # `flow_id: input.flow_id` and the `sets:` line `flow_id: input.flow_id` are all accepted, so
+  # the identity is mapped from the input here and nothing is left to prose. "This flow_id is
+  # already taken" is a lookup, not a function of the input, so it is the implementation's
+  # refusal (same as swarm2.manager.SwarmSessionTaken) and no outcome names it.
+  - name: swarm2.flow.DraftFlow
+    naming:
+      wire: draft-flow
+      display: Draft a flow
+    input:
+      - name: flow_id
+        type: String
+      - name: swarm_id
+        type: Uuid
+      - name: name
+        type: String
+      - name: summary
+        type: String
+      - name: owner_agent
+        type: Optional<String>
+      - name: binds
+        type: Optional<swarm2.flow.Binding>
+      - name: inputs
+        type: List<swarm2.flow.Port>
+      - name: outputs
+        type: List<swarm2.flow.Port>
+      - name: context
+        type: swarm2.flow.Context
+      - name: steps
+        type: List<swarm2.flow.Step>
+      - name: edges
+        type: List<swarm2.flow.Edge>
+    outcomes:
+      - name: drafted
+        creates: swarm2.flow.Flow
+        instance: flow_id
+        emits:
+          - swarm2.flow.FlowDrafted
+        payload:
+          swarm2.flow.FlowDrafted:
+            flow_id: input.flow_id
+            swarm_id: input.swarm_id
+            name: input.name
+        sets:
+          flow_id: input.flow_id
+          swarm_id: input.swarm_id
+          name: input.name
+          summary: input.summary
+          owner_agent: input.owner_agent
+          binds: input.binds
+          inputs: input.inputs
+          outputs: input.outputs
+          context: input.context
+          steps: input.steps
+          edges: input.edges
+        summary: The flow exists in Draft at version 1; the engine has checked the DAG is acyclic and every edge names a step.
+
+  - name: swarm2.flow.PublishFlow
+    naming:
+      wire: publish-flow
+      display: Publish a flow
+    input:
+      - name: flow_id
+        type: String
+    outcomes:
+      - name: published
+        moves: swarm2.flow.Flow.publish
+        instance: flow_id
+        emits:
+          - swarm2.flow.FlowPublished
+        payload:
+          swarm2.flow.FlowPublished:
+            flow_id: input.flow_id
+        summary: The flow may be run; `published_at` is stamped.
+      - name: wrong-state
+        wrong_state: true
+        error: swarm2.flow.FlowStateConflict
+        summary: Only a Draft can be published.
+
+  # Back to Draft on the same id; the implementation bumps `version`. Runs already started keep
+  # their snapshot of the old version.
+  - name: swarm2.flow.ReviseFlow
+    naming:
+      wire: revise-flow
+      display: Revise a published flow
+    input:
+      - name: flow_id
+        type: String
+    outcomes:
+      - name: revised
+        moves: swarm2.flow.Flow.revise
+        instance: flow_id
+        emits:
+          - swarm2.flow.FlowRevised
+        payload:
+          swarm2.flow.FlowRevised:
+            flow_id: input.flow_id
+        summary: The flow is a Draft again with the next version number; no new Run may start until it is published.
+      - name: wrong-state
+        wrong_state: true
+        error: swarm2.flow.FlowStateConflict
+        summary: Only a Published flow can be revised.
+
+  - name: swarm2.flow.RetireFlow
+    naming:
+      wire: retire-flow
+      display: Retire a flow
+    input:
+      - name: flow_id
+        type: String
+    outcomes:
+      - name: retired
+        moves: swarm2.flow.Flow.retire
+        instance: flow_id
+        emits:
+          - swarm2.flow.FlowRetired
+        payload:
+          swarm2.flow.FlowRetired:
+            flow_id: input.flow_id
+        summary: The flow is kept as a record; no new Run may start from it.
+      - name: wrong-state
+        wrong_state: true
+        error: swarm2.flow.FlowStateConflict
+        summary: The flow was already Retired.
+
+  # ---- Runs (Engine) -----------------------------------------------------------------------------
+
+  # Invoked by the four level-3→4 bindings in components.yaml with a literal `flow_id` and
+  # `started_by: binding`, by an agent by hand, or by the engine for a Subflow step (then
+  # `parent_run_id`/`parent_step_id` are set). "The flow is Published" is a lookup, not a
+  # function of the input, so it is enforced by the implementation and not an outcome here.
+  - name: swarm2.flow.StartRun
+    naming:
+      wire: start-run
+      display: Start a run of a flow
+    # `input_values` is NOT an input here (integration): a binding starts most runs, a binding maps
+    # one event field per input, and no event carries a run's inputs — the engine supplies them at
+    # StartStep. The Run row's `input_values` is therefore implementation-set at start.
+    input:
+      - name: flow_id
+        type: String
+      - name: swarm_id
+        type: Uuid
+      - name: started_by
+        type: String
+      - name: parent_run_id
+        type: Optional<Uuid>
+      - name: parent_step_id
+        type: Optional<String>
+    outcomes:
+      - name: started
+        creates: swarm2.flow.Run
+        instance: run_id
+        emits:
+          - swarm2.flow.RunStarted
+        payload:
+          swarm2.flow.RunStarted:
+            flow_id: input.flow_id
+            swarm_id: input.swarm_id
+            started_by: input.started_by
+        sets:
+          flow_id: input.flow_id
+          swarm_id: input.swarm_id
+          started_by: input.started_by
+          parent_run_id: input.parent_run_id
+          parent_step_id: input.parent_step_id
+        summary: The run exists in Pending with the flow's context snapshotted; the engine enqueues one StepRun per step.
+
+  - name: swarm2.flow.BeginRun
+    naming:
+      wire: begin-run
+      display: Begin a pending run
+    input:
+      - name: run_id
+        type: Uuid
+    outcomes:
+      - name: running
+        moves: swarm2.flow.Run.start
+        instance: run_id
+        emits:
+          - swarm2.flow.RunRunning
+        payload:
+          swarm2.flow.RunRunning:
+            run_id: input.run_id
+        summary: Every StepRun is enqueued and the first Ready one is about to start.
+      - name: wrong-state
+        wrong_state: true
+        error: swarm2.flow.RunStateConflict
+        summary: Only a Pending run can begin.
+
+  # The engine calls this once no StepRun is Pending, Ready or Running. `failed_steps` is the
+  # count it took; the guard reads the input because a `when` cannot count rows (ESS-COMMAND-003).
+  - name: swarm2.flow.CompleteRun
+    naming:
+      wire: complete-run
+      display: Complete a run
+    input:
+      - name: run_id
+        type: Uuid
+      - name: flow_id
+        type: String
+      - name: swarm_id
+        type: Uuid
+      - name: failed_steps
+        type: Integer
+      - name: output_values
+        type: Map<String, String>
+    outcomes:
+      - name: succeeded
+        when: failed_steps == 0
+        moves: swarm2.flow.Run.succeed
+        instance: run_id
+        emits:
+          - swarm2.flow.RunSucceeded
+        payload:
+          swarm2.flow.RunSucceeded:
+            run_id: input.run_id
+            flow_id: input.flow_id
+            swarm_id: input.swarm_id
+            output_values: input.output_values
+        sets:
+          failed_steps: input.failed_steps
+          output_values: input.output_values
+        summary: No step failed; the outputs are the run's result and `finished_at` is stamped.
+      - name: failed
+        moves: swarm2.flow.Run.fail
+        instance: run_id
+        emits:
+          - swarm2.flow.RunFailed
+        payload:
+          swarm2.flow.RunFailed:
+            run_id: input.run_id
+            flow_id: input.flow_id
+            failed_steps: input.failed_steps
+        sets:
+          failed_steps: input.failed_steps
+          output_values: input.output_values
+        summary: At least one step rests in Failed; partial outputs are kept and `finished_at` is stamped.
+      - name: wrong-state
+        wrong_state: true
+        error: swarm2.flow.RunStateConflict
+        summary: Only a Running run can complete.
+
+  - name: swarm2.flow.CancelRun
+    naming:
+      wire: cancel-run
+      display: Cancel a run
+    input:
+      - name: run_id
+        type: Uuid
+      - name: reason
+        type: String
+    outcomes:
+      - name: cancelled
+        moves: swarm2.flow.Run.cancel
+        instance: run_id
+        emits:
+          - swarm2.flow.RunCancelled
+        payload:
+          swarm2.flow.RunCancelled:
+            run_id: input.run_id
+            reason: input.reason
+        summary: The run stops; the engine skips every Pending or Ready StepRun and lets Running ones finish.
+      - name: wrong-state
+        wrong_state: true
+        error: swarm2.flow.RunStateConflict
+        summary: The run had already finished.
+
+  # ---- Step runs (Engine) ------------------------------------------------------------------------
+
+  # One per `Flow.steps` entry, at run start. `unsatisfied_deps` = incoming edge count; 0 for a
+  # root step, which the engine then marks Ready at once.
+  - name: swarm2.flow.EnqueueStep
+    naming:
+      wire: enqueue-step
+      display: Enqueue a step of a run
+    input:
+      - name: run_id
+        type: Uuid
+      - name: step_id
+        type: String
+      - name: kind
+        type: swarm2.flow.StepKind
+      - name: max_attempts
+        type: Integer
+      - name: unsatisfied_deps
+        type: Integer
+    outcomes:
+      - name: enqueued
+        creates: swarm2.flow.StepRun
+        instance: step_run_id
+        emits:
+          - swarm2.flow.StepEnqueued
+        payload:
+          swarm2.flow.StepEnqueued:
+            run_id: input.run_id
+            step_id: input.step_id
+        sets:
+          run_id: input.run_id
+          step_id: input.step_id
+          kind: input.kind
+          max_attempts: input.max_attempts
+          unsatisfied_deps: input.unsatisfied_deps
+        summary: The step run exists in Pending with attempt 0.
+
+  # Called once per upstream success with the DECREMENTED count as input — the engine does the
+  # arithmetic, the guard reads the result (a `when` reads input only).
+  - name: swarm2.flow.MarkReady
+    naming:
+      wire: mark-ready
+      display: Record an upstream step done; mark ready at zero
+    input:
+      - name: step_run_id
+        type: Uuid
+      - name: unsatisfied_deps
+        type: Integer
+    outcomes:
+      - name: ready
+        when: unsatisfied_deps == 0
+        moves: swarm2.flow.StepRun.ready
+        instance: step_run_id
+        emits:
+          - swarm2.flow.StepReady
+        payload:
+          swarm2.flow.StepReady:
+            step_run_id: input.step_run_id
+        sets:
+          unsatisfied_deps: input.unsatisfied_deps
+        summary: Every dependency has succeeded; the step is on the engine's queue.
+      - name: waiting
+        updates: swarm2.flow.StepRun
+        instance: step_run_id
+        emits:
+          - swarm2.flow.StepWaiting
+        payload:
+          swarm2.flow.StepWaiting:
+            step_run_id: input.step_run_id
+            unsatisfied_deps: input.unsatisfied_deps
+        sets:
+          unsatisfied_deps: input.unsatisfied_deps
+        summary: Dependencies remain; the count is recorded and the step stays Pending.
+      - name: wrong-state
+        wrong_state: true
+        error: swarm2.flow.StepStateConflict
+        summary: The step was not Pending, so nothing was counted.
+
+  - name: swarm2.flow.StartStep
+    naming:
+      wire: start-step
+      display: Start a ready step
+    input:
+      - name: step_run_id
+        type: Uuid
+      - name: input_values
+        type: Map<String, String>
+    outcomes:
+      - name: started
+        moves: swarm2.flow.StepRun.start
+        instance: step_run_id
+        emits:
+          - swarm2.flow.StepStarted
+        payload:
+          swarm2.flow.StepStarted:
+            step_run_id: input.step_run_id
+        sets:
+          input_values: input.input_values
+        summary: The step is executing with the wired inputs; `attempt` is incremented and `started_at` stamped.
+      - name: wrong-state
+        wrong_state: true
+        error: swarm2.flow.StepStateConflict
+        summary: Only a Ready step can start.
+
+  # The exit code decides (CHARTER §5.4 "Exit 0 or fix the file"); for Tool/Llm/Subflow steps the
+  # engine maps the result onto 0 / non-zero before calling this.
+  - name: swarm2.flow.FinishStep
+    naming:
+      wire: finish-step
+      display: Finish a running step
+    input:
+      - name: step_run_id
+        type: Uuid
+      - name: exit_code
+        type: Integer
+      - name: output_values
+        type: Map<String, String>
+      - name: evidence_ref
+        type: Optional<String>
+    outcomes:
+      - name: succeeded
+        when: exit_code == 0
+        moves: swarm2.flow.StepRun.succeed
+        instance: step_run_id
+        emits:
+          - swarm2.flow.StepSucceeded
+        payload:
+          swarm2.flow.StepSucceeded:
+            step_run_id: input.step_run_id
+            exit_code: input.exit_code
+        sets:
+          exit_code: input.exit_code
+          output_values: input.output_values
+          evidence_ref: input.evidence_ref
+        summary: Outputs are available to downstream wires; the engine calls MarkReady on each successor.
+      - name: failed
+        moves: swarm2.flow.StepRun.fail
+        instance: step_run_id
+        emits:
+          - swarm2.flow.StepFailed
+        payload:
+          swarm2.flow.StepFailed:
+            step_run_id: input.step_run_id
+            exit_code: input.exit_code
+        sets:
+          exit_code: input.exit_code
+          output_values: input.output_values
+          evidence_ref: input.evidence_ref
+        summary: The attempt failed; the engine decides between RetryStep and leaving it Failed.
+      - name: wrong-state
+        wrong_state: true
+        error: swarm2.flow.StepStateConflict
+        summary: Only a Running step can finish.
+
+  # The engine decides `attempt < max_attempts` and passes the verdict as `attempts_left`: a
+  # `when` cannot compare two inputs — probed 2026-09-11 with `when: attempt < max_attempts`,
+  # verbatim: "error[ESS-COMMAND-002]: `attempt < max_attempts`: operator `<` does not admit
+  # `Integer` (Number) and `Text literal `max_attempts`` (Text)" — the right-hand side of a guard
+  # is a literal, the same limit invariants have (ESS-TYPE-002 on swarm2.config.Budgets).
+  # `attempt` and `max_attempts` stay as inputs so the error and the event can carry them.
+  - name: swarm2.flow.RetryStep
+    naming:
+      wire: retry-step
+      display: Retry a failed step
+    input:
+      - name: step_run_id
+        type: Uuid
+      - name: attempt
+        type: Integer
+      - name: max_attempts
+        type: Integer
+      - name: attempts_left
+        type: Boolean
+    outcomes:
+      - name: retried
+        when: attempts_left == true
+        moves: swarm2.flow.StepRun.retry
+        instance: step_run_id
+        emits:
+          - swarm2.flow.StepRetried
+        payload:
+          swarm2.flow.StepRetried:
+            step_run_id: input.step_run_id
+            attempt: input.attempt
+        summary: The step is Ready again; the next StartStep increments `attempt`.
+      - name: exhausted
+        error: swarm2.flow.RetriesExhausted
+        summary: No attempts remain; the step stays Failed.
+      - name: wrong-state
+        wrong_state: true
+        error: swarm2.flow.StepStateConflict
+        summary: Only a Failed step can be retried.
+
+  # An `Edge.when` evaluated false, or the run was cancelled before the step started.
+  - name: swarm2.flow.SkipStep
+    naming:
+      wire: skip-step
+      display: Skip a step
+    input:
+      - name: step_run_id
+        type: Uuid
+      - name: reason
+        type: String
+    outcomes:
+      - name: skipped
+        moves: swarm2.flow.StepRun.skip
+        instance: step_run_id
+        emits:
+          - swarm2.flow.StepSkipped
+        payload:
+          swarm2.flow.StepSkipped:
+            step_run_id: input.step_run_id
+            reason: input.reason
+        summary: The step never ran; its successors count it as satisfied.
+      - name: wrong-state
+        wrong_state: true
+        error: swarm2.flow.StepStateConflict
+        summary: A step that has started cannot be skipped.
+
+  # The subflow composition: a Subflow step's StartRun produced a child Run; record it on the
+  # step so `RunTree` can be walked from either end.
+  - name: swarm2.flow.AttachChildRun
+    naming:
+      wire: attach-child-run
+      display: Attach a child run to a subflow step
+    input:
+      - name: step_run_id
+        type: Uuid
+      - name: child_run_id
+        type: Uuid
+    outcomes:
+      - name: attached
+        updates: swarm2.flow.StepRun
+        instance: step_run_id
+        emits:
+          - swarm2.flow.ChildRunAttached
+        payload:
+          swarm2.flow.ChildRunAttached:
+            step_run_id: input.step_run_id
+            child_run_id: input.child_run_id
+        sets:
+          child_run_id: input.child_run_id
+        summary: The step run points at the child run whose completion will finish it.
+
+events:
+  # Emitted by NO outcome: it is the `escalate` event of a binding in components.yaml (a level 3→4 binding could not start the flow a workflow state runs).
+  # An escalation nobody declared would be a silence; this is the fact instead (WakeLost precedent).
+  - name: swarm2.flow.RunNotStarted
+    fields:
+      - name: flow_id
+        type: String
+  - name: swarm2.flow.FlowDrafted
+    fields:
+      - name: flow_id
+        type: String
+      - name: swarm_id
+        type: Uuid
+      - name: name
+        type: String
+  - name: swarm2.flow.FlowPublished
+    fields:
+      - name: flow_id
+        type: String
+      - name: version
+        type: Integer
+  - name: swarm2.flow.FlowRevised
+    fields:
+      - name: flow_id
+        type: String
+      - name: version
+        type: Integer
+  - name: swarm2.flow.FlowRetired
+    fields:
+      - name: flow_id
+        type: String
+  - name: swarm2.flow.RunStarted
+    fields:
+      - name: run_id
+        type: Uuid
+      - name: flow_id
+        type: String
+      - name: swarm_id
+        type: Uuid
+      - name: started_by
+        type: String
+  - name: swarm2.flow.RunRunning
+    fields:
+      - name: run_id
+        type: Uuid
+  - name: swarm2.flow.RunSucceeded
+    fields:
+      - name: run_id
+        type: Uuid
+      - name: flow_id
+        type: String
+      - name: swarm_id
+        type: Uuid
+      - name: output_values
+        type: Map<String, String>
+  - name: swarm2.flow.RunFailed
+    fields:
+      - name: run_id
+        type: Uuid
+      - name: flow_id
+        type: String
+      - name: failed_steps
+        type: Integer
+  - name: swarm2.flow.RunCancelled
+    fields:
+      - name: run_id
+        type: Uuid
+      - name: reason
+        type: String
+  - name: swarm2.flow.StepEnqueued
+    fields:
+      - name: step_run_id
+        type: Uuid
+      - name: run_id
+        type: Uuid
+      - name: step_id
+        type: String
+  # `run_id` and `step_id` are resolved by the implementation from the step run; the input
+  # carries only `step_run_id`.
+  - name: swarm2.flow.StepReady
+    fields:
+      - name: step_run_id
+        type: Uuid
+      - name: run_id
+        type: Uuid
+      - name: step_id
+        type: String
+  - name: swarm2.flow.StepWaiting
+    fields:
+      - name: step_run_id
+        type: Uuid
+      - name: unsatisfied_deps
+        type: Integer
+  - name: swarm2.flow.StepStarted
+    fields:
+      - name: step_run_id
+        type: Uuid
+  - name: swarm2.flow.StepSucceeded
+    fields:
+      - name: step_run_id
+        type: Uuid
+      - name: run_id
+        type: Uuid
+      - name: step_id
+        type: String
+      - name: exit_code
+        type: Integer
+  - name: swarm2.flow.StepFailed
+    fields:
+      - name: step_run_id
+        type: Uuid
+      - name: run_id
+        type: Uuid
+      - name: step_id
+        type: String
+      - name: exit_code
+        type: Integer
+  - name: swarm2.flow.StepRetried
+    fields:
+      - name: step_run_id
+        type: Uuid
+      - name: attempt
+        type: Integer
+  - name: swarm2.flow.StepSkipped
+    fields:
+      - name: step_run_id
+        type: Uuid
+      - name: reason
+        type: String
+  - name: swarm2.flow.ChildRunAttached
+    fields:
+      - name: step_run_id
+        type: Uuid
+      - name: child_run_id
+        type: Uuid
+
+views:
+  # What a binding or an agent may start. Keyed by the caller's swarm_id in the implementation.
+  - name: swarm2.flow.PublishedFlows
+    source: swarm2.flow.Flow
+    consistency: read_your_writes
+    filter: state == Published
+    fields:
+      - name: flow_id
+        type: String
+      - name: swarm_id
+        type: Uuid
+      - name: name
+        type: String
+      - name: summary
+        type: String
+      - name: version
+        type: Integer
+      - name: owner_agent
+        type: Optional<String>
+      - name: binds
+        type: Optional<swarm2.flow.Binding>
+    naming:
+      wire: published
+      display: Flows that may be run
+
+  # The document the canvas renders (website/src/model.ts `Flow`).
+  - name: swarm2.flow.FlowById
+    source: swarm2.flow.Flow
+    consistency: read_your_writes
+    fields:
+      - name: flow_id
+        type: String
+      - name: swarm_id
+        type: Uuid
+      - name: name
+        type: String
+      - name: summary
+        type: String
+      - name: version
+        type: Integer
+      - name: owner_agent
+        type: Optional<String>
+      - name: binds
+        type: Optional<swarm2.flow.Binding>
+      - name: inputs
+        type: List<swarm2.flow.Port>
+      - name: outputs
+        type: List<swarm2.flow.Port>
+      - name: context
+        type: swarm2.flow.Context
+      - name: steps
+        type: List<swarm2.flow.Step>
+      - name: edges
+        type: List<swarm2.flow.Edge>
+      - name: published_at
+        type: Optional<Timestamp>
+    naming:
+      wire: by-id
+      display: One flow, whole
+
+  # The engine's queue.
+  - name: swarm2.flow.ReadySteps
+    source: swarm2.flow.StepRun
+    consistency: read_your_writes
+    filter: state == Ready
+    fields:
+      - name: step_run_id
+        type: Uuid
+      - name: run_id
+        type: Uuid
+      - name: step_id
+        type: String
+      - name: kind
+        type: swarm2.flow.StepKind
+      - name: attempt
+        type: Integer
+      - name: max_attempts
+        type: Integer
+    naming:
+      wire: ready
+      display: Step runs waiting to start
+
+  - name: swarm2.flow.FailedSteps
+    source: swarm2.flow.StepRun
+    consistency: read_your_writes
+    filter: state == Failed
+    fields:
+      - name: step_run_id
+        type: Uuid
+      - name: run_id
+        type: Uuid
+      - name: step_id
+        type: String
+      - name: attempt
+        type: Integer
+      - name: max_attempts
+        type: Integer
+      - name: exit_code
+        type: Optional<Integer>
+      - name: evidence_ref
+        type: Optional<String>
+    naming:
+      wire: failed
+      display: Step runs that failed their last attempt
+
+  - name: swarm2.flow.RunningRuns
+    source: swarm2.flow.Run
+    consistency: read_your_writes
+    filter: state == Running
+    fields:
+      - name: run_id
+        type: Uuid
+      - name: flow_id
+        type: String
+      - name: swarm_id
+        type: Uuid
+      - name: started_by
+        type: String
+      - name: parent_run_id
+        type: Optional<Uuid>
+      - name: started_at
+        type: Timestamp
+    naming:
+      wire: running
+      display: Runs in progress
+
+  - name: swarm2.flow.RunById
+    source: swarm2.flow.Run
+    consistency: read_your_writes
+    fields:
+      - name: run_id
+        type: Uuid
+      - name: flow_id
+        type: String
+      - name: swarm_id
+        type: Uuid
+      - name: started_by
+        type: String
+      - name: parent_run_id
+        type: Optional<Uuid>
+      - name: parent_step_id
+        type: Optional<String>
+      - name: input_values
+        type: Map<String, String>
+      - name: output_values
+        type: Map<String, String>
+      - name: context
+        type: swarm2.flow.Context
+      - name: failed_steps
+        type: Integer
+      - name: started_at
+        type: Timestamp
+      - name: finished_at
+        type: Optional<Timestamp>
+    naming:
+      wire: by-id
+      display: One run, whole
+
+  # The composition at runtime: parent → child edges, walked by the implementation from the
+  # parent_run_id column (a view has no joins).
+  - name: swarm2.flow.RunTree
+    source: swarm2.flow.Run
+    consistency: eventual
+    fields:
+      - name: run_id
+        type: Uuid
+      - name: flow_id
+        type: String
+      - name: parent_run_id
+        type: Optional<Uuid>
+      - name: parent_step_id
+        type: Optional<String>
+      - name: started_at
+        type: Timestamp
+      - name: finished_at
+        type: Optional<Timestamp>
+    naming:
+      wire: tree
+      display: Runs and the child runs their subflow steps started
+
+  # Filtered to one run by the caller (the filter slot is spent on nothing: `run_id == <input>`
+  # is not a literal).
+  - name: swarm2.flow.StepRunsForRun
+    source: swarm2.flow.StepRun
+    consistency: eventual
+    order_by:
+      - started_at asc
+    fields:
+      - name: step_run_id
+        type: Uuid
+      - name: run_id
+        type: Uuid
+      - name: step_id
+        type: String
+      - name: kind
+        type: swarm2.flow.StepKind
+      - name: attempt
+        type: Integer
+      - name: max_attempts
+        type: Integer
+      - name: unsatisfied_deps
+        type: Integer
+      - name: input_values
+        type: Map<String, String>
+      - name: output_values
+        type: Map<String, String>
+      - name: exit_code
+        type: Optional<Integer>
+      - name: evidence_ref
+        type: Optional<String>
+      - name: child_run_id
+        type: Optional<Uuid>
+      - name: started_at
+        type: Optional<Timestamp>
+      - name: finished_at
+        type: Optional<Timestamp>
+    naming:
+      wire: steps-for-run
+      display: Every step run of a run, in start order
+
+actors:
+  # The driver: what executes a flow. Today nothing — the four flows above run as prose in the
+  # windows; later `metaharness`.
+  - name: swarm2.flow.Engine
+    may:
+      - swarm2.flow.StartRun
+      - swarm2.flow.BeginRun
+      - swarm2.flow.CompleteRun
+      - swarm2.flow.CancelRun
+      - swarm2.flow.EnqueueStep
+      - swarm2.flow.MarkReady
+      - swarm2.flow.StartStep
+      - swarm2.flow.FinishStep
+      - swarm2.flow.RetryStep
+      - swarm2.flow.SkipStep
+      - swarm2.flow.AttachChildRun
+    naming:
+      display: Flow engine
+  # An agent or the orchestrator; agents build flows themselves.
+  - name: swarm2.flow.Author
+    may:
+      - swarm2.flow.DraftFlow
+      - swarm2.flow.PublishFlow
+      - swarm2.flow.ReviseFlow
+      - swarm2.flow.RetireFlow
+    naming:
+      display: Flow author

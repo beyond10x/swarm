@@ -1,0 +1,31 @@
+/* Design tokens. Shared; the component-library owner (W3) may extend, never rename. */
+:root {
+  --color-bg: #0f1115;
+  --color-surface: #171a21;
+  --color-surface-2: #1f232c;
+  --color-border: #2b303b;
+  --color-text: #e6e8ee;
+  --color-text-muted: #9aa3b2;
+  --color-accent: #6ea8fe;
+  --color-accent-2: #a78bfa;
+  --color-ok: #4ade80;
+  --color-warn: #fbbf24;
+  --color-fault: #f87171;
+  --color-info: #38bdf8;
+  --radius-1: 6px;
+  --radius-2: 10px;
+  --radius-3: 16px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-8: 48px;
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --shadow-1: 0 1px 2px rgba(0,0,0,.4);
+  --shadow-2: 0 8px 24px rgba(0,0,0,.35);
+}
+html, body { margin: 0; background: var(--color-bg); color: var(--color-text); font-family: var(--font); font-size: 14px; }
+* { box-sizing: border-box; }

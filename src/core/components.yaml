@@ -1,0 +1,620 @@
+# The subsystems (level 2) and the wiring between them. Kernel first — Timo, 2026-09-11: "it
+# usually starts simple: you need to solve tool access, orchestrator needs to be able to create the
+# agents and they can basically build anything anyway - we do provide inbox + eventbus like
+# connections + presentation layer for the human to observe. from there on they build what they need
+# and like." The four kernel components are `swarm-manager`, `agent-runtime`, `board` and
+# `blackbox-bus`; `flow-engine` is what they build with; `orchestrator`, `scheduler` and
+# `decision-console` are what the first orchestrator built for itself on 2026-09-11 (./swarm), kept
+# because they are measured, not because a new swarm has to run them.
+#
+# A binding is `when: event → invoke: command`; `delivery` and `on_failure` are required words
+# (ess/examples/billing/components.yaml). A `mapping` maps one event field per input, or a literal.
+# `escalate` publishes a declared event nothing else emits — the way a lost wake or an undelivered
+# assignment becomes a fact instead of a silence.
+#
+# Two limits met at integration (2026-09-11, ess 0.23.0), both kept visible rather than worked
+# around: (1) `reached_by: command_line` requires a `cli:` block naming the binary and the command
+# tree, so the five CLI-reached components (agent-runtime, board, flow-engine, scheduler,
+# decision-console) are `in_process` until that block is written from board.sh/eventlog.sh's real
+# grammars; (2) "a literal in a binding is text", so an input typed Uuid, Integer or Boolean cannot
+# be filled by a literal — such inputs are left unmapped and the implementation supplies them from
+# the run's context (the swarm id, the current generation, the counts a script prints).
+
+conversions:
+  - from: String
+    to: swarm2.fault.Kind
+    because: >-
+      An agent raises its fault with a free-text kind (eventlog.md's `fault` line carries prose);
+      the fault ledger classifies it. The implementation maps known names onto the enum and files
+      the rest as Unknown, which the enum declares for exactly this crossing.
+  - from: Optional<String>
+    to: swarm2.fault.Kind
+    because: >-
+      The orchestrator's Classify answers four verdicts with one input set, so its fault kind is
+      Optional; a fault-verdict with no kind is filed as Unknown rather than refused, because the
+      fault is real even when its name is not yet.
+  - from: Integer
+    to: String
+    because: >-
+      A decision's identity is its number; the agent's blocked_on ref is that number as text
+      (eventlog.md: "one type for one identity", the ref is a string). The crossing is a rendering.
+  # `Classify.question` is Optional (a verdict of `continue` carries no question), `Raise.question`
+  # is required: the crossing is written down (ESS-COMMAND-002 refuses it otherwise).
+  - from: Optional<String>
+    to: String
+    because: >-
+      The orchestrator's DecisionParked and FaultDetected carry Optional text because the same
+      command answers four verdicts; the receiving commands require it because a decision without
+      a question and a fault without a kind are not records. The implementation refuses the binding
+      when the Optional is absent, which is the right answer: a parked verdict with no question is a
+      classification bug, not a decision.
+
+components:
+  # ---- kernel ---------------------------------------------------------------------------------
+  - component: swarm-manager
+    summary: Many swarms, and the runtime configuration each runs with. The one surface a person or a UI reaches across a process boundary.
+    owns:
+      domains:
+        - swarm2.manager
+        - swarm2.config
+    accepts:
+      commands:
+        - swarm2.manager.CreateSwarm
+        - swarm2.manager.UpdateSwarm
+        - swarm2.manager.AdoptConfig
+        - swarm2.manager.StartSwarm
+        - swarm2.manager.PauseSwarm
+        - swarm2.manager.ResumeSwarm
+        - swarm2.manager.StopSwarm
+        - swarm2.manager.DeleteSwarm
+        - swarm2.config.DraftConfig
+        - swarm2.config.ActivateConfig
+        - swarm2.config.SupersedeConfig
+        - swarm2.config.DiscardConfig
+    publishes:
+      events:
+        - swarm2.manager.SwarmCreated
+        - swarm2.manager.SwarmUpdated
+        - swarm2.manager.ConfigAdopted
+        - swarm2.manager.SwarmStarted
+        - swarm2.manager.SwarmPaused
+        - swarm2.manager.SwarmResumed
+        - swarm2.manager.SwarmStopped
+        - swarm2.manager.SwarmDeleted
+        - swarm2.config.ConfigDrafted
+        - swarm2.config.ConfigActivated
+        - swarm2.config.ConfigSuperseded
+        - swarm2.config.ConfigDiscarded
+    reached_by: network
+
+  - component: agent-runtime
+    summary: Agents — a role on a host with a loadout (tool access) — their assignments, and the work, waves and faults they carry. One per swarm window; the orchestrator is one of them.
+    owns:
+      domains:
+        - swarm2.agent
+        - swarm2.work
+        - swarm2.fault
+    accepts:
+      commands:
+        - swarm2.agent.Spawn
+        - swarm2.agent.Assign
+        - swarm2.agent.RecordAssignment
+        - swarm2.agent.TakeAssignment
+        - swarm2.agent.ReportStep
+        - swarm2.agent.ReportGate
+        - swarm2.agent.Block
+        - swarm2.agent.Unblock
+        - swarm2.agent.Park
+        - swarm2.agent.Unpark
+        - swarm2.agent.GoIdle
+        - swarm2.agent.Wake
+        - swarm2.agent.RaiseFault
+        - swarm2.agent.Restart
+        - swarm2.agent.Retire
+        - swarm2.agent.Note
+        - swarm2.agent.FinishAssignment
+        - swarm2.agent.ClearAssignment
+        - swarm2.work.Open
+        - swarm2.work.FinishIntake
+        - swarm2.work.RecordSpecification
+        - swarm2.work.RecordDecomposition
+        - swarm2.work.RecordVerifiers
+        - swarm2.work.RecordChange
+        - swarm2.work.RecordVerification
+        - swarm2.work.RecordAdversarial
+        - swarm2.work.RecordReview
+        - swarm2.work.ProposeWave
+        - swarm2.work.ApproveWave
+        - swarm2.work.DispatchWave
+        - swarm2.work.MergeWave
+        - swarm2.work.AbandonWave
+        - swarm2.fault.DetectFault
+        - swarm2.fault.Diagnose
+        - swarm2.fault.Mitigate
+        - swarm2.fault.Recover
+        - swarm2.fault.Escalate
+        - swarm2.fault.Learn
+    publishes:
+      events:
+        - swarm2.agent.AgentSpawned
+        - swarm2.agent.AssignmentPosted
+        - swarm2.agent.AssignmentRecorded
+        - swarm2.agent.AssignmentTaken
+        - swarm2.agent.StepDone
+        - swarm2.agent.GateRed
+        - swarm2.agent.GateGreen
+        - swarm2.agent.AgentBlocked
+        - swarm2.agent.AgentUnblocked
+        - swarm2.agent.DecisionParked
+        - swarm2.agent.DecisionCleared
+        - swarm2.agent.AgentIdle
+        - swarm2.agent.AgentWoken
+        - swarm2.agent.FaultRaised
+        - swarm2.agent.AgentRestarted
+        - swarm2.agent.AgentRetired
+        - swarm2.agent.NoteEmitted
+        - swarm2.agent.AssignmentDone
+        - swarm2.agent.AssignmentCleared
+        - swarm2.work.WorkItemOpened
+        - swarm2.work.IntakeDone
+        - swarm2.work.Specified
+        - swarm2.work.WorkDeclined
+        - swarm2.work.Decomposed
+        - swarm2.work.VerifiersEstablished
+        - swarm2.work.Changed
+        - swarm2.work.Verified
+        - swarm2.work.VerifyFailed
+        - swarm2.work.AdversaryBrokeIt
+        - swarm2.work.AdversaryPassed
+        - swarm2.work.WorkItemCompleted
+        - swarm2.work.ChangesRequested
+        - swarm2.work.WaveProposed
+        - swarm2.work.WaveApproved
+        - swarm2.work.WaveDispatched
+        - swarm2.work.WaveMerged
+        - swarm2.work.WaveAbandoned
+        - swarm2.fault.FaultDetected
+        - swarm2.fault.FaultDiagnosed
+        - swarm2.fault.FaultMitigated
+        - swarm2.fault.FaultEscalated
+        - swarm2.fault.FaultRecovered
+        - swarm2.fault.MitigationFailed
+        - swarm2.fault.RecoveryPending
+        - swarm2.fault.LessonRecorded
+    reached_by: in_process
+
+  - component: board
+    summary: The inbox. Every agent owns named inboxes; a post is addressed to a pair and wakes nobody (swarm/bin/board.sh).
+    owns:
+      domains:
+        - swarm2.board
+    accepts:
+      commands:
+        - swarm2.board.CreateInbox
+        - swarm2.board.PostMessage
+        - swarm2.board.PostBroadcast
+        - swarm2.board.MarkRead
+        - swarm2.board.AckMessage
+    publishes:
+      events:
+        - swarm2.board.InboxCreated
+        - swarm2.board.MessagePosted
+        - swarm2.board.BroadcastPosted
+        - swarm2.board.MessageRead
+        - swarm2.board.MessageAcked
+    reached_by: in_process
+
+  - component: blackbox-bus
+    summary: The eventbus-like connections. Boxes with only inputs and outputs, schemas known to everyone, connections other agents make between them — the canvas.
+    owns:
+      domains:
+        - swarm2.blackbox
+    accepts:
+      commands:
+        - swarm2.blackbox.DraftSchema
+        - swarm2.blackbox.PublishSchema
+        - swarm2.blackbox.DeprecateSchema
+        - swarm2.blackbox.DraftBox
+        - swarm2.blackbox.MoveBox
+        - swarm2.blackbox.RedefinePorts
+        - swarm2.blackbox.PublishBox
+        - swarm2.blackbox.ReviseBox
+        - swarm2.blackbox.RetireBox
+        - swarm2.blackbox.Connect
+        - swarm2.blackbox.ActivateConnection
+        - swarm2.blackbox.BreakConnection
+        - swarm2.blackbox.RepairConnection
+        - swarm2.blackbox.Disconnect
+    publishes:
+      events:
+        - swarm2.blackbox.SchemaDrafted
+        - swarm2.blackbox.SchemaPublished
+        - swarm2.blackbox.SchemaDeprecated
+        - swarm2.blackbox.BoxDrafted
+        - swarm2.blackbox.BoxMoved
+        - swarm2.blackbox.PortsRedefined
+        - swarm2.blackbox.BoxPublished
+        - swarm2.blackbox.BoxRevised
+        - swarm2.blackbox.BoxRetired
+        - swarm2.blackbox.ConnectionProposed
+        - swarm2.blackbox.ConnectionLive
+        - swarm2.blackbox.ConnectionBroken
+        - swarm2.blackbox.ConnectionRepaired
+        - swarm2.blackbox.ConnectionRemoved
+    reached_by: network
+
+  # ---- what they build with --------------------------------------------------------------------
+  - component: flow-engine
+    summary: Runs flows — DAGs of command, tool, llm and subflow steps with typed ports and a context. Driven; later by metaharness.
+    owns:
+      domains:
+        - swarm2.flow
+    accepts:
+      commands:
+        - swarm2.flow.DraftFlow
+        - swarm2.flow.PublishFlow
+        - swarm2.flow.ReviseFlow
+        - swarm2.flow.RetireFlow
+        - swarm2.flow.StartRun
+        - swarm2.flow.BeginRun
+        - swarm2.flow.CompleteRun
+        - swarm2.flow.CancelRun
+        - swarm2.flow.EnqueueStep
+        - swarm2.flow.MarkReady
+        - swarm2.flow.StartStep
+        - swarm2.flow.FinishStep
+        - swarm2.flow.RetryStep
+        - swarm2.flow.SkipStep
+        - swarm2.flow.AttachChildRun
+    publishes:
+      events:
+        - swarm2.flow.FlowDrafted
+        - swarm2.flow.FlowPublished
+        - swarm2.flow.FlowRevised
+        - swarm2.flow.FlowRetired
+        - swarm2.flow.RunStarted
+        - swarm2.flow.RunRunning
+        - swarm2.flow.RunSucceeded
+        - swarm2.flow.RunFailed
+        - swarm2.flow.RunCancelled
+        - swarm2.flow.StepEnqueued
+        - swarm2.flow.StepReady
+        - swarm2.flow.StepWaiting
+        - swarm2.flow.StepStarted
+        - swarm2.flow.StepSucceeded
+        - swarm2.flow.StepFailed
+        - swarm2.flow.StepRetried
+        - swarm2.flow.StepSkipped
+        - swarm2.flow.ChildRunAttached
+    reached_by: in_process
+
+  # ---- what the first orchestrator built for itself (./swarm, 2026-09-11) -----------------------
+  - component: orchestrator
+    summary: One per swarm. Its run, its generations, the check-in and memory-tick cycles, the four-verdict classification. In-process with the agent it is.
+    owns:
+      domains:
+        - swarm2.orchestrator
+    accepts:
+      commands:
+        - swarm2.orchestrator.OpenRun
+        - swarm2.orchestrator.CloseRun
+        - swarm2.orchestrator.Seed
+        - swarm2.orchestrator.FirstTick
+        - swarm2.orchestrator.CheckIn
+        - swarm2.orchestrator.Classify
+        - swarm2.orchestrator.Report
+        - swarm2.orchestrator.MemoryTick
+        - swarm2.orchestrator.Resume
+        - swarm2.orchestrator.Retire
+        - swarm2.orchestrator.Abort
+    publishes:
+      events:
+        - swarm2.orchestrator.RunOpened
+        - swarm2.orchestrator.RunClosed
+        - swarm2.orchestrator.GenerationSeeded
+        - swarm2.orchestrator.CheckInStarted
+        - swarm2.orchestrator.MemberContinued
+        - swarm2.orchestrator.MemberIdleConfirmed
+        - swarm2.orchestrator.DecisionParked
+        - swarm2.orchestrator.FaultDetected
+        - swarm2.orchestrator.ReportSent
+        - swarm2.orchestrator.ReportSuppressed
+        - swarm2.orchestrator.GenerationDeferred
+        - swarm2.orchestrator.DeferCapReached
+        - swarm2.orchestrator.GenerationRestarting
+        - swarm2.orchestrator.GenerationResumed
+        - swarm2.orchestrator.GenerationRetired
+        - swarm2.orchestrator.GenerationAborted
+    reached_by: in_process
+
+  - component: scheduler
+    summary: The schedulers — wake gates polled every 60 s at zero tokens, and the two crons. The Clock actor lives here.
+    owns:
+      domains:
+        - swarm2.schedule
+    accepts:
+      commands:
+        - swarm2.schedule.Enrol
+        - swarm2.schedule.Evaluate
+        - swarm2.schedule.Arm
+        - swarm2.schedule.Disable
+        - swarm2.schedule.Schedule
+        - swarm2.schedule.Fire
+        - swarm2.schedule.Cancel
+        - swarm2.schedule.Expire
+    publishes:
+      events:
+        - swarm2.schedule.GateEnrolled
+        - swarm2.schedule.GateFired
+        - swarm2.schedule.GateSlept
+        - swarm2.schedule.GateArmed
+        - swarm2.schedule.GateDisabled
+        - swarm2.schedule.WakeLost
+        - swarm2.schedule.CronScheduled
+        - swarm2.schedule.CheckInTicked
+        - swarm2.schedule.MemoryTicked
+        - swarm2.schedule.CronCancelled
+        - swarm2.schedule.CronExpired
+    reached_by: in_process
+
+  - component: decision-console
+    summary: Numbered binary decisions; the console Timo types `1y 2n 3?` into (swarm/bin/decisions-console.sh).
+    owns:
+      domains:
+        - swarm2.decision
+    accepts:
+      commands:
+        - swarm2.decision.Raise
+        - swarm2.decision.AnswerDecision
+        - swarm2.decision.Explain
+        - swarm2.decision.Hold
+        - swarm2.decision.Release
+        - swarm2.decision.MarkMoot
+        - swarm2.decision.Withdraw
+        - swarm2.decision.Take
+    publishes:
+      events:
+        - swarm2.decision.DecisionRaised
+        - swarm2.decision.DecisionAnswered
+        - swarm2.decision.ExplanationRequested
+        - swarm2.decision.DecisionHeld
+        - swarm2.decision.DecisionReleased
+        - swarm2.decision.DecisionMoot
+        - swarm2.decision.DecisionWithdrawn
+        - swarm2.decision.DecisionTaken
+    reached_by: in_process
+
+bindings:
+  # ---- kernel wiring ----------------------------------------------------------------------------
+  - id: adopt-activated-config
+    summary: The swarm record learns which config is in force.
+    when: {event: swarm2.config.ConfigActivated}
+    invoke: {command: swarm2.manager.AdoptConfig}
+    mapping:
+      swarm_id: event.swarm_id
+      config_id: event.config_id
+    delivery: at_least_once
+    on_failure: retry
+
+  - id: open-run-on-start
+    summary: A started swarm has a run; a started swarm with no run is a fault, not a silence.
+    when: {event: swarm2.manager.SwarmStarted}
+    invoke: {command: swarm2.orchestrator.OpenRun}
+    mapping:
+      swarm_id: event.swarm_id
+      name: run
+      record_dir: swarm/runs
+    delivery: at_most_once
+    on_failure:
+      escalate:
+        emits: swarm2.orchestrator.RunOpenFailed
+
+  - id: assignment-is-a-message
+    summary: Timo, ~14:00 — "we put a message on the inbox and the swarm members read from there".
+    when: {event: swarm2.agent.AssignmentPosted}
+    invoke: {command: swarm2.board.PostMessage}
+    mapping:
+      recipient_id: event.agent_id
+      inbox_name: main
+      sender_id: orchestrator
+      subject: event.outcome
+      body: event.signoff
+    delivery: at_least_once
+    on_failure:
+      escalate:
+        emits: swarm2.agent.AssignmentUndelivered
+
+  - id: spawn-runs-the-spawn-flow
+    summary: Level 3 → 4. A spawned agent runs flows/agent.spawn.yaml.
+    when: {event: swarm2.agent.AgentSpawned}
+    invoke: {command: swarm2.flow.StartRun}
+    mapping:
+      flow_id: agent.spawn
+      swarm_id: event.swarm_id
+      started_by: binding
+    delivery: at_most_once
+    on_failure:
+      escalate:
+        emits: swarm2.flow.RunNotStarted
+
+  - id: result-reaches-the-orchestrator
+    summary: WORKING-RULES §3 — results go through the board, never a pane.
+    when: {event: swarm2.work.WorkItemCompleted}
+    invoke: {command: swarm2.board.PostMessage}
+    mapping:
+      recipient_id: orchestrator
+      inbox_name: main
+      sender_id: event.owner_agent
+      subject: event.artifact_ref
+      body: event.review_ref
+    delivery: at_least_once
+    on_failure:
+      escalate:
+        emits: swarm2.work.ResultUndelivered
+
+  # ---- schedulers -------------------------------------------------------------------------------
+  # There is deliberately NO binding from MessagePosted to the wake gate. A post wakes nobody
+  # (WORKING-RULES §4); the unread count is one of the gate's WAKE_SIGNAL lines, read by the Clock's
+  # 60 s Evaluate (wake-gate.md). A binding here would need the five Booleans Evaluate takes, which
+  # only the poll can compute — "a literal in a binding is text" made that explicit.
+
+  - id: gate-wakes-the-agent
+    summary: wake-gate.md — a wake is stamped when delivered; a window that dies before it reads has consumed it. at_most_once + escalate is that hazard, typed.
+    when: {event: swarm2.schedule.GateFired}
+    invoke: {command: swarm2.agent.Wake}
+    mapping:
+      agent_id: event.agent_id
+      reason: event.reason
+    delivery: at_most_once
+    on_failure:
+      escalate:
+        emits: swarm2.schedule.WakeLost
+
+  - id: wake-runs-the-wake-pass
+    summary: Level 3 → 4. A woken agent runs flows/agent.wake-pass.yaml.
+    when: {event: swarm2.agent.AgentWoken}
+    invoke: {command: swarm2.flow.StartRun}
+    mapping:
+      flow_id: agent.wake-pass
+      swarm_id: event.swarm_id
+      started_by: event.agent_id
+    delivery: at_most_once
+    on_failure:
+      escalate:
+        emits: swarm2.flow.RunNotStarted
+
+  - id: check-in-tick-runs-the-check-in-flow
+    summary: >-
+      SEED.md §1 — the */1 cron starts flows/orchestrator.check-in.yaml; the flow's last steps call
+      CheckIn, Classify and Report with the counts its first steps produced. A missed tick is caught
+      by the next one.
+    when: {event: swarm2.schedule.CheckInTicked}
+    invoke: {command: swarm2.flow.StartRun}
+    mapping:
+      flow_id: orchestrator.check-in
+      swarm_id: event.swarm_id
+      started_by: event.agent_id
+    delivery: at_most_once
+    on_failure: drop
+
+  - id: memory-tick-runs-the-memory-tick-flow
+    summary: >-
+      CHARTER §5 — the */15 cron starts flows/orchestrator.memory-tick.yaml, whose steps compute the
+      five facts MemoryTick takes and end by calling it. A missed memory tick delays a restart, so it
+      is escalated, not dropped.
+    when: {event: swarm2.schedule.MemoryTicked}
+    invoke: {command: swarm2.flow.StartRun}
+    mapping:
+      flow_id: orchestrator.memory-tick
+      swarm_id: event.swarm_id
+      started_by: event.agent_id
+    delivery: at_most_once
+    on_failure:
+      escalate:
+        emits: swarm2.orchestrator.TickLost
+
+  - id: continue-is-a-post
+    summary: AGENTS.md §1 step 5 — a `continue` verdict sends the next step to the agent's inbox.
+    when: {event: swarm2.orchestrator.MemberContinued}
+    invoke: {command: swarm2.board.PostMessage}
+    mapping:
+      recipient_id: event.agent_id
+      inbox_name: main
+      sender_id: orchestrator
+      subject: next-step
+      body: event.msg
+    delivery: at_least_once
+    on_failure: retry
+
+  - id: parked-verdict-raises-a-decision
+    summary: WORKING-RULES §9 — only the coordinator mints numbers.
+    when: {event: swarm2.orchestrator.DecisionParked}
+    invoke: {command: swarm2.decision.Raise}
+    mapping:
+      swarm_id: event.swarm_id
+      kind: RealQuestion
+      question: event.question
+      default_on_silence: event.default_on_silence
+      source_agent: event.agent_id
+    delivery: at_least_once
+    on_failure: retry
+
+  - id: fault-verdict-opens-a-fault
+    summary: >-
+      WORKING-RULES §8 — verdict `fault`: fix it, or report it if fixing needs Timo.
+    when: {event: swarm2.orchestrator.FaultDetected}
+    invoke: {command: swarm2.fault.DetectFault}
+    mapping:
+      swarm_id: event.swarm_id
+      agent_id: event.agent_id
+      kind: event.kind
+      detected_by: orchestrator
+      msg: event.msg
+    delivery: at_least_once
+    on_failure: retry
+
+  - id: agent-fault-opens-a-fault
+    summary: WORKING-RULES §10 — the `fault` event-log kind.
+    when: {event: swarm2.agent.FaultRaised}
+    invoke: {command: swarm2.fault.DetectFault}
+    mapping:
+      swarm_id: event.swarm_id
+      agent_id: event.agent_id
+      kind: event.kind
+      detected_by: event.agent_id
+      msg: event.msg
+    delivery: at_least_once
+    on_failure: retry
+
+  - id: escalated-fault-is-a-blocker-row
+    summary: A fault that needs Timo's hands reaches him as a numbered decision (§9 "blocker").
+    when: {event: swarm2.fault.FaultEscalated}
+    invoke: {command: swarm2.decision.Raise}
+    mapping:
+      swarm_id: event.swarm_id
+      kind: Blocker
+      question: event.msg
+      default_on_silence: leave-it
+      source_agent: event.agent_id
+    delivery: at_least_once
+    on_failure: retry
+
+  - id: answer-unparks-the-agent
+    summary: eventlog.md — `decision_cleared --ref <n>` is the only clear.
+    when: {event: swarm2.decision.DecisionAnswered}
+    invoke: {command: swarm2.agent.Unpark}
+    mapping:
+      agent_id: event.source_agent
+      decision_ref: event.number
+      msg: answered
+    delivery: at_least_once
+    on_failure:
+      escalate:
+        emits: swarm2.decision.AnswerUndelivered
+
+  - id: defer-cap-parks-the-question
+    summary: CHARTER §5.7 — on the 4th tick the in-flight question becomes a numbered row.
+    when: {event: swarm2.orchestrator.DeferCapReached}
+    invoke: {command: swarm2.decision.Raise}
+    mapping:
+      swarm_id: event.swarm_id
+      kind: RealQuestion
+      question: in-flight-question
+      default_on_silence: unchanged
+      source_agent: orchestrator
+    delivery: at_least_once
+    on_failure: retry
+
+  - id: retired-generation-is-reseeded
+    summary: CHARTER §7 — the seed hook cannot start the first turn; a generation that never comes back is a named event.
+    when: {event: swarm2.orchestrator.GenerationRetired}
+    invoke: {command: swarm2.orchestrator.Seed}
+    mapping:
+      run_id: event.run_id
+      number: event.number
+      seeded_from_bytes: event.memory_bytes
+      windows: event.windows
+    delivery: at_most_once
+    on_failure:
+      escalate:
+        emits: swarm2.orchestrator.SeedFailed

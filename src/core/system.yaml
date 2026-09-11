@@ -1,0 +1,33 @@
+# swarm2 — a swarm manager, specified. Drafted 2026-09-11 with `ess-specify:specify` and ess 0.22.2.
+#
+# The outer system is the MANAGER: it holds many Swarms. A Swarm is one tmux session with one
+# Orchestrator and many Agents, each running a Role on a Host. What an agent does is a Workflow (a
+# lifecycle in the shape of ../aep/workflows/*.yaml); what runs inside one workflow state is a
+# Flow (a DAG of Steps: command | tool | llm | subflow). Every level carries input, output and
+# context; every domain instance carries its inner state — its fields and its lifecycle state.
+#
+# Everything here is read from ./swarm (the 2026-09-11 run's tooling and rules), .agents/,
+# ../aep/workflows and the decisions ledger, or is marked `UNMAPPED:`. Specification only.
+format: ess/1
+system: swarm2
+version: v1
+
+summary: >-
+  A swarm manager: many swarms, each one tmux session with one orchestrator process and many
+  agents, their runtime configuration, their message board, their schedulers, their numbered
+  decisions, their workflows (agent, generation, work item, fault) and the DAG flows that run
+  inside each workflow state. Composed top-down, manager to step, so that a later harness run can
+  be held to it.
+
+domains:
+  - swarm2.manager
+  - swarm2.config
+  - swarm2.agent
+  - swarm2.board
+  - swarm2.decision
+  - swarm2.schedule
+  - swarm2.orchestrator
+  - swarm2.work
+  - swarm2.fault
+  - swarm2.flow
+  - swarm2.blackbox

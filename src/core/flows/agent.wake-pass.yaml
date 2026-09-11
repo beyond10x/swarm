@@ -1,0 +1,69 @@
+# One swarm2.flow.Flow record: what a woken window does, from the WAKE_PROMPT in
+# swarm/wake.d/improver.conf: "drain your inbox (it MARKS READ, so act on what it returns), re-read
+# .agents/<role>.md, and do one improvement round, then stop. End the pass with
+# wakegate.sh <slug> --arm <files you wrote>". Runs inside swarm2.agent.Agent / Working, started
+# by the binding on AgentWoken. The round itself is a subflow the agent owns — agents build their
+# own (Timo, 2026-09-11) — so it is a Subflow step whose id is the role's round flow.
+flow_id: agent.wake-pass
+swarm_id: a0eae637-d85f-43b8-8072-389a06954fa6
+name: Wake pass
+summary: Drain the inbox, re-read the role, run one round, re-arm the gate.
+version: 1
+state: Published
+published_at: "2026-09-11T18:40:00+02:00"
+binds: {entity: swarm2.agent.Agent, state: Working}
+inputs:
+  - {name: wake, schema_id: swarm2.agent.AgentWoken/1, required: true}
+outputs:
+  - {name: armed, schema_id: swarm2.schedule.GateArmed/1, required: true}
+context:
+  skills: [swarm-inbox]
+  tools: [Bash]
+  files: []
+  write_scope: []
+  cwd: /home/timo/beyond10x/harness-builder
+steps:
+  - step_id: drain-inbox
+    name: Drain the inbox
+    kind: Command
+    run: [swarm/bin/board.sh, read, --agent, "<slug>", --bodies, --json]
+    inputs: [{name: wake, schema_id: swarm2.agent.AgentWoken/1, required: true}]
+    outputs: [{name: mail, schema_id: swarm2.board.UnreadForAgent/1, required: true}]
+    context: {skills: [], tools: [], files: [], write_scope: ["swarm/runs/<run>/board/messages.jsonl"]}
+    max_attempts: 1
+  - step_id: reread-role
+    name: Re-read the role file
+    kind: Tool
+    tool: Read
+    run: []
+    inputs: []
+    outputs: [{name: role, schema_id: text/markdown/1, required: true}]
+    context: {skills: [], tools: [Read], files: [".agents/<role>.md"], write_scope: []}
+    max_attempts: 1
+  - step_id: one-round
+    name: One round
+    kind: Subflow
+    subflow_id: "<role>.round"
+    run: []
+    inputs:
+      - {name: mail, schema_id: swarm2.board.UnreadForAgent/1, required: true}
+      - {name: role, schema_id: text/markdown/1, required: true}
+    outputs: [{name: written, schema_id: path-list/1, required: true}]
+    context: {skills: [], tools: [], files: [], write_scope: ["swarm/**"], budget_tokens: 30}
+    max_attempts: 1
+  - step_id: arm-gate
+    name: Re-arm the gate
+    kind: Command
+    run: [swarm/bin/wakegate.sh, "<slug>", --arm]
+    inputs: [{name: written, schema_id: path-list/1, required: true}]
+    outputs: [{name: armed, schema_id: swarm2.schedule.GateArmed/1, required: true}]
+    context: {skills: [], tools: [], files: [], write_scope: ["swarm/runs/<run>/wake/"]}
+    max_attempts: 2
+edges:
+  - {from_step: drain-inbox, to_step: reread-role, wires: []}
+  - from_step: reread-role
+    to_step: one-round
+    wires:
+      - {from_step: drain-inbox, from_output: mail, to_input: mail}
+      - {from_step: reread-role, from_output: role, to_input: role}
+  - {from_step: one-round, to_step: arm-gate, wires: [{from_step: one-round, from_output: written, to_input: written}]}

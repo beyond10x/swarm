@@ -1,0 +1,810 @@
+# swarm2.board — PORTED 2026-09-11 from swarm/domains/board.yaml (ess 0.22.2, validate exit 0 there).
+# Two changes and no others: the namespace is `swarm2.board`, and the `Agent` entity has MOVED to
+# `swarm2.agent.Agent` (one agent entity for the whole system, not one per domain); the `owns`
+# relation Agent -> Inbox is declared on that entity, `via: agent_id` here is unchanged, and
+# `Message.sender` now references `swarm2.agent.Agent`. Every decision the original records
+# (9y, 10y, 34, rounds 7/18/24/30/41) stands unchanged. The original file's own header follows.
+#
+# Drafted 2026-09-11 for story:agent-messaging-board, before any board tooling exists.
+# Nothing in this repository implements a board today: `swarm/bin/nudge.sh` types a prompt
+# into one tmux window (swarm/README.md:9) and the only agent-to-agent record is a file
+# somebody wrote by hand (swarm/runs/2026-09-11-codex-takeover/msg-from-cv2-aep-to-cv2-gitlab.md).
+# Every entry below is read from those two facts or marked UNMAPPED.
+domain: swarm2.board
+
+entities:
+  - name: swarm2.board.Inbox
+    identity:
+      name: inbox_id
+      type: Uuid
+    fields:
+      # The owning agent, and the `via` of the ownership relation above. Under 9y this is no
+      # longer a unique key: several Inbox rows may carry the same `agent_id`, so "the inbox for
+      # agent X" is a set and not a lookup. Since 34 the pair (`agent_id`, `name`) is what picks one
+      # out of that set, and it is the address `PostMessage` takes.
+      - name: agent_id
+        type: String
+      # Decision 34's answer, and the whole of what it states: a free-text name the owner picks.
+      # `String` because "free-text" is exactly that — 34 constrains no alphabet, no length and no
+      # reserved word, so nothing here does either. REQUIRED rather than Optional: a discriminator
+      # that may be absent does not discriminate, and "the owner picks it" is an act that always
+      # supplies a value, so there is no state in which an inbox has no name.
+      #
+      # INFERRED here, not stated by 34: a name is unique PER OWNING AGENT. The argument is 34's own
+      # reason rather than taste — the answer was taken because it removes the ambiguity of "post to
+      # agent X", and the address below is the pair (recipient_id, inbox_name); if one agent could
+      # own two inboxes named `handoffs`, that pair would name two rows and the ambiguity 34 removed
+      # would be back in a different place. The guess deliberately NOT made is global uniqueness:
+      # two different agents each owning an inbox named `handoffs` is unremarkable, nothing in 34
+      # forbids it, and forbidding it would make one agent's naming a constraint on another's.
+      # Where the constraint lives: this specification gives an entity one `identity:`, and
+      # `inbox_id` holds it, so per-agent uniqueness is stated as prose here and enforced by
+      # `CreateInbox` refusing a name the agent already uses (see that command for why the refusal
+      # is a comment there and not an outcome). ess/1 has no field-level uniqueness attribute at
+      # all — probed round 24 by putting `unique: true` on this field, refused verbatim with
+      # `domains/board.yaml: unknown field `unique`` — so prose plus a command refusal is not a
+      # shortcut here, it is the only surface this format offers.
+      - name: name
+        type: String
+    relations:
+      # A message is delivered into an inbox and has nowhere to live without one.
+      - name: messages
+        kind: owns
+        target: swarm2.board.Message
+        cardinality: many
+        via: inbox_id
+    lifecycle:
+      initial: Open
+      states: [Open]
+      terminal: [Open]
+
+  - name: swarm2.board.Message
+    identity:
+      name: message_id
+      type: Uuid
+    fields:
+      - name: inbox_id
+        type: Uuid
+      - name: sender_id
+        type: String
+      # Decision 10y (Timo, 2026-09-11 11:40): a Message does carry a reply-to edge to a parent
+      # Message. The linking field for that self-reference, and the reason it is Optional: a
+      # message with no parent is a thread root, which is every message the board has today (the
+      # one hand-written message in swarm/runs/ is a root and has no reply). Optional is the
+      # whole content of "root" — there is no separate root flag and no thread entity, so a
+      # thread is the transitive closure of this edge and nothing has to be kept in step with it.
+      - name: parent_message_id
+        type: Optional<Uuid>
+      - name: body
+        type: String
+      # The recipient WAS not a field in the round-7 draft, and round 18 had to make it one.
+      # The forcing refusal, verbatim from `ess specify validate --path swarm` at 11:4x:
+      #   error[ESS-VIEW-001]: `swarm2.board.Message` has no field `agent_id`, so
+      #   `swarm2.board.UnreadForAgent` promises an observation nothing produces
+      # A view's fields must be produced by its own source entity — ESS does not join — so
+      # "everything unread for agent X across its inboxes" cannot be a view over Message unless
+      # Message carries the agent. `recipient_id` below is that field.
+      #
+      # It is a denormalisation and not a second answer: it is `Inbox.agent_id` of the inbox named
+      # by `inbox_id`, fixed at delivery, and it cannot drift, because an Inbox is `owns`-ed by
+      # exactly one Agent through `agent_id` and never changes owner (an inbox has no meaning
+      # without its agent, so moving it would be creating a different inbox).
+      #
+      # Round 18 wrote that it is derived and never supplied, on the grounds that "`PostMessage`
+      # takes `inbox_id` and not `recipient_id`". Since 34 that sentence is false and its guarantee
+      # is stronger: `PostMessage` takes (`recipient_id`, `inbox_name`) and resolves `inbox_id` FROM
+      # them, so the recipient is the input the inbox is found through, not a second answer that
+      # could disagree with it. A caller still cannot post into one agent's inbox addressed to
+      # another — now because such a pair names no inbox at all, rather than because the field was
+      # withheld.
+      - name: recipient_id
+        type: String
+      # What the inbox still buys, unchanged: exactly one place where THIS message's delivery is
+      # written down — a message lives in one inbox, and neither 9y nor 34 changed that. What 9y
+      # broke was the sentence "the inbox for agent X" as a unique lookup; what 34 repairs is the
+      # address, not the lookup. The hand-written message's "To: the connectors_v2 provider
+      # session" is, read under 34, an INCOMPLETE address: it names an agent and not one of its
+      # inboxes. `PostMessage` requires both halves, and `InboxesForAgent` below is how a sender
+      # discovers which names it may use — an address nobody can discover is an address nobody can
+      # send to, which is why that view is part of this answer and not a convenience.
+      #
+      # The hand-written message carries a title line (`# Handoff: HTTP templates + auth
+      # profiles, and the toolchain/review work`) and two delivery instants in its own prose
+      # ("queued … on 2026-09-11T05:34:26Z … and again at 06:24:08Z"), so both are read from
+      # it rather than invented.
+      - name: subject
+        type: String
+      - name: created_at
+        type: Timestamp
+      # What makes acknowledgement observable rather than inferred. Both are empty until the
+      # `ack` transition below is taken, which is why they are Optional and not defaulted:
+      # the same message unacked for an hour and acked a second ago must not read alike.
+      # The hand-written message is the case that motivates them — it was delivered twice and
+      # never processed, and only prose says so.
+      # Added round 30 for Timo's instruction, 2026-09-11 13:55, verbatim: "reading marks the
+      # message as read, and the next time it wont appear, unless a flag is specified and a
+      # --total, otherwise its all unread". Reading is therefore a WRITE, and these two fields are
+      # where it is written down.
+      #
+      # Why a pair of fields and NOT a third lifecycle state. `Posted -> Read -> Acked` would make
+      # one state hold two different facts — "I saw it" and "I acted on it" — and a state machine
+      # cannot say both at once. Keeping the lifecycle at `Posted -> Acked` means `ack` still means
+      # exactly what it meant before round 30 (`MessageStateConflict` still fires on a second ack,
+      # `Acked` is still terminal, no stored record's state changes meaning), while `read_at`
+      # answers a question the lifecycle never answered.
+      #
+      # Optional, and MISSING MEANS NULL MEANS NEVER READ. Every message written before round 30
+      # has no `read_at` key at all — the five live rows in
+      # swarm/runs/2026-09-11-codex-takeover/board/messages.jsonl are all of that shape — and they
+      # must read as never-read rather than as read-at-an-unknown-time. Same migration rule
+      # round 17 used for `blocked_on`: an absent key is the null, and nothing backfills.
+      #
+      # WHAT THIS COSTS, stated here because it is a real regression and not a detail: before
+      # round 30 `read` was a pure query and running it twice could not lose a message. It can
+      # now. An agent that reads and then dies before acting has consumed the message — the
+      # unread view will not show it again. `MessagesForAgent` below is the recovery path and is
+      # part of the answer, not a convenience: everything addressed to the agent is still there,
+      # read or not, and `read_at` says which.
+      - name: read_at
+        type: Optional<Timestamp>
+      - name: read_by
+        type: Optional<String>
+      - name: acked_at
+        type: Optional<Timestamp>
+      - name: acked_by
+        type: Optional<String>
+      - name: ack_note
+        type: Optional<String>
+      # Added round 41, for Timo 2026-09-11 ~15:0x: "howto broadcast, or push to multiple?".
+      # A broadcast is N Messages, one per recipient, sharing this id — NOT one Message in N
+      # inboxes. That choice is forced by what is already written above, and each of the three
+      # relations it would otherwise break is load-bearing: `inbox_id` is a scalar and `Inbox
+      # owns Message` has exactly one owner (a fanned-out single Message would need two);
+      # `recipient_id` is derived from the inbox's owner, so one Message cannot have thirteen
+      # recipients; and `Acked` is terminal per Message, so a shared Message could only be acked
+      # once — by whoever got there first — when what a sender needs to know is who has NOT.
+      # Optional, and MISSING MEANS NULL MEANS NOT PART OF A BROADCAST: every message written
+      # before this round has no `broadcast_id` key (the live rows in
+      # swarm/runs/2026-09-11-codex-takeover/board/messages.jsonl are all of that shape), and an
+      # absent key is the null — round 17's `blocked_on` rule, round 30's `read_at` rule, nothing
+      # backfilled, nothing rewritten. A `PostMessage` post is a broadcast of one and deliberately
+      # does NOT get an id: "this was an announcement to everybody" is a fact about the fan-out,
+      # not about a single post, and inventing an id for every message would make the field say
+      # nothing. `UnreadForAgent` is untouched by this — each agent holds exactly one copy, so a
+      # broadcast counts once per reader, which is why the fan-out is N messages and not N inbox
+      # ids on one.
+      - name: broadcast_id
+        type: Optional<Uuid>
+    relations:
+      # The sender outlives the message: window 4 wrote to window 2 and kept running.
+      - name: sender
+        kind: references
+        target: swarm2.agent.Agent
+        cardinality: one
+        via: sender_id
+      # Decision 10y, answered 2026-09-11 11:40: the reply-to edge exists. `references` and not
+      # `owns`, because a reply outlives its parent in the only sense that matters here — acking
+      # or deleting the parent must not take the reply with it, and the parent may sit in a
+      # different agent's inbox, where `owns` would put two owners on one Message (the inbox and
+      # the parent), which the compiler refuses. Cardinality `one`: a Message has at most one
+      # parent, and `via` is the Optional<Uuid> `parent_message_id` above, which is where a
+      # `references` relation's linking field belongs — on the source side. The reverse edge
+      # (a parent's many replies) is the same field read the other way and is not a second
+      # relation entry.
+      - name: reply_to
+        kind: references
+        target: swarm2.board.Message
+        cardinality: one
+        via: parent_message_id
+      # RESOLVED round 24 from this specification's own logic, and NOT by a new decision: one post
+      # is addressed to exactly one inbox. Three things say so together. (1) 34 makes the address a
+      # pair that names one row, and the reason it was taken is that "post to agent X" must not be
+      # ambiguous — a command that may mean one inbox or five is that same ambiguity in a different
+      # place. (2) Storage already said it and 9y did not move it: a Message carries one `inbox_id`,
+      # so a fan-out was never one Message in two places; it is N Messages. (3) Nothing in this
+      # repository broadcasts: `nudge.sh` sends to one window (swarm/README.md:9).
+      # What that leaves open is additive and needs no decision: a broadcast is a caller-side loop
+      # over `PostMessage`, or a later command of its own, and either can be added without changing
+      # an entity, a field or a view written here. No relation entry, because "addressed to one
+      # inbox" IS the `inbox_id` field and the `messages` ownership above, already written.
+    lifecycle:
+      # One state and no transitions: a transition no command outcome takes is refused
+      # as `missing_causation`. Delivered/Read arrives with the command that moves it.
+      #
+      # Round 7 adds the second state together with the outcome that takes it
+      # (`AckMessage.acked` below), which is what `missing_causation` requires.
+      #
+      # ROUND 30: there is STILL deliberately no `Read` state, and the reason has changed.
+      # It used to be "reading is a query, so it cannot lose a message". Timo's 13:55
+      # instruction ends that — reading now marks. What survives is the other half of the
+      # argument, and it is the stronger half: "I saw it" and "I acted on it" are two facts
+      # about one message, and one state variable cannot carry two. So the lifecycle stays
+      # `Posted -> Acked` with `ack` as its only transition, and being-read is the pair of
+      # fields `read_at`/`read_by` above, moved by `MarkRead` below.
+      #
+      # "Unread" is therefore NO LONGER `state == Posted`. It is `read_at == null` — see the
+      # `UnreadForAgent`/`UnreadForInbox` filters, which changed with this round. An acked
+      # message is necessarily a read one; a read message need not be acked, and that
+      # read-not-acked middle is exactly what the old model had no room for.
+      initial: Posted
+      states: [Posted, Acked]
+      terminal: [Acked]
+      transitions:
+        - name: ack
+          from: [Posted]
+          to: Acked
+
+errors:
+  # What `ack` answers when the message is already acked. It carries the state, because
+  # "no" without "somebody already acked this" sends the caller back to guess.
+  - name: swarm2.board.MessageStateConflict
+    summary: The message is not in a state this command acts from, so nothing moved.
+    fields:
+      - name: state
+        type: swarm2.board.Message.State
+
+  # What `PostBroadcast` answers when at least one named recipient cannot be addressed — it owns
+  # no inbox at all, or it owns several and none of them is the one the sender named. It carries
+  # the recipient, because "some recipient could not be addressed" without saying which one sends
+  # the caller back to resolve thirteen agents by hand. The broadcast is refused WHOLE: see the
+  # command below for why a half-sent announcement is worse than none.
+  - name: swarm2.board.BroadcastUnaddressable
+    summary: A named recipient owns no inbox this broadcast can be delivered to, so nothing was posted.
+    fields:
+      - name: recipient_id
+        type: String
+
+commands:
+  # Replaces `nudge.sh <win> <text>` (swarm/README.md:9), which types into a window and can
+  # lose the Enter (swarm/bin/stall.sh exists only because of that), and replaces writing a
+  # `*-HANDOFF.md` file nobody is told about. A post is addressed to an inbox, not to a pane.
+  #
+  # THE ADDRESS, since 34: the pair (`recipient_id`, `inbox_name`), both required, from which the
+  # implementation resolves one `inbox_id`. `inbox_id` is no longer an input.
+  #
+  # `inbox_name` is required rather than Optional-with-a-default, and this is the one place round 24
+  # had to choose between two readings of 34, so the argument is written down rather than left in a
+  # commit message. 34 introduces a name the owner picks and says NOTHING about a distinguished,
+  # primary or default inbox. Making the name optional would require inventing which inbox an
+  # agent-only address resolves to — a rule 34 did not take — and it would restore exactly the
+  # implicit resolution 34's stated reason objects to. Requiring it asks the sender for the thing 34
+  # created and no more. The rejected reading is not lost work: a default can be added later as an
+  # Optional `inbox_name` plus one rule for the empty case, which invalidates nothing here.
+  #
+  # NOT EXPRESSIBLE AS AN OUTCOME, and deliberately not guessed: what this command answers when the
+  # pair names no inbox. It must refuse — 34 rejected auto-creation, so a post can never create the
+  # inbox it failed to find — but a second unconditional outcome is refused by the compiler. Probed
+  # round 24 by adding one error outcome beside `posted`, verbatim:
+  #   error[ESS-COMMAND-004]: outcomes `posted`, `probe-error` are all unconditional, so the result
+  #   of `swarm2.board.PostMessage` is not determined by its input
+  #   help: give all but one of them a `when`
+  # The condition here is the existence of a row, which is not a function of the input, so there is
+  # no honest `when` to write. `AckMessage`'s `wrong_state: true` is the only refusal shape this
+  # specification can state, and it is tied to a lifecycle state rather than to a lookup. This is a
+  # rough edge worth reporting to ESS, not a hole in 34.
+  - name: swarm2.board.PostMessage
+    naming:
+      wire: post-message
+      display: Post a message
+    input:
+      - name: recipient_id
+        type: String
+      - name: inbox_name
+        type: String
+      - name: sender_id
+        type: String
+      - name: subject
+        type: String
+      - name: body
+        type: String
+    outcomes:
+      - name: posted
+        creates: swarm2.board.Message
+        # The identity is the implementation's to assign, so this names the field of the
+        # emitted event, not of the input.
+        instance: message_id
+        emits:
+          - swarm2.board.MessagePosted
+        payload:
+          swarm2.board.MessagePosted:
+            recipient_id: input.recipient_id
+            inbox_name: input.inbox_name
+            sender_id: input.sender_id
+            subject: input.subject
+        summary: The message is in the addressed inbox and counts as unread.
+
+  # Added round 41. Timo, 2026-09-11: "howto broadcast, or push to multiple?" — and until this
+  # command the answer was a shell loop over `PostMessage`, which fails in two ways nothing could
+  # see afterwards: the loop has to know each recipient's inbox NAME (three agents on this board
+  # call it `orchestrator`, two `main`, one `rounds`, so a loop written against one convention
+  # refuses per recipient), and nothing recorded that the N posts were ONE announcement.
+  #
+  # WHAT IT IS: N Messages, one per recipient, all carrying the same `broadcast_id`. It is not a
+  # new delivery mechanism — every copy is exactly what `PostMessage` would have created, in the
+  # recipient's own inbox, unread, ackable by its own recipient and nobody else. The only new fact
+  # is that the copies know they are siblings, which is what makes "has everyone read it" a query
+  # instead of a memory.
+  #
+  # ACKS STAY INDEPENDENT AND THAT IS THE POINT: each recipient acks its own copy, `Acked` stays
+  # terminal per Message, and no ack speaks for anyone else. `BroadcastOutstanding` below is the
+  # question a sender actually has.
+  #
+  # ALL-OR-NOTHING, and the reason is visibility, not purity. If a broadcast to thirteen agents
+  # delivered eleven, `BroadcastStatus` would afterwards show eleven recipients and NOTHING about
+  # the two it missed — the incompleteness would be invisible in precisely the view the sender
+  # would check to reassure itself. So every recipient is resolved before anything is written, and
+  # one unaddressable recipient refuses the whole broadcast with `BroadcastUnaddressable` naming
+  # it. Nothing is written, nothing needs cleaning up, and the sender fixes the list and reruns.
+  - name: swarm2.board.PostBroadcast
+    naming:
+      wire: post-broadcast
+      display: Post one announcement to many agents
+    input:
+      # The recipients, by role slug. Their inbox names are NOT an input: the sender does not know
+      # them and should not have to (that is the friction this command exists to remove), so each
+      # is resolved from `InboxesForAgent` at delivery.
+      - name: recipient_ids
+        type: List<String>
+      - name: sender_id
+        type: String
+      - name: subject
+        type: String
+      - name: body
+        type: String
+    outcomes:
+      - name: fanned-out
+        creates: swarm2.board.Message
+        instance: message_id
+        # Two events, because two different facts happen: every copy is a `MessagePosted` exactly
+        # as `PostMessage` produces it (`instance: message_id` is that event's Uuid — ESS-COMMAND-001
+        # requires the instance to be a Uuid field of an emitted event, and only `MessagePosted`
+        # carries the per-copy id), and the fan-out as a whole is ONE `BroadcastPosted`.
+        # `recipient_id` and `inbox_name` are absent from the payload mapping on purpose: they are
+        # per copy and resolved from the board, not read off the command's input.
+        emits:
+          - swarm2.board.MessagePosted
+          - swarm2.board.BroadcastPosted
+        payload:
+          swarm2.board.MessagePosted:
+            sender_id: input.sender_id
+            subject: input.subject
+          swarm2.board.BroadcastPosted:
+            sender_id: input.sender_id
+            subject: input.subject
+        summary: >-
+          One message per recipient sits in that recipient's own inbox, unread, and every one of
+          them carries the same broadcast_id.
+      # THERE IS NO `unaddressable` OUTCOME, AND ESS IS RIGHT TO REFUSE ONE. Round 41 tried to
+      # write it and got two refusals, both worth keeping visible:
+      #   ESS-COMMAND-003 `unobservable_fact` — a `when` predicate may only read a declared INPUT,
+      #     and "this recipient owns no inbox" is a fact about board state the caller never
+      #     supplied, so the branch could not be decided when the command arrives.
+      #   ESS-COMMAND-012 `unreachable_branch` — `wrong_state: true` (the escape hatch `AckMessage`
+      #     uses) is only open to a command that `moves:` an entity, and this one only `creates:`.
+      #     There is no subject and no state for the branch to be about.
+      # So an address-resolution failure is not an outcome here, exactly as it is not one on
+      # `PostMessage` and `CreateInbox` above, whose duplicate-name refusal is stated in prose for
+      # the same reason. `BroadcastUnaddressable` in `errors:` is the shape that refusal carries
+      # when the implementation raises it; no outcome may name it.
+
+  # Added round 24, and required by 34 rather than chosen alongside it: the alternative 34 turned
+  # down was inboxes "created automatically", so under the answer an inbox exists only because its
+  # owner made one and named it. Nothing else in this specification creates an Inbox, so without
+  # this command the board has no reachable state in which any post succeeds — which is why its
+  # absence was a gap and not a scope choice.
+  #
+  # Same compiler limit as `PostMessage`: the duplicate-name refusal that per-agent uniqueness needs
+  # (see `Inbox.name`) cannot be a second unconditional outcome, and "this agent already has an
+  # inbox called X" is a lookup rather than a function of the input, so it is stated here and
+  # enforced by the implementation rather than guessed into a `when`.
+  - name: swarm2.board.CreateInbox
+    naming:
+      wire: create-inbox
+      display: Create an inbox
+    input:
+      - name: agent_id
+        type: String
+      - name: name
+        type: String
+    outcomes:
+      - name: created
+        creates: swarm2.board.Inbox
+        instance: inbox_id
+        emits:
+          - swarm2.board.InboxCreated
+        payload:
+          swarm2.board.InboxCreated:
+            agent_id: input.agent_id
+            name: input.name
+        summary: The agent owns an inbox under this name, and posts addressed to the pair resolve.
+
+
+  # Added round 30. Marking-on-read is a WRITE, and in ESS terms a view that mutates is a
+  # contradiction — a view is an observation, and `consistency:` on a thing with side effects
+  # says nothing. So the marking is a command with its own event, and the `read` CLI verb is
+  # a view read FOLLOWED BY this command, in that order, under one lock. Two names for two
+  # things: `UnreadForAgent` is what the reader is shown, `MarkRead` is what the reader did.
+  #
+  # One outcome, and it is unconditional on purpose. Marking a message that is already marked
+  # is not a conflict the way a second `ack` is: `ack` is a lifecycle transition out of a
+  # terminal state, marking is a stamp, and the implementation keeps the FIRST stamp and
+  # reports the row as already read rather than refusing. (It also could not be stated as a
+  # second outcome — ESS-COMMAND-004 refuses two unconditional outcomes, and "is this row
+  # already stamped" is a lookup, not a function of the input. Same limit `PostMessage` and
+  # `CreateInbox` already document.)
+  #
+  # `read_by` is required rather than derived from the recipient because the interesting case
+  # is a message read by an agent that is NOT going to ack it, and a stamp with no reader on
+  # it cannot be audited. The implementation refuses a `read_by` other than the recipient, for
+  # the same reason `ack` does: the Orchestrator actor is permitted nothing here.
+  - name: swarm2.board.MarkRead
+    naming:
+      wire: mark-read
+      display: Mark a message read
+    input:
+      - name: message_id
+        type: Uuid
+      - name: read_by
+        type: String
+    outcomes:
+      - name: marked
+        updates: swarm2.board.Message
+        instance: message_id
+        emits:
+          - swarm2.board.MessageRead
+        payload:
+          swarm2.board.MessageRead:
+            message_id: input.message_id
+            read_by: input.read_by
+        summary: The message carries a read stamp and leaves the unread view; its state is unchanged.
+
+  - name: swarm2.board.AckMessage
+    naming:
+      wire: ack-message
+      display: Acknowledge a message
+    input:
+      - name: message_id
+        type: Uuid
+      - name: acked_by
+        type: String
+      - name: note
+        type: Optional<String>
+    outcomes:
+      # The one state transition the board has: Posted -> Acked. It is what the sender can
+      # observe, and it is why the hand-written message's "treat everything below as unread
+      # by you" would not have to be prose.
+      - name: acked
+        moves: swarm2.board.Message.ack
+        instance: message_id
+        emits:
+          - swarm2.board.MessageAcked
+        payload:
+          swarm2.board.MessageAcked:
+            message_id: input.message_id
+            acked_by: input.acked_by
+        summary: The recipient has taken delivery; the message leaves the unread view.
+      - name: wrong-state
+        wrong_state: true
+        error: swarm2.board.MessageStateConflict
+        summary: The message was already acked, so nothing moved and no second ack is recorded.
+
+events:
+  - name: swarm2.board.MessagePosted
+    fields:
+      - name: message_id
+        type: Uuid
+      # The resolved inbox, which is what the sender could not name directly. It is emitted rather
+      # than mapped from the input because the input carries the pair, not the id.
+      - name: inbox_id
+        type: Uuid
+      - name: recipient_id
+        type: String
+      - name: inbox_name
+        type: String
+      - name: sender_id
+        type: String
+      - name: subject
+        type: String
+
+  # Added round 30. The read stamp is an event for the same reason the ack is: a fact about
+  # the message that a reader other than the recipient may need, and the only durable record
+  # that a consumed message was consumed by somebody rather than lost.
+  # Added round 41. ONE event per broadcast, not one per copy: the N `MessagePosted`-shaped facts
+  # are already in the N message records, and what nothing could say before is that they were one
+  # announcement. `broadcast_id` is the handle every later question is asked through.
+  - name: swarm2.board.BroadcastPosted
+    fields:
+      - name: broadcast_id
+        type: Uuid
+      - name: sender_id
+        type: String
+      - name: subject
+        type: String
+
+  - name: swarm2.board.MessageRead
+    fields:
+      - name: message_id
+        type: Uuid
+      - name: read_by
+        type: String
+
+  - name: swarm2.board.MessageAcked
+    fields:
+      - name: message_id
+        type: Uuid
+      - name: acked_by
+        type: String
+
+  - name: swarm2.board.InboxCreated
+    fields:
+      - name: inbox_id
+        type: Uuid
+      - name: agent_id
+        type: String
+      - name: name
+        type: String
+
+
+views:
+  # Revised round 18. The draft called this "the answer to 'unread for agent X without scanning
+  # every message'". Under 9y it is not: `inbox_id` answers "unread in THIS inbox", and an agent
+  # with three inboxes gets three answers and no total. The view is still right for what it is —
+  # one inbox, one key, no scan — and it is what a reader uses once it has picked an inbox. The
+  # agent-wide question is `UnreadForAgent` below. Read-your-writes, because an agent that acks a
+  # message and still sees it in its own unread list has been told a lie about what it did.
+  # ROUND 30, filter changed `state == Posted` -> `read_at == null`. Unread is no longer a
+  # lifecycle question. A message acked without ever being marked read cannot occur through
+  # this tool (`ack` stamps too), but if it did, `read_at == null` would still be the honest
+  # answer to "has anybody looked at it".
+  #
+  # A compound filter is NOT available and this is not a style choice: probed round 30 with
+  # `filter: state == Posted && read_at == null`, refused verbatim —
+  #   error[ESS-VIEW-001]: `state == Posted && read_at == null` compares `state` to
+  #   `Posted && read_at == null`, which `swarm2.board.Message.State` (Text) does not declare
+  #   as an enum variant; values: `Acked`, `Posted`; this equality selects nothing whatever
+  #   the system does
+  # ess/1 view filters are a single `field == value` equality. Worth reporting to ESS.
+  - name: swarm2.board.UnreadForInbox
+    source: swarm2.board.Message
+    consistency: read_your_writes
+    filter: read_at == null
+    fields:
+      - name: message_id
+        type: Uuid
+      - name: inbox_id
+        type: Uuid
+      - name: sender_id
+        type: String
+      - name: subject
+        type: String
+      - name: created_at
+        type: Timestamp
+    naming:
+      wire: unread
+      display: Unread for an inbox
+
+  # Added round 18, and derivable from 9y alone — it needs nothing decision 34 decides, because
+  # it is keyed by the agent and never has to tell that agent's inboxes apart. This is what
+  # "what is unread for me" costs after 9y: one lookup on `agent_id` rather than one lookup per
+  # inbox plus a client-side merge, which is the thing the inbox pattern was adopted to avoid.
+  # It is keyed by `Message.recipient_id`, the owning inbox's agent denormalised onto the message
+  # at delivery (see the field's comment for why ESS-VIEW-001 forces that rather than a join), and
+  # `inbox_id` stays in the row so a reader still sees which of its inboxes a message landed in. Read-your-writes for the same reason
+  # as above: this is the list an agent acks against.
+  # ROUND 30: same filter change as `UnreadForInbox`, same reason. This is the view the `read`
+  # verb renders, and the rows it returns are the rows `MarkRead` is then run over — which is
+  # why its consistency has to stay read_your_writes: an agent that reads, marks, and reads
+  # again must see an empty list, and that is now a claim about its own writes.
+  - name: swarm2.board.UnreadForAgent
+    source: swarm2.board.Message
+    consistency: read_your_writes
+    filter: read_at == null
+    fields:
+      - name: message_id
+        type: Uuid
+      - name: recipient_id
+        type: String
+      - name: inbox_id
+        type: Uuid
+      - name: sender_id
+        type: String
+      - name: parent_message_id
+        type: Optional<Uuid>
+      - name: subject
+        type: String
+      - name: created_at
+        type: Timestamp
+    naming:
+      wire: unread-for-agent
+      display: Unread for an agent, across every inbox it owns
+
+  # The whole message, once a reader has picked one out of the unread list. Eventual: a body
+  # is read after it is listed, never instead of it.
+  - name: swarm2.board.MessageById
+    source: swarm2.board.Message
+    consistency: eventual
+    fields:
+      - name: message_id
+        type: Uuid
+      - name: inbox_id
+        type: Uuid
+      - name: recipient_id
+        type: String
+      - name: sender_id
+        type: String
+      - name: parent_message_id
+        type: Optional<Uuid>
+      - name: subject
+        type: String
+      - name: body
+        type: String
+      - name: created_at
+        type: Timestamp
+      - name: read_at
+        type: Optional<Timestamp>
+      - name: read_by
+        type: Optional<String>
+      - name: acked_at
+        type: Optional<Timestamp>
+      - name: acked_by
+        type: Optional<String>
+    naming:
+      wire: by-id
+      display: Message by id
+
+  # Added round 30, and it is the recovery path for what marking-on-read costs. Once `read`
+  # consumes, an agent that read and then died has no other way to find what it was holding,
+  # and a message nobody can enumerate is a message that has been lost quietly — which is the
+  # failure this board was built to remove (the hand-written handoff delivered twice and never
+  # processed). No filter: EVERYTHING addressed to the agent, read or not, acked or not, with
+  # the stamps visible so a reader can tell which is which. Nothing marks anything here.
+  # Eventual, not read_your_writes: this is an audit and a recovery list, never the list an
+  # agent acks against, so it may lag its own writes without misleading anybody.
+  - name: swarm2.board.MessagesForAgent
+    source: swarm2.board.Message
+    consistency: eventual
+    fields:
+      - name: message_id
+        type: Uuid
+      - name: recipient_id
+        type: String
+      - name: inbox_id
+        type: Uuid
+      - name: sender_id
+        type: String
+      - name: parent_message_id
+        type: Optional<Uuid>
+      - name: subject
+        type: String
+      - name: created_at
+        type: Timestamp
+      - name: read_at
+        type: Optional<Timestamp>
+      - name: read_by
+        type: Optional<String>
+      - name: acked_at
+        type: Optional<Timestamp>
+      - name: acked_by
+        type: Optional<String>
+    naming:
+      wire: all-for-agent
+      display: Every message addressed to an agent, read or not
+
+  # Added round 24, and made necessary by 34 rather than nice to have. Two things need it.
+  # (1) `UnreadForAgent` shows `inbox_id`, a Uuid, and after 34 the thing that tells an agent's
+  # inboxes apart is the name its owner picked — which no view produced, so a reader could see that
+  # its messages landed in three different inboxes and not which. (2) `PostMessage` now requires an
+  # `inbox_name`, and a sender has to be able to find out which names exist.
+  #
+  # Sourced on `Inbox` and NOT denormalised onto `Message`, unlike `recipient_id`: that copy is safe
+  # because ownership never changes, and a name has no such guarantee. No command here renames an
+  # inbox, but 34 does not say a name is immutable either, so a copy on the message could drift
+  # where the owner cannot see it. A reader resolves id -> name through this view instead, at one
+  # extra lookup that is cached for as long as the agent's inbox set is unchanged.
+  # read_your_writes: an agent that has just created an inbox and cannot see it would conclude the
+  # name is free and create it twice.
+  # Added round 41: every copy of one broadcast with its stamps — who has it unread, who read it,
+  # who acked it, in one table. NO filter, and that is deliberate rather than an omission: keying
+  # on the broadcast is the caller's argument, exactly as `MessagesForAgent` above is keyed on an
+  # agent the caller names and carries no filter either. ESS-COMMAND-004 allows a view filter to
+  # be a single equality, and `broadcast_id == <the one you asked about>` is not a constant, so it
+  # cannot be written here; it would also be the wrong place, because the view is the shape and
+  # the id is the question.
+  - name: swarm2.board.BroadcastStatus
+    source: swarm2.board.Message
+    consistency: read_your_writes
+    fields:
+      - name: message_id
+        type: Uuid
+      - name: broadcast_id
+        type: Optional<Uuid>
+      - name: recipient_id
+        type: String
+      - name: inbox_id
+        type: Uuid
+      - name: subject
+        type: String
+      - name: created_at
+        type: Timestamp
+      - name: read_at
+        type: Optional<Timestamp>
+      - name: read_by
+        type: Optional<String>
+      - name: acked_at
+        type: Optional<Timestamp>
+      - name: acked_by
+        type: Optional<String>
+    naming:
+      wire: broadcast-status
+      display: Every copy of one broadcast, with who has read and acked it
+
+  # Added round 41, and this is the question a sender of a broadcast actually has: not "did it
+  # send" but "who has still not taken it". The filter is the single equality ESS-COMMAND-004
+  # permits — `acked_at == null`, the same shape as `read_at == null` above — which is exactly
+  # "not acked", because `Acked` is terminal and an ack stamps `acked_at` once and never again.
+  # Read-but-not-acked still appears here, ON PURPOSE: somebody who saw an announcement and has
+  # not taken it is the interesting row, and `read_at` in the fields tells the two apart.
+  - name: swarm2.board.BroadcastOutstanding
+    source: swarm2.board.Message
+    consistency: read_your_writes
+    filter: acked_at == null
+    fields:
+      - name: message_id
+        type: Uuid
+      - name: broadcast_id
+        type: Optional<Uuid>
+      - name: recipient_id
+        type: String
+      - name: read_at
+        type: Optional<Timestamp>
+      - name: created_at
+        type: Timestamp
+    naming:
+      wire: broadcast-outstanding
+      display: Recipients of a broadcast who have not acked it
+
+  - name: swarm2.board.InboxesForAgent
+    source: swarm2.board.Inbox
+    consistency: read_your_writes
+    fields:
+      - name: inbox_id
+        type: Uuid
+      - name: agent_id
+        type: String
+      - name: name
+        type: String
+    naming:
+      wire: inboxes
+      display: Inboxes an agent owns
+
+
+actors:
+  # One per tmux window; creates its own inboxes, posts to any inbox, and acks messages in the
+  # inboxes it owns — plural since 9y, and the ack permission is unchanged by it: "its own" was
+  # already a set-membership test (does this agent own the inbox this message is in), not a
+  # single-inbox comparison. `CreateInbox` is here and not on the Orchestrator because 34 says the
+  # name is picked by the OWNER; an inbox somebody else named for you is the auto-creation 34
+  # turned down, wearing a different hat.
+  - name: swarm2.board.SwarmAgent
+    may:
+      - swarm2.board.CreateInbox
+      - swarm2.board.PostMessage
+      # Round 41: the same permission as `PostMessage`, because a broadcast IS N posts — it
+      # grants no reach a sender did not already have, only one addressing decision instead of N.
+      - swarm2.board.PostBroadcast
+      # Round 30: marking read is the reader's own write, and like `ack` it is refused for
+      # anyone but the recipient. The Orchestrator actor below stays permitted nothing — a
+      # coordinator that could mark an agent's mail read would consume it on that agent's
+      # behalf, which is the same lie as acking for it.
+      - swarm2.board.MarkRead
+      - swarm2.board.AckMessage
+    naming:
+      display: Swarm agent
+
+  # Present in the picture and permitted nothing: the orchestrator reads the board to see
+  # what is unread (swarm/README.md's read-only status tools are its whole surface today)
+  # and must not ack on an agent's behalf — an ack the recipient did not perform is the one
+  # lie this board exists to prevent.
+  - name: swarm2.board.Orchestrator
+    naming:
+      display: Orchestrator

@@ -1,0 +1,129 @@
+/* Swarm brand colors */
+:root {
+  --ifm-color-primary: #4f8cff;
+  --ifm-color-primary-dark: #2f74ff;
+  --ifm-color-primary-darker: #1a68ff;
+  --ifm-color-primary-darkest: #0055e6;
+  --ifm-color-primary-light: #6fa4ff;
+  --ifm-color-primary-lighter: #82b0ff;
+  --ifm-color-primary-lightest: #b8d3ff;
+  --ifm-code-font-size: 95%;
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #7db1ff;
+  --ifm-color-primary-dark: #5a9cff;
+  --ifm-color-primary-darker: #4890ff;
+  --ifm-color-primary-darkest: #1470ff;
+  --ifm-color-primary-light: #a0c6ff;
+  --ifm-color-primary-lighter: #b2d0ff;
+  --ifm-color-primary-lightest: #e5f0ff;
+  --ifm-background-color: #0b0e14;
+}
+
+.hero-banner {
+  position: relative;
+  overflow: hidden;
+  padding: 5rem 0 4rem;
+  text-align: center;
+  isolation: isolate;
+}
+
+.hero-banner__field {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(79, 140, 255, 0.18), transparent 40%),
+    radial-gradient(circle at 80% 70%, rgba(79, 140, 255, 0.14), transparent 45%);
+}
+
+.hero-banner__swarm {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+}
+
+.hero-banner__node {
+  position: absolute;
+  border-radius: 50%;
+  background: var(--ifm-color-primary);
+  box-shadow: 0 0 18px 4px rgba(79, 140, 255, 0.55);
+  animation-name: swarm-orbit;
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-in-out;
+  opacity: 0.85;
+}
+
+.hero-banner__line {
+  position: absolute;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(79, 140, 255, 0.35), transparent);
+  animation-name: swarm-pulse;
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-in-out;
+  transform-origin: left center;
+}
+
+@keyframes swarm-orbit {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+  25% {
+    transform: translate(var(--dx1, 30px), var(--dy1, -20px)) scale(1.08);
+  }
+  50% {
+    transform: translate(var(--dx2, -20px), var(--dy2, 25px)) scale(0.95);
+  }
+  75% {
+    transform: translate(var(--dx3, 25px), var(--dy3, 15px)) scale(1.05);
+  }
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+}
+
+@keyframes swarm-pulse {
+  0%, 100% {
+    opacity: 0.1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.hero-banner__title {
+  font-size: 3rem;
+  margin-bottom: 0.5rem;
+  background: linear-gradient(120deg, var(--ifm-color-primary), #9fd0ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.hero-banner__tagline {
+  font-size: 1.35rem;
+  opacity: 0.85;
+  max-width: 40rem;
+  margin: 0 auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-banner__node,
+  .hero-banner__line {
+    animation: none;
+  }
+}
+
+.about-section {
+  padding: 1rem 0 3rem;
+}
+
+.about-section table {
+  display: table;
+  width: 100%;
+}
+
+.about-section h2 {
+  margin-top: 2.5rem;
+}
