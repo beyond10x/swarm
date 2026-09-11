@@ -1,0 +1,15 @@
+[package]
+name = "ess-runtime"
+description = "Interprets an Executable System Specification: applies commands, evaluates guards, emits events, routes them through bindings, and computes views."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+ess-compiler.workspace = true
+ess-primitives.workspace = true
+ess-domain.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
