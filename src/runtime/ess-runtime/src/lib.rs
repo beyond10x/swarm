@@ -11,6 +11,9 @@
 //! policy. What it adds: instances, the application of a command to one, the pump that carries an
 //! emitted event to the next command, and the projection of views.
 
+pub mod facts;
+pub mod instance;
 pub mod spec;
 
+pub use instance::{Field, Instance};
 pub use spec::{LoadError, Spec};
