@@ -137,8 +137,27 @@ pub fn apply(
     let outcome = select(declared, input, subject.as_ref())
         .ok_or_else(|| ApplyError::NoOutcome(command.to_owned()))?;
 
-    let events = emit(outcome, input);
+    let mut events = emit(outcome, input);
     let instance = act(ir, world, outcome, input, id, &events)?;
+
+    // A `creates:` outcome's identity is minted here and PUBLISHED in the event field the
+    // specification names — that is what `ResolvedInstance::Observed` says, and an event that went
+    // out without it would be a creation nobody could attribute. The payload itself is declared
+    // `{generated: true}`, which is the model saying the implementation owns the value; owning it
+    // means writing it.
+    if let Some(created) = instance.as_ref()
+        && let Some(subject) = outcome.subject.as_ref()
+        && matches!(subject.effect, ResolvedEffect::Creates)
+        && let ResolvedInstance::Observed { event, field } = &subject.instance
+        && let Some(published) = events
+            .iter_mut()
+            .find(|emitted| emitted.name == event.name().to_string())
+    {
+        published.fields.insert(
+            field.name.as_str().to_owned(),
+            Json::String(created.id.clone()),
+        );
+    }
 
     Ok(Applied {
         outcome: outcome.name.as_str().to_owned(),

@@ -694,6 +694,8 @@ commands:
         type: String
       - name: reason
         type: String
+      - name: swarm_id
+        type: Uuid
     outcomes:
       - name: woken
         moves: swarm.agent.Agent.wake
@@ -704,8 +706,7 @@ commands:
           swarm.agent.AgentWoken:
             agent_id: input.agent_id
             reason: input.reason
-            swarm_id:
-              generated: true
+            swarm_id: input.swarm_id
         summary: The member is Working again on what it already holds.
       - name: wrong-state
         wrong_state: true
@@ -726,6 +727,8 @@ commands:
         type: String
       - name: msg
         type: String
+      - name: swarm_id
+        type: Uuid
     outcomes:
       - name: faulted
         moves: swarm.agent.Agent.fault
@@ -737,8 +740,7 @@ commands:
             agent_id: input.agent_id
             kind: input.kind
             msg: input.msg
-            swarm_id:
-              generated: true
+            swarm_id: input.swarm_id
         summary: The member is Faulted; §8 says fix it, or report it if fixing needs Timo.
       - name: wrong-state
         wrong_state: true

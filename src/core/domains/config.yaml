@@ -270,6 +270,8 @@ commands:
     input:
       - name: config_id
         type: Uuid
+      - name: swarm_id
+        type: Uuid
     outcomes:
       - name: activated
         moves: swarm.config.Config.activate
@@ -279,8 +281,7 @@ commands:
         payload:
           swarm.config.ConfigActivated:
             config_id: input.config_id
-            swarm_id:
-              generated: true
+            swarm_id: input.swarm_id
         summary: >-
           The config is in force; the previously active one for the same swarm is superseded in
           the same transaction, and a binding tells the swarm record which config it now runs with.

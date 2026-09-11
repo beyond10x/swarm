@@ -159,6 +159,29 @@ fn a_command_carries_its_facts_on_the_events_it_emits() {
 }
 
 #[test]
+fn a_created_instance_publishes_its_identity_on_the_event() {
+    let spec = Spec::load(kernel()).expect("the kernel resolves");
+    let world = World::new();
+
+    let done = apply(
+        spec.ir(),
+        &world,
+        None,
+        "swarm.goal.SetGoal",
+        &args(json!({"swarm_id": "s-1", "text": "ship it"})),
+        Some("g-7"),
+    )
+    .expect("the goal is set");
+
+    // The specification declares `goal_id` on GoalSet as `{generated: true}` — the implementation
+    // owns the value. Owning it means writing it: a creation event that went out without the
+    // identity would be one nobody could attribute, and a replay could not rebuild the instance.
+    let event = done.events.first().expect("one event");
+    assert_eq!(event.fields.get("goal_id"), Some(&json!("g-7")));
+    assert_eq!(done.instance.expect("an instance").id, "g-7");
+}
+
+#[test]
 fn a_goal_nobody_is_pursuing_has_no_turn_to_report_on() {
     let spec = Spec::load(kernel()).expect("the kernel resolves");
     let mut world = World::new();

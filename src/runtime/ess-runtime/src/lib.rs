@@ -14,8 +14,10 @@
 pub mod apply;
 pub mod facts;
 pub mod instance;
+pub mod route;
 pub mod spec;
 
 pub use apply::{Applied, ApplyError, Emitted, World, apply};
 pub use instance::{Field, Instance};
+pub use route::{Occurrence, RouteError, Routed, pump, tick};
 pub use spec::{LoadError, Spec};
