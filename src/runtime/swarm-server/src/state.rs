@@ -72,16 +72,22 @@ impl Server {
     }
 
     /// Opens a swarm, or returns the one already open.
+    ///
+    /// Every call for one slug returns the same handle, however many run at once. Opening is a read
+    /// of the map, an await on `Swarm::open`, then an insert, and another open of the same slug can
+    /// finish inside that await — so the insert re-checks under the write guard and yields to the
+    /// handle already there. The loser is dropped, never inserted: a handle in the map can hold the
+    /// only copy of an owed at-least-once delivery, and replacing it would lose that delivery with
+    /// no `give_up`, no `What::Undelivered` and no log line.
     pub async fn open(&self, slug: &str) -> Result<Arc<Swarm>, Refused> {
         if let Some(open) = self.swarms.read().await.get(slug) {
             return Ok(Arc::clone(open));
         }
         let swarm = Arc::new(Swarm::open(Arc::clone(&self.spec), &self.root, slug).await?);
-        self.swarms
-            .write()
-            .await
-            .insert(slug.to_owned(), Arc::clone(&swarm));
-        Ok(swarm)
+        let mut swarms = self.swarms.write().await;
+        // Whoever inserted while we were awaiting wins; ours is dropped with this guard held, so
+        // nothing can observe two handles for one slug.
+        Ok(Arc::clone(swarms.entry(slug.to_owned()).or_insert(swarm)))
     }
 
     /// One open swarm.
