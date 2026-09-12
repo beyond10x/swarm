@@ -96,12 +96,12 @@
   },
   "lines": {
     "essRuntime": 1927,
-    "swarmServer": 3538,
+    "swarmServer": 4919,
     "swarmCli": 638,
-    "runtimeTotal": 6103,
-    "integrationTests": 3210,
-    "integrationTestFiles": 12,
-    "web": 7815,
+    "runtimeTotal": 7484,
+    "integrationTests": 5075,
+    "integrationTestFiles": 17,
+    "web": 8074,
     "specYaml": 4759
   }
 }

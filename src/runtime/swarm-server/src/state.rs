@@ -688,7 +688,12 @@ impl Server {
             let events = swarm.count().await.unwrap_or_default();
             swarms.push(SwarmStatus { summary, events });
         }
-        let coordinator = crate::coordinator::configured();
+        // What a server with no environment and no config will actually run — not what
+        // `SWARM_COORDINATOR` says. `configured()` read only that variable, so after resolution
+        // gained a default this endpoint answered `configured: false` for a server that was about
+        // to spend money every thirty seconds. That is the same defect the resolution change fixed,
+        // one layer up: a reader being told "nothing is configured" when something will run.
+        let coordinator = crate::coordinator::fallback();
         Status {
             system: self.spec.ir().system().to_string(),
             spec_files: self.spec.files(),
@@ -707,8 +712,9 @@ impl Server {
             caps: self.caps,
             capped: self.capped_goals(),
             coordinator: Coordinator {
-                configured: coordinator.is_some(),
-                program: coordinator.map(|launch| launch.describe()),
+                configured: true,
+                program: Some(coordinator.describe()),
+                source: coordinator.source.to_string(),
                 in_flight: self.turns_in_flight(),
             },
             swarms,
@@ -882,8 +888,12 @@ pub struct Periodic {
 
 #[derive(Debug, Serialize)]
 pub struct Coordinator {
+    /// Always true: resolution ends at a default, so something always runs. Kept because the UI
+    /// reads it, and because `false` would now be a lie rather than a state.
     pub configured: bool,
     pub program: Option<String>,
+    /// Which of the three sources decided it — the swarm's config, the environment, or the default.
+    pub source: String,
     /// Turns running right now, across every swarm.
     pub in_flight: usize,
 }

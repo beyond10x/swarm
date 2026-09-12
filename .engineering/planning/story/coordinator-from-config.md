@@ -24,7 +24,7 @@ scope:
   path: src/web/src/components/runtime/RuntimeBar.vue
 - confidence: inferred
   path: src/web/src/runtime.ts
-revision: 13
+revision: 14
 ---
 ## What
 
@@ -112,3 +112,25 @@ bound that has already failed twice, is the same incident scheduled rather than 
 
 **`story:the-turn-cap-did-not-hold` closes before this default is switched on.** Until then the
 server runs with `SWARM_COORDINATOR` set explicitly, which is what it is doing now.
+
+## Status reporting
+
+**Closed 2026-09-12.** `/status` reports what will actually run, and which of the three sources
+decided it. Verified live on a server started with `SWARM_COORDINATOR` removed from the environment:
+
+```json
+"coordinator": {
+  "configured": true,
+  "program": "metaharness run claude (from the default)",
+  "source": "the default",
+  "in_flight": 0
+}
+```
+
+`configured` is now always true and says so at its declaration: resolution ends at a default, so
+something always runs, and `false` would be a lie rather than a state.
+
+This was the last piece and it was the same defect as the one the wave fixed, one layer up —
+`state.rs` called `configured()`, which reads only `SWARM_COORDINATOR`, so after resolution gained a
+default the endpoint answered `configured: false` for a server about to spend money every thirty
+seconds. A reader being told nothing is configured while something runs.
