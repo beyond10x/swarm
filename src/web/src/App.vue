@@ -16,6 +16,7 @@ onMounted(() => store.wake())
       <RouterLink to="/" class="brand">swarm</RouterLink>
       <nav>
         <RouterLink to="/">swarms</RouterLink>
+        <RouterLink to="/about">about</RouterLink>
         <RouterLink to="/ui">components</RouterLink>
       </nav>
       <RuntimeBar class="runtime" />

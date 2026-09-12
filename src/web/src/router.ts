@@ -7,6 +7,7 @@ export const router = createRouter({
   routes: [
     { path: '/', name: 'splash', component: () => import('./views/SplashView.vue') },                       
     { path: '/swarm/:id', name: 'swarm', component: () => import('./views/SwarmView.vue'), props: true }, // one swarm: its canvas and its instances
+    { path: '/about', name: 'about', component: () => import('./views/AboutView.vue') },                  // how a turn is executed
     { path: '/ui', name: 'ui', component: () => import('./views/ComponentsView.vue') },                   // the component library
   ],
 })
