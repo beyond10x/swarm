@@ -400,7 +400,7 @@ impl Swarm {
         &self.dir
     }
 
-    /// Appends one finished turn's figures to `turns/spend.jsonl`.
+    /// Appends one attempt's figures to `turns/spend.jsonl`, naming the agent that spent them.
     ///
     /// A small file beside the transcripts, so a total can be read without reading every run.
     /// Appends one ATTEMPT's figures, whether or not it produced a verdict.
@@ -408,8 +408,20 @@ impl Swarm {
     /// A turn that was cut off before it answered still ran and still cost money, and until
     /// 2026-09-12 only answered turns were recorded — so a coordinator that never wrote a verdict
     /// spent without limit while both caps read zero.
+    ///
+    /// `agent` is required, and there is deliberately no second door that omits it. There was one
+    /// for a few hours — `record_spend_by` beside an unattributed `record_spend` — and the
+    /// answered-turn path stayed on the unattributed one, so every SUCCESSFUL turn wrote
+    /// `"agent": null` while a test asserting the opposite passed over rows it had written itself.
+    /// A hand-kept rule that every caller should attribute is the defect; a signature that cannot
+    /// express the alternative is the fix.
+    ///
+    /// `goal` alone cannot bound anything once more than one agent works one goal: every row lands
+    /// in the same bucket, so the figures say what the goal cost and can never say what an agent
+    /// cost. A ceiling can only be written against a figure that names who ran it up.
     pub fn record_spend(
         &self,
+        agent: &str,
         goal_id: &str,
         iterations: u64,
         spent: &Spent,
@@ -420,6 +432,7 @@ impl Swarm {
         let _ = std::fs::create_dir_all(&dir);
         let line = serde_json::json!({
             "at": now(),
+            "agent": agent,
             "goal": goal_id,
             "iterations": iterations,
             "reached": reached,
@@ -449,6 +462,17 @@ impl Swarm {
     /// and a goal that never answers would sit at turn 1 for ever while the money went out.
     pub fn spend_on(&self, goal_id: &str) -> (Spent, u64) {
         self.spend_where(|row| row.get("goal").and_then(Json::as_str) == Some(goal_id))
+    }
+
+    /// The same, for one agent on one goal.
+    ///
+    /// An unattributed row belongs to no agent: it is in the goal's total and in nobody's share,
+    /// which is the honest reading of a record that never said who spent it.
+    pub fn spend_by(&self, goal_id: &str, agent: &str) -> (Spent, u64) {
+        self.spend_where(|row| {
+            row.get("goal").and_then(Json::as_str) == Some(goal_id)
+                && row.get("agent").and_then(Json::as_str) == Some(agent)
+        })
     }
 
     /// Folds the spend record, keeping the rows a caller wants.
@@ -1474,5 +1498,69 @@ mod tests {
             }
         }
         assert_eq!(said, Some(MAX_ATTEMPTS), "the loss was announced");
+    }
+}
+
+#[cfg(test)]
+mod attribution {
+    use super::*;
+
+    /// The half of the bound that `dsfsdf` could not have exposed, because one agent worked it.
+    ///
+    /// `spend_on` folds on `goal` alone. With N agents on one goal every row lands in one bucket,
+    /// so the figures say what the goal cost and can never say what an agent cost — and an
+    /// unattributable figure is one no per-agent ceiling can ever be written against. The row must
+    /// name the agent that spent it, and the fold must be able to key on it.
+    #[tokio::test]
+    async fn spend_is_attributable_per_agent_as_well_as_per_goal() {
+        let data = tempdir::TempDir::new("swarm-attribution").expect("a scratch directory");
+        let kernel = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../src/core")
+            .canonicalize()
+            .expect("the kernel specification is beside this crate");
+        let spec = Arc::new(Spec::load(kernel).expect("the kernel resolves"));
+        let swarm = Swarm::open(spec, data.path(), "attribution")
+            .await
+            .expect("a swarm opens");
+        let goal = "77fc1fcc-a89c-4fb9-b041-89ecfc75922f";
+
+        let cost = |usd: f64| {
+            let mut spent = Spent::default();
+            spent.cost_usd = Some(usd);
+            spent
+        };
+        swarm.record_spend("coordinator", goal, 1, &cost(1.00), Some(false), None);
+        swarm.record_spend("worker-a", goal, 2, &cost(2.00), Some(false), None);
+        swarm.record_spend("worker-a", goal, 3, &cost(4.00), Some(false), None);
+
+        // Every row names who spent it. A row that does not is one the fold below silently loses.
+        let text = std::fs::read_to_string(swarm.dir().join("turns").join("spend.jsonl"))
+            .expect("the spend record exists");
+        for line in text.lines() {
+            let row: Json = serde_json::from_str(line).expect("a row");
+            assert!(
+                row.get("agent").and_then(Json::as_str).is_some(),
+                "every recorded turn names the agent that spent it: {row}"
+            );
+        }
+
+        // The goal's total is unchanged by the split.
+        let (all, turns) = swarm.spend_on(goal);
+        assert_eq!(turns, 3);
+        assert_eq!(all.cost_usd, Some(7.00));
+
+        // And each agent's share is readable on its own.
+        let (coordinator, its_turns) = swarm.spend_by(goal, "coordinator");
+        assert_eq!(its_turns, 1);
+        assert_eq!(coordinator.cost_usd, Some(1.00));
+
+        let (worker, its_turns) = swarm.spend_by(goal, "worker-a");
+        assert_eq!(its_turns, 2);
+        assert_eq!(worker.cost_usd, Some(6.00));
+
+        // An agent that has spent nothing on this goal is zero, not the goal's total.
+        let (nobody, none) = swarm.spend_by(goal, "worker-b");
+        assert_eq!(none, 0);
+        assert_eq!(nobody.cost_usd, None);
     }
 }
