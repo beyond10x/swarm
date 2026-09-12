@@ -65,3 +65,98 @@ all three files went together; the server was restarted and `GET /swarms` no lon
 The opening commit, one commit per unit on its own branch, two merges into the integration branch,
 the closing store commit, and the merge into `main` once the whole gate is green. Not a tag, not a
 release, not the next wave.
+
+---
+
+## The close
+
+**Status: closed 2026-09-12. Both units merged; the whole 11-step gate is green on the integration
+branch, each step's own exit status read.**
+
+| step | exit | what it said |
+|---|---|---|
+| `cargo fmt --all --check` | 0 | — |
+| `cargo clippy --all-targets` | 0 | — |
+| `cargo test` | 0 | 22 result lines, **103 cases passed** |
+| `ess specify validate --path src/core` | 0 | — |
+| `check-sets-are-emitted.py` | 0 | — |
+| `aep plan artifact validate` | 0 | — |
+| `npm test` in `src/web` | 0 | `# tests 59 # pass 59 # fail 0` |
+| `npx vue-tsc --noEmit` | 0 | — |
+| `npx vite build` | 0 | — |
+| `website` build | 0 | — |
+| `npm run spec:check` | **1, then 0** | see below |
+
+Rust cases 65 → **103**. Web cases 51 → **59**.
+
+**Step 11 earned its place on its first wave.** It failed: the README said the runtime is "roughly
+6,100 lines" and this wave grew it to 7,500. That is precisely the drift the step was added to catch,
+on prose no build step can import, one wave after it was made canonical. Corrected, then green.
+
+### The ledger
+
+| unit | pass 1 | pass 2 | carried | resolved |
+|---|---|---|---|---|
+| A | 6 | 3 | **0** | 6 |
+| B | 6 | 3 | **0** | 6 |
+
+Zero carried in both units in both rounds. The attack budget is two passes and both were spent; the
+correction answering each second pass was verified by this coordinator reading the diff — no
+assertion dropped, no adversary case weakened, the one adversary edit in each unit made on explicit
+instruction and recorded in the case's own doc comment.
+
+### What the wave was actually for, and what it found instead
+
+It was dispatched to fix three measured defects. Two of the three premises turned out to be wrong,
+and finding that out was worth more than the fixes.
+
+- **The $11.35 overrun happened once, not twice, and the cap did not fail — it did not exist.** The
+  44 spend rows sum to $11.345391 and the first 43 to $11.098908: the two figures in `budget.rs` are
+  one file read one turn apart. `993731e` introduced the module and both call sites at 07:15:35Z; the
+  run ended at 01:29:33Z.
+- **The cap that did exist was off by one.** `SWARM_MAX_TURNS=3` ran two turns, because `fire` checks
+  turns taken and `ask_the_coordinator` checks an `iterations` field `fire` has already advanced.
+  Invisible to every reading and to the first version of the tests, which called `capped` directly —
+  found only by driving the real guards.
+- **Which coordinator a swarm launched was a coin flip.** `ActivateConfig` never supersedes the
+  previous row, so a replaced config leaves two Active and `.find()` over a UUID-keyed map answered
+  the old one about half the time — measured four-and-four across eight swarms.
+- **`activated_at` is never written**, so one of the two fixes the coordinator offered for that was
+  not implementable. The unit said so rather than pretending, and refused instead.
+- **The first destructive verb this server ever had shipped a path traversal.**
+  `DELETE /swarms/..%2Fescaped` answered 204 and erased a directory outside `swarms/`, from one
+  unauthenticated request. Found by the adversary before the merge; `main` never had a delete route,
+  so nothing was ever exposed.
+
+### Three classes closed by construction rather than by a list
+
+- an unattributed spend row is **unrepresentable** — `record_spend` takes a mandatory agent and the second door is gone;
+- a handle can only live where one lookup looks — a test reads the fields of `Server` out of the source, keeps those typed `Arc<Swarm>`, and fails if any is not named in `handle_of`;
+- no route that takes a slug reaches outside `swarms/` — a test reads the route table out of `http.rs` and drives every `{slug}` route with a traversal, so a route added without validation fails on the day it is added.
+
+### Left open, on purpose and in writing
+
+| what | where |
+|---|---|
+| an agent is bounded per goal, not at all — $6.00 of a $5.00 cap over two goals | `story:spend-is-bounded-per-goal-only`, **pinned red-when-fixed** in the suite |
+| `/status` still answers `coordinator.configured: false` for a server that will run metaharness | `story:coordinator-from-config`, kept open; patch written, unapplied |
+| `config.yaml` still claims a supersede nothing performs | patch written, unapplied — it is the specification, and no adversary budget remains |
+| `SplashView.vue`'s second `Uncreated` | patch written, unapplied |
+
+**A coordinator error, recorded rather than hidden:** `story:the-turn-cap-did-not-hold` was moved to
+`implemented` while its fourth acceptance clause was still open. The lifecycle admits only
+`implemented → archived`, so the move cannot be undone; the clause is carried forward whole into
+`story:spend-is-bounded-per-goal-only`, which exists because of that mistake.
+
+### Two things about running this wave
+
+**Disk capped it at two units, not the three the plan named**, and `aep plan artifact waves`
+overruled the plan's grouping besides — all three stories land on `state.rs`. The verb was right and
+the plan was wrong.
+
+**`worktree gc` across the whole profile freed nothing**, correctly: every record is retained on
+recovery proof or dirtiness. The disk pressure was not the wave's to solve, and one thing this
+coordinator did about it was a mistake — `~/.cache/sccache` was deleted after checking
+`RUSTC_WRAPPER` in one shell, while 21 sccache processes were running for other sessions. Nothing was
+lost, because a cache is not a source of truth, but the check was the wrong check and other
+sessions paid for it in cold builds.

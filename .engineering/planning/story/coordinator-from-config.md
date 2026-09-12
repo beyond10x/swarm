@@ -24,7 +24,7 @@ scope:
   path: src/web/src/components/runtime/RuntimeBar.vue
 - confidence: inferred
   path: src/web/src/runtime.ts
-revision: 12
+revision: 13
 ---
 ## What
 
@@ -88,3 +88,27 @@ Until it is fixed, the coordinator comes from the environment of the server proc
 `SWARM_COORDINATOR=metaharness cargo run -p swarm-server`, or
 `SWARM_COORDINATOR=examples/coordinator-manual.sh cargo run -p swarm-server` for a loop that turns
 without spending model budget.
+
+## The default
+
+**The default is `metaharness`, decided by the operator 2026-09-12, for containment.**
+
+`Launch::Metaharness` builds `metaharness run claude --hermetic --tool-surface native --decisions
+observe --max-turns 30 --max-budget-usd 1.00 --cwd <swarm>/work`
+(`src/runtime/swarm-server/src/coordinator.rs:363-394`). `Launch::Program` runs an arbitrary argv
+with none of that. `examples/coordinator-manual.sh` is a plain shell script; it is the right
+*example* and the wrong *default*, because a default is what runs when nobody chose.
+
+So the resolution order is: the swarm's activated `Config` → `SWARM_COORDINATOR` → **`Metaharness`**.
+
+**This costs money by default, and that is the point of the sequencing note below.** The example
+script spends nothing; metaharness spends real budget every thirty seconds.
+
+### It must not land before the cap holds
+
+`story:the-turn-cap-did-not-hold` records a declared cap of 20 turns that did not stop a goal at 78
+turns and $11.35 — twice. A default that spends, on a loop that fires every thirty seconds, behind a
+bound that has already failed twice, is the same incident scheduled rather than suffered.
+
+**`story:the-turn-cap-did-not-hold` closes before this default is switched on.** Until then the
+server runs with `SWARM_COORDINATOR` set explicitly, which is what it is doing now.

@@ -2,7 +2,7 @@
 format: aep.planning-md/1
 id: story:the-turn-cap-did-not-hold
 kind: story
-status: draft
+status: implemented
 title: The turn cap did not hold, twice
 summary: 78 turns against a declared 20, and $11.35; the fold can only key on goal.
 relations:
@@ -17,7 +17,7 @@ scope:
   path: src/runtime/swarm-server/src/swarm.rs
 - confidence: cited
   path: src/runtime/swarm-server/src/trigger.rs
-revision: 3
+revision: 8
 ---
 ## What
 
@@ -67,3 +67,69 @@ Per-turn ceilings inside metaharness (`--max-turns 30`, `--max-budget-usd 1.00`,
 - **Also likely:** `src/runtime/swarm-server/src/state.rs` (`turns_in_flight`, a ceiling that refuses) — inferred
 - **Confidence:** high on the measurement, which is on disk; the cause is **not established** and finding it is the first half of this story
 - **Would collide with:** any unit touching `trigger.rs`, `swarm.rs` or `state.rs`
+
+## What the investigation found
+
+**Corrected 2026-09-12, after the investigation. The premise of this story was wrong.**
+
+It happened **once, not twice**, and the cap did not fail — it did not exist.
+
+| measurement | value |
+|---|---|
+| `data/swarms/dsfsdf/turns/spend.jsonl`, all 44 rows | **$11.345391** |
+| the same file's first 43 rows | **$11.098908** |
+| `993731e`, which added `budget.rs` and both call sites | `2026-09-12T07:15:35Z` |
+| `dsfsdf`'s last turn | `2026-09-12T01:29:33Z` — **5h46m earlier** |
+
+The $11.35 and the $11.10 recorded in `budget.rs:5-6` are **one file read one turn apart**, not two
+incidents. `git log -S'fn capped'` and `-S'if capped(server, swarm, id, iterations)'` each return
+that single commit, so the module and both of its call sites arrived together, after the run. The
+overrun was not the bound failing late and was not the bound being lifted: there was no bound in the
+binary that ran. The spend file starting at iteration 35 has the same cause — the earlier binary
+recorded nothing at all.
+
+**The bound holds when it exists.** `trigger::bounds` drives the real `capped` with
+`SWARM_MAX_TURNS=3` and stops at three, both for a goal that answers and for a goal that never
+writes a verdict. Both cases passed on their first compiling run with **no change to the capping
+logic**.
+
+What was genuinely missing is attribution, and that is what the unit fixed: `record_spend` wrote no
+agent field, so a fold over more than one agent on one goal could not say whose spend it was.
+
+Two things are still open and neither is this unit's file:
+
+- `coordinator.rs:609` still calls the unattributed door, so an **answered** turn's row carries
+  `"agent": null`. The patch exists, unapplied, and belongs with `story:coordinator-from-config`.
+- The global in-flight ceiling in `state.rs` — the acceptance's fourth clause — belongs to the
+  multi-agent wave. `turns_in_flight()` is confirmed read-only to the UI; nothing refuses on it.
+
+One correction to this story's own scope section: `capped` has **two** callers, not one — `fire` at
+`trigger.rs:239` and `ask_the_coordinator` at `trigger.rs:137`. `Caps::exceeded` has one.
+
+## A second defect, found by driving the real guards
+
+`SWARM_MAX_TURNS=3` ran **two** turns, not three, and no reading found it — only driving the real
+guards did.
+
+The bound is checked in two places and they measure different numbers. `fire` (`trigger.rs:246`)
+checks `so_far`, the turns already taken. `ask_the_coordinator` (`trigger.rs:137`) checks the goal's
+`iterations` field, which `fire` has **already advanced** for the turn about to be taken. One bound,
+two readings, off by one, stopping the loop a turn early.
+
+```
+panicked at src/runtime/swarm-server/src/trigger.rs:439:9:
+assertion `left == right` failed: a declared cap of three turns stops at three
+  left: 2
+ right: 3
+```
+
+Found 2026-09-12 by unit A of the 2026-09-12c wave, in the correction round that answered the
+adversary's finding that the tests re-implemented the loop instead of driving it. The first version
+of those cases called `capped` directly and could not see this; both guards are now executed by the
+suite and both are mutation-checked — delete either and a case goes red.
+
+Fixed at `trigger.rs:137` with `iterations.saturating_sub(1)` and the reason written above it.
+
+**The lesson is the one the adversary's finding named.** A case that re-implements the path it tests
+proves something about the copy. Two guards agreeing with a test that called neither of them is how
+a cap of three stopped at two for as long as both existed.

@@ -2,7 +2,7 @@
 format: aep.planning-md/1
 id: story:a-swarm-cannot-be-removed
 kind: story
-status: draft
+status: implemented
 title: Nothing can remove a swarm
 summary: There is no DELETE route, and a place with no swarm in it is unreachable by every command.
 relations:
@@ -19,7 +19,7 @@ scope:
   path: src/web/src/stores/swarms.ts
 - confidence: cited
   path: src/web/src/views/SwarmView.vue
-revision: 3
+revision: 6
 ---
 ## What
 
