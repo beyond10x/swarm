@@ -25,7 +25,7 @@ use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
 
 use crate::state::Server;
-use crate::swarm::Refused;
+use crate::swarm::{Outgoing, Refused};
 
 /// The body of a command request.
 #[derive(Debug, Deserialize)]
@@ -78,6 +78,7 @@ pub fn routes(server: Arc<Server>) -> Router {
         .route("/swarms/{slug}/commands/{command}", post(issue_command))
         .route("/swarms/{slug}/reload", post(reload_swarm))
         .route("/swarms/{slug}/log", get(read_log))
+        .route("/swarms/{slug}/mail", post(send_mail))
         .route("/swarms/{slug}/turns", get(list_turns))
         .route("/swarms/{slug}/turns/{name}", get(read_turn))
         .route("/spec", get(read_spec))
@@ -200,6 +201,43 @@ pub struct LogPage {
 
 fn default_limit() -> usize {
     200
+}
+
+/// The body of a mail request.
+#[derive(Debug, Deserialize)]
+pub struct Mail {
+    /// `agent` or `agent/mailbox`. Absent means broadcast.
+    #[serde(default)]
+    pub to: Option<String>,
+    pub sender: String,
+    pub subject: String,
+    pub body: String,
+    #[serde(default)]
+    pub reply_to: Option<String>,
+}
+
+/// Posts a message, to one mailbox or to every open one.
+///
+/// The host resolves the address, because a mailbox is addressed by the pair `(agent, name)` and
+/// only something that can do a lookup can turn that into the id `PostMessage` takes.
+async fn send_mail(
+    State(server): State<Arc<Server>>,
+    Path(slug): Path<String>,
+    axum::Json(body): axum::Json<Mail>,
+) -> Result<impl IntoResponse, Refused> {
+    let swarm = server.get(&slug).await?;
+    let mail = Outgoing {
+        to: body.to.as_deref().unwrap_or_default(),
+        sender: &body.sender,
+        subject: &body.subject,
+        body: &body.body,
+        reply_to: body.reply_to.as_deref(),
+    };
+    let posted = match body.to.as_deref() {
+        Some(_) => swarm.post(mail).await?,
+        None => swarm.broadcast(mail).await?,
+    };
+    Ok(axum::Json(posted))
 }
 
 /// Every recorded coordinator run, newest first.

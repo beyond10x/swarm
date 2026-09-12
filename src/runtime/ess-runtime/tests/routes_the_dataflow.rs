@@ -211,7 +211,98 @@ fn every_binding_this_kernel_declares_is_one_the_pump_serves() {
     let owed = ess_runtime::route::needs_redelivery(spec.ir());
     assert_eq!(
         owed,
-        vec!["adopt-activated-config".to_owned()],
+        vec![
+            "adopt-activated-config".to_owned(),
+            "note-the-assignment".to_owned(),
+            "record-the-assignment".to_owned(),
+        ],
         "the set of bindings needing redelivery has changed"
     );
+}
+
+/// One event, two bindings — the only fan-out ESS has.
+///
+/// `AssignmentPosted` is named by `record-the-assignment` and by `note-the-assignment`, and the
+/// pump invokes every binding whose cause matches rather than the first. Nothing in ess's own
+/// examples exercises this, so until 2026-09-12 it was a property the loop in `route.rs` asserted
+/// and nothing checked.
+#[test]
+fn one_event_reaches_every_binding_that_names_it() {
+    let spec = Spec::load(kernel()).expect("the kernel resolves");
+    let mut world = World::new();
+
+    // An agent to assign to. `Assign` runs from Spawned.
+    let spawned = apply(
+        spec.ir(),
+        &world,
+        None,
+        "swarm.agent.Spawn",
+        &args(json!({
+            "agent_id": "coordinator",
+            "swarm_id": "sw-1",
+            "role": "Coordinator",
+            "harness": "ClaudeCode",
+            "display_name": "The coordinator",
+            "host": {}
+        })),
+        Some("ag-1"),
+    )
+    .expect("the agent is spawned");
+    let agent = spawned.instance.expect("an instance");
+    // The identity is the role slug the caller supplied, not a minted id: `Spawn` names an event
+    // field of type String, and the event carries `input.agent_id`.
+    assert_eq!(agent.id, "coordinator");
+    world.insert((agent.entity.clone(), agent.id.clone()), agent);
+
+    let assigned = apply(
+        spec.ir(),
+        &world,
+        None,
+        "swarm.agent.Assign",
+        &args(json!({
+            "agent_id": "coordinator",
+            "outcome": "the tests are green",
+            "signoff": "Timo",
+            "forbidden": "do not touch the spec"
+        })),
+        Some("as-1"),
+    )
+    .expect("the assignment is posted");
+    assert_eq!(assigned.outcome, "assigned");
+    let subject = assigned.instance.clone().expect("an instance");
+    world.insert((subject.entity.clone(), subject.id.clone()), subject);
+
+    let caused = pump(
+        spec.ir(),
+        &mut world,
+        assigned.events.clone(),
+        &mut minting("rec"),
+    )
+    .expect("the bindings carry it");
+
+    let by_binding: Vec<&str> = caused
+        .iter()
+        .map(|routed| routed.binding.as_str())
+        .collect();
+    assert_eq!(
+        by_binding,
+        vec!["note-the-assignment", "record-the-assignment"],
+        "both bindings on AssignmentPosted fire, in the IR's order"
+    );
+    for routed in &caused {
+        assert!(
+            routed.result.is_ok(),
+            "{} was refused: {:?}",
+            routed.binding,
+            routed.result.as_ref().err()
+        );
+    }
+
+    // The record the first binding exists to create, which nothing wrote before 2026-09-12.
+    let assignments: Vec<_> = world
+        .values()
+        .filter(|instance| instance.entity == "swarm.agent.Assignment")
+        .collect();
+    assert_eq!(assignments.len(), 1, "one assignment record");
+    assert_eq!(assignments[0].state, "Assigned");
 }

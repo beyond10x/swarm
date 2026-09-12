@@ -189,6 +189,48 @@ bindings:
     delivery: at_least_once
     on_failure: retry
 
+  # One event, two bindings — the only fan-out ESS has, and this is the first place the kernel uses
+  # it. The pump invokes every binding whose cause names the event, in order, each against the world
+  # the last one left; nothing anywhere refuses two bindings sharing an event.
+  #
+  # `Assign` moves the agent and emits the fact, and that is all one outcome can do: one outcome has
+  # one subject, and the assignment record is a different entity. Until 2026-09-12 the binding that
+  # created it had been deleted with the rest of the strip, so `Assign` moved an agent to Assigned
+  # and no `Assignment` row was ever written unless somebody issued `RecordAssignment` by hand.
+  - id: record-the-assignment
+    summary: The assignment becomes a record, not just a state the agent is in.
+    when: {event: swarm.agent.AssignmentPosted}
+    invoke: {command: swarm.agent.RecordAssignment}
+    mapping:
+      agent_id: event.agent_id
+      outcome: event.outcome
+      signoff: event.signoff
+      forbidden: event.forbidden
+      artifact_ref: event.artifact_ref
+    delivery: at_least_once
+    on_failure: retry
+
+  - id: note-the-assignment
+    summary: The agent's own record says what it was last given.
+    when: {event: swarm.agent.AssignmentPosted}
+    invoke: {command: swarm.agent.Note}
+    mapping:
+      agent_id: event.agent_id
+      msg: event.outcome
+      ref: event.artifact_ref
+    delivery: at_least_once
+    on_failure: retry
+
+  # There is deliberately no binding from `AssignmentPosted` to `swarm.mailbox.PostMessage`, and the
+  # reason is a limit worth stating rather than working around. `PostMessage` is addressed to a
+  # MAILBOX, and a binding maps one event field per input and has no expressions — so it cannot turn
+  # "the agent this event is about" into "that agent's main mailbox". The 2026-09-11 draft's version
+  # worked only because its command took the pair `(recipient_id, inbox_name)` and its implementation
+  # did the lookup, which put a resolution the specification could not see inside a command.
+  #
+  # Mail is therefore posted by something that can look a mailbox up: the host, or an agent through
+  # the CLI. Both read `swarm.mailbox.OpenMailboxes` first.
+
   # The [loop] of the birth graph, declared rather than hand-built.
   #
   # ess/1 0.23.0 carries a periodic cause, so the tick is part of the specification and not a timer

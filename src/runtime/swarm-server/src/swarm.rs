@@ -117,6 +117,26 @@ pub fn now() -> String {
         .unwrap_or_default()
 }
 
+/// What a caller wants said, before it is addressed.
+#[derive(Debug)]
+pub struct Outgoing<'a> {
+    /// `agent` or `agent/mailbox`. Ignored by a broadcast.
+    pub to: &'a str,
+    pub sender: &'a str,
+    pub subject: &'a str,
+    pub body: &'a str,
+    /// The message this answers, when it answers one.
+    pub reply_to: Option<&'a str>,
+}
+
+/// What posting produced.
+#[derive(Debug, Serialize)]
+pub struct Posted {
+    /// Present on a broadcast; the id every copy shares.
+    pub broadcast_id: Option<String>,
+    pub messages: Vec<String>,
+}
+
 /// Where one swarm is, in one row.
 #[derive(Debug, Serialize)]
 pub struct Summary {
@@ -608,6 +628,150 @@ impl Swarm {
             });
         }
         Ok(true)
+    }
+
+    /// The swarm's own record id, once `CreateSwarm` has made one.
+    pub async fn swarm_id(&self) -> Option<String> {
+        let world = self.world.lock().await;
+        world
+            .values()
+            .find(|instance| instance.entity == "swarm.manager.Swarm")
+            .map(|instance| instance.id.clone())
+    }
+
+    /// Posts one message to one mailbox, addressed by the pair the sender knows.
+    ///
+    /// `to` is `agent` or `agent/mailbox`; `main` is assumed when the mailbox is not named. The
+    /// lookup is the host's job and is the reason no binding can do this: a binding maps one event
+    /// field per input and has no expressions, so it cannot turn an agent into that agent's
+    /// mailbox.
+    pub async fn post(&self, mail: Outgoing<'_>) -> Result<Posted, Refused> {
+        let (agent, mailbox) = match mail.to.split_once('/') {
+            Some((agent, name)) => (agent, name),
+            None => (mail.to, "main"),
+        };
+
+        let open = self.view("swarm.mailbox.OpenMailboxes").await?;
+        let found = open.iter().find(|row| {
+            row.get("agent_id").and_then(Json::as_str) == Some(agent)
+                && row.get("name").and_then(Json::as_str) == Some(mailbox)
+        });
+        let Some(row) = found else {
+            return Err(Refused::View(format!(
+                "no open mailbox `{agent}/{mailbox}`"
+            )));
+        };
+        let mailbox_id = row
+            .get("mailbox_id")
+            .and_then(Json::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        let swarm_id = row
+            .get("swarm_id")
+            .and_then(Json::as_str)
+            .unwrap_or_default()
+            .to_owned();
+
+        let message = self
+            .deliver(&mailbox_id, &swarm_id, agent, &mail, None)
+            .await?;
+        Ok(Posted {
+            broadcast_id: None,
+            messages: vec![message],
+        })
+    }
+
+    /// Posts one message to every open mailbox in the swarm — the dynamic fan-out.
+    ///
+    /// ESS cannot express this: one outcome creates one instance, and a binding invokes one command
+    /// against one instance. So the host does what the periodic binding's host already does — reads
+    /// a view and issues the command once per row. The copies share one `broadcast_id`, which is
+    /// what makes "who has not acked" answerable.
+    ///
+    /// Each copy is its own request, so a broadcast to thirty mailboxes is thirty pumps of one
+    /// event rather than one pump of thirty, and `MAX_DEPTH` is never at risk.
+    pub async fn broadcast(&self, mail: Outgoing<'_>) -> Result<Posted, Refused> {
+        let open = self.view("swarm.mailbox.OpenMailboxes").await?;
+        let broadcast_id = mint();
+        let mut messages = Vec::new();
+
+        for row in open {
+            let (Some(mailbox_id), Some(recipient)) = (
+                row.get("mailbox_id").and_then(Json::as_str),
+                row.get("agent_id").and_then(Json::as_str),
+            ) else {
+                continue;
+            };
+            // A sender does not broadcast to itself: a copy it has to read and ack is noise it
+            // already knows.
+            if recipient == mail.sender {
+                continue;
+            }
+            let swarm_id = row
+                .get("swarm_id")
+                .and_then(Json::as_str)
+                .unwrap_or_default()
+                .to_owned();
+            messages.push(
+                self.deliver(
+                    mailbox_id,
+                    &swarm_id,
+                    recipient,
+                    &mail,
+                    Some(broadcast_id.clone()),
+                )
+                .await?,
+            );
+        }
+
+        Ok(Posted {
+            broadcast_id: Some(broadcast_id),
+            messages,
+        })
+    }
+
+    /// One `PostMessage`, with the clock read here because the model does not read one.
+    async fn deliver(
+        &self,
+        mailbox_id: &str,
+        swarm_id: &str,
+        recipient: &str,
+        mail: &Outgoing<'_>,
+        broadcast_id: Option<String>,
+    ) -> Result<String, Refused> {
+        let mut input = Map::new();
+        input.insert("mailbox_id".into(), Json::String(mailbox_id.to_owned()));
+        input.insert("swarm_id".into(), Json::String(swarm_id.to_owned()));
+        input.insert("recipient_id".into(), Json::String(recipient.to_owned()));
+        input.insert("sender_id".into(), Json::String(mail.sender.to_owned()));
+        input.insert("subject".into(), Json::String(mail.subject.to_owned()));
+        input.insert("body".into(), Json::String(mail.body.to_owned()));
+        input.insert("sent_at".into(), Json::String(now()));
+        if let Some(parent) = mail.reply_to {
+            input.insert("parent_message_id".into(), Json::String(parent.to_owned()));
+        }
+        if let Some(broadcast) = broadcast_id {
+            input.insert("broadcast_id".into(), Json::String(broadcast));
+        }
+
+        let request = format!("mail:{}", mint());
+        let issued = self
+            .issue(
+                Some("swarm.mailbox.SwarmAgent"),
+                "swarm.mailbox.PostMessage",
+                input,
+                &request,
+            )
+            .await?;
+
+        issued
+            .events
+            .iter()
+            .find(|event| event.name == "swarm.mailbox.MessagePosted")
+            .and_then(|event| event.fields.get("message_id"))
+            .and_then(Json::as_str)
+            .map(ToOwned::to_owned)
+            .ok_or_else(|| Refused::Command("the message was not posted".to_owned()))
     }
 
     /// One view, computed over the world as it stands.

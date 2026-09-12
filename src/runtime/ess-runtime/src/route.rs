@@ -123,7 +123,7 @@ pub fn pump(
                 continue;
             }
 
-            let input = map_from_event(&name.to_string(), binding, &event)?;
+            let input = map_from_event(ir, &name.to_string(), binding, &event)?;
             let routed = invoke(ir, world, &name.to_string(), binding, input, ids);
             enqueue(&routed, binding, &mut queue);
             caused.push(routed);
@@ -220,7 +220,18 @@ fn enqueue(routed: &Routed, binding: &ResolvedBinding, queue: &mut VecDeque<Emit
 }
 
 /// The command's input, built from the event the binding reacted to.
+///
+/// A mapping whose event field carries nothing is an absence, not a failure, when the command's
+/// input field is `Optional` — the value was never there to carry. It IS a failure when the input
+/// is required, because the binding promised a value the event does not have and the command would
+/// be applied against a gap.
+///
+/// Until 2026-09-12 every absence refused, which meant a binding that mapped an optional field
+/// worked only for the events that happened to carry it: `record-the-assignment` maps
+/// `artifact_ref`, and an assignment naming no story would have failed the binding rather than the
+/// field.
 fn map_from_event(
+    ir: &EssIr,
     binding_name: &str,
     binding: &ResolvedBinding,
     event: &Emitted,
@@ -244,14 +255,36 @@ fn map_from_event(
             }
         };
 
-        let value = value.ok_or_else(|| RouteError::Unmappable {
-            binding: binding_name.to_owned(),
-            target: mapping.target.clone(),
-            why: format!("`{}` carries no such value", event.name),
-        })?;
+        let value = match value {
+            Some(value) => value,
+            None if optional_input(ir, &binding.command.name().to_string(), &mapping.target) => {
+                continue;
+            }
+            None => {
+                return Err(RouteError::Unmappable {
+                    binding: binding_name.to_owned(),
+                    target: mapping.target.clone(),
+                    why: format!("`{}` carries no such value", event.name),
+                });
+            }
+        };
         input.insert(mapping.target.clone(), value);
     }
     Ok(input)
+}
+
+/// Whether the command declares this input as `Optional`.
+fn optional_input(ir: &EssIr, command: &str, field: &str) -> bool {
+    ir.commands()
+        .iter()
+        .find(|(name, _)| name.to_string() == command)
+        .and_then(|(_, declared)| {
+            declared
+                .input
+                .iter()
+                .find(|input| input.name.as_str() == field)
+        })
+        .is_some_and(|input| input.type_ref.is_optional())
 }
 
 /// The command's input, built from what the host supplied for this occurrence.

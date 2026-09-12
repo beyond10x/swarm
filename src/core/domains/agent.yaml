@@ -879,8 +879,11 @@ commands:
         summary: last_event_kind is note; the state is unchanged.
 
 events:
-  # Emitted by NO outcome: it is the `escalate` event of a binding in components.yaml (the binding assignment-is-a-message could not post to the agent's inbox).
-  # An escalation nobody declared would be a silence; this is the fact instead (WakeLost precedent).
+  # Emitted by NO outcome, and as of 2026-09-12 escalated to by no binding either. It was the
+  # `escalate` event of `assignment-is-a-message`, which posted an assignment to the agent's inbox;
+  # that binding cannot exist, because a binding has no expressions and so cannot address a mailbox
+  # derived from an event field (components.yaml says this at length). Kept rather than deleted: a
+  # host that posts mail on assignment and fails still needs a name for that fact, and this is it.
   - name: swarm.agent.AssignmentUndelivered
     fields:
       - name: agent_id

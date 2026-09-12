@@ -26,7 +26,7 @@ use serde_json::{Map, Value as Json};
 use ess_compiler::EssIr;
 use ess_compiler::ir::{
     ResolvedCommand, ResolvedCondition, ResolvedEffect, ResolvedInstance, ResolvedOutcome,
-    ResolvedPayloadValue,
+    ResolvedPayloadValue, ResolvedSubject,
 };
 use ess_primitives::predicate::Truth;
 
@@ -343,6 +343,20 @@ fn read(value: &ResolvedPayloadValue, input: &Map<String, Json>) -> Option<Json>
     }
 }
 
+/// The identity the outcome's own event already carries, when the payload maps it from an input.
+fn event_identity(subject: &ResolvedSubject, events: &[Emitted]) -> Option<String> {
+    let ResolvedInstance::Observed { event, field } = &subject.instance else {
+        return None;
+    };
+    events
+        .iter()
+        .find(|emitted| emitted.name == event.name().to_string())
+        .and_then(|emitted| emitted.fields.get(field.name.as_str()))
+        .and_then(|value| value.as_str())
+        .filter(|found| !found.is_empty())
+        .map(ToOwned::to_owned)
+}
+
 /// Creates, moves or updates the subject, and writes what the outcome sets.
 fn act(
     ir: &EssIr,
@@ -368,20 +382,17 @@ fn act(
 
     let mut instance = match &subject.effect {
         ResolvedEffect::Creates => {
-            let id = id
-                .map(ToOwned::to_owned)
-                .or_else(|| {
-                    // The specification names the event field that publishes it; if the caller
-                    // already put it there, that is the identity.
-                    let ResolvedInstance::Observed { event, field } = &subject.instance else {
-                        return None;
-                    };
-                    events
-                        .iter()
-                        .find(|e| e.name == event.name().to_string())
-                        .and_then(|e| e.fields.get(field.name.as_str()))
-                        .and_then(|v| v.as_str().map(ToOwned::to_owned))
-                })
+            // The specification names the event field that publishes the identity, and what that
+            // field is MAPPED FROM decides who owns the value. A payload line `agent_id:
+            // input.agent_id` means the caller named it — `swarm.agent.Agent`'s identity is a role
+            // slug, and an agent minted a Uuid instead could never be addressed by the name the
+            // caller gave it. `{generated: true}` puts no value on the event, and that absence is
+            // the model saying the implementation owns it; only then is the minted id used.
+            //
+            // The order matters and was wrong until 2026-09-12: the mint was tried first, so every
+            // agent came out with a Uuid for a name.
+            let id = event_identity(subject, events)
+                .or_else(|| id.map(ToOwned::to_owned))
                 .ok_or_else(|| ApplyError::NoIdentity(entity_name.clone()))?;
 
             Instance::created(
