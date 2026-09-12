@@ -1,43 +1,72 @@
-# Website
+# website
 
-This website is built using [Docusaurus](https://docusaurus.io/), a modern static website generator.
+The public site at [swarm.beyond10x.dev](https://swarm.beyond10x.dev). Docusaurus 3.10.2, React 19,
+`future: {v4: true}`, Node >= 20. `docs` and `blog` are both off: this is a single page, and the page
+is `src/pages/index.js`.
 
-## Installation
+## Running it
 
-```bash
+```console
 npm install
+npm run start      # dev server, hot reload
+npm run build      # production build into build/
+npm run serve      # serve what build/ holds
 ```
 
-**Note**: feel free to use the package manager of your choice.
+`onBrokenLinks: 'throw'` is on, so a link that does not resolve fails the build rather than shipping.
 
-## Local Development
+## Every number on the page is derived
 
-```bash
-npm run start
+This is the part to read before editing anything.
+
+`scripts/spec-facts.mjs` runs before `start` and before `build`, shells
+`ess specify compile --path ../src/core --format json`, counts lines in the runtime and the
+specification, parses the route table and the CLI verb enum, and writes `src/data/spec-facts.json`.
+The page imports that file. **No count is typed into the page, and none may be.**
+
+```console
+npm run spec:facts   # rederive and rewrite src/data/spec-facts.json
+npm run spec:check   # fail if the committed file is stale; write nothing
 ```
 
-This command starts a local development server and opens up a browser window. Most changes are reflected live without having to restart the server.
+The reason is specific. The page this replaced published "5 domains, 8 entities, 48 commands, 22
+views" and every one of those four was wrong from the moment a mailbox domain landed, minutes after
+somebody typed them. Nothing noticed for the page's entire published life. Typed numbers are a
+defect class, not a mistake, so the fix is the derivation and the check, not a correction.
 
-## Build
+**`ess` on `PATH` is optional at build time, deliberately.** When it is missing the script prints a
+loud banner and builds from the committed `src/data/spec-facts.json`, so the site still publishes
+from a bare checkout with no Rust toolchain — which is what the GitHub Pages runner has. `--check`
+refuses in that case rather than reporting a green it could not verify, and it is the gate step that
+catches drift where `ess` does exist. `src/data/spec-facts.json` is committed on purpose; treat it as
+generated output and never hand-edit it.
 
-```bash
-npm run build
+If a new fact needs to reach the page, teach the script to derive it. Every anchor the script parses
+out of Rust source is required — a missing `pub fn routes` or `enum Verb` is a hard failure, never a
+silent zero, because a derivation that returns the wrong number is worse than one that was typed: it
+looks fresh.
+
+## Assets
+
+`static/img/` holds only what is used: `favicon.ico`, `logo.svg`, and `social-card.png`, the Open
+Graph image `docusaurus.config.js` points at. The five stock Docusaurus assets the scaffold shipped
+were unreferenced and are gone.
+
+The social card is generated from a source kept outside `static/` so it is not also served:
+
+```console
+rsvg-convert -w 1200 -h 630 -o static/img/social-card.png assets/social-card.svg
 ```
 
-This command generates static content into the `build` directory and can be served using any static contents hosting service.
+## Honesty
 
-## Deployment
+The site makes claims about a real system and was audited against the tree. The rules that audit
+produced live in the repository's [`AGENTS.md`](../AGENTS.md) under "Honesty rules for anything
+published" — read them before writing a sentence about what Swarm does. The short version: it is
+interpreted, not code-generated; it is a swarm *manager*, and multi-agent operation is specified but
+not demonstrated; nothing confines a coordinator.
 
-Using SSH:
+## Deploying
 
-```bash
-USE_SSH=true npm run deploy
-```
-
-Not using SSH:
-
-```bash
-GIT_USER=<Your GitHub username> npm run deploy
-```
-
-If you are using GitHub Pages for hosting, this command is a convenient way to build the website and push to the `gh-pages` branch.
+GitHub Pages, from `build/`. `static/.nojekyll` is present. `url` is `https://swarm.beyond10x.dev`
+and `baseUrl` is `/`, which is correct for a custom domain at the apex of the site.

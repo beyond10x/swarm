@@ -1,0 +1,56 @@
+<!-- Source for static/img/social-card.png, the Open Graph card docusaurus.config.js points at.
+     Kept here rather than under static/ so it is not also served. Regenerate with:
+       rsvg-convert -w 1200 -h 630 -o static/img/social-card.png assets/social-card.svg -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b0e14"/>
+      <stop offset="100%" stop-color="#101a2e"/>
+    </linearGradient>
+    <radialGradient id="glow1" cx="0.2" cy="0.25" r="0.5">
+      <stop offset="0%" stop-color="#4f8cff" stop-opacity="0.30"/>
+      <stop offset="100%" stop-color="#4f8cff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow2" cx="0.82" cy="0.78" r="0.5">
+      <stop offset="0%" stop-color="#4f8cff" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#4f8cff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="title" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#7db1ff"/>
+      <stop offset="100%" stop-color="#cfe4ff"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow1)"/>
+  <rect width="1200" height="630" fill="url(#glow2)"/>
+
+  <g stroke="#4f8cff" stroke-opacity="0.28" stroke-width="1.5">
+    <line x1="905" y1="150" x2="1020" y2="235"/>
+    <line x1="1020" y1="235" x2="960" y2="380"/>
+    <line x1="960" y1="380" x2="845" y2="300"/>
+    <line x1="845" y1="300" x2="905" y2="150"/>
+    <line x1="845" y1="300" x2="1020" y2="235"/>
+    <line x1="960" y1="380" x2="1065" y2="465"/>
+    <line x1="845" y1="300" x2="800" y2="455"/>
+  </g>
+  <g fill="#4f8cff">
+    <circle cx="905" cy="150" r="9" opacity="0.85"/>
+    <circle cx="1020" cy="235" r="6" opacity="0.7"/>
+    <circle cx="960" cy="380" r="11" opacity="0.9"/>
+    <circle cx="845" cy="300" r="7" opacity="0.75"/>
+    <circle cx="1065" cy="465" r="5" opacity="0.6"/>
+    <circle cx="800" cy="455" r="6" opacity="0.65"/>
+  </g>
+
+  <text x="90" y="240" font-family="Inter, Helvetica, Arial, sans-serif" font-size="118" font-weight="700" fill="url(#title)">Swarm</text>
+
+  <text x="94" y="316" font-family="Inter, Helvetica, Arial, sans-serif" font-size="36" font-weight="500" fill="#c9d6ea">A swarm manager, specified.</text>
+
+  <text x="94" y="392" font-family="Inter, Helvetica, Arial, sans-serif" font-size="27" fill="#8ea3bf">The kernel is an Executable System Specification.</text>
+  <text x="94" y="432" font-family="Inter, Helvetica, Arial, sans-serif" font-size="27" fill="#8ea3bf">The runtime compiles it at boot and interprets it —</text>
+  <text x="94" y="472" font-family="Inter, Helvetica, Arial, sans-serif" font-size="27" fill="#8ea3bf">nothing is hand-coded per feature.</text>
+
+  <rect x="94" y="524" width="150" height="3" fill="#4f8cff" opacity="0.6"/>
+  <text x="94" y="572" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="23" fill="#6e819c">github.com/beyond10x/swarm</text>
+</svg>

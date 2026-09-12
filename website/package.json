@@ -4,7 +4,11 @@
   "private": true,
   "scripts": {
     "docusaurus": "docusaurus",
+    "spec:facts": "node scripts/spec-facts.mjs",
+    "spec:check": "node scripts/spec-facts.mjs --check",
+    "prestart": "node scripts/spec-facts.mjs",
     "start": "docusaurus start",
+    "prebuild": "node scripts/spec-facts.mjs",
     "build": "docusaurus build",
     "swizzle": "docusaurus swizzle",
     "deploy": "docusaurus deploy",

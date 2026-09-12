@@ -119,11 +119,118 @@
   padding: 1rem 0 3rem;
 }
 
+/* ---- landing page ---------------------------------------------------- */
+
+.about-section .lede {
+  font-size: 1.15rem;
+  line-height: 1.7;
+}
+
+.about-section section {
+  max-width: 62rem;
+}
+
+.callout {
+  border-left: 3px solid var(--ifm-color-primary);
+  background: rgba(79, 140, 255, 0.08);
+  border-radius: 0 6px 6px 0;
+  padding: 1rem 1.25rem;
+  margin: 1.5rem 0;
+}
+
+.callout p:last-child {
+  margin-bottom: 0;
+}
+
+/* The derived-count grid. */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+  gap: 0.75rem;
+  margin: 1.5rem 0 0.75rem;
+}
+
+.stat {
+  border: 1px solid var(--ifm-toc-border-color);
+  border-radius: 8px;
+  padding: 0.9rem 0.5rem;
+  text-align: center;
+  background: rgba(127, 127, 127, 0.04);
+}
+
+.stat__value {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--ifm-color-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat__label {
+  font-size: 0.85rem;
+  opacity: 0.75;
+  letter-spacing: 0.03em;
+}
+
+.stat-grid__source {
+  font-size: 0.85rem;
+  opacity: 0.7;
+  margin-bottom: 2rem;
+}
+
 .about-section table {
   display: table;
   width: 100%;
+  font-size: 0.92rem;
+}
+
+.about-section th.num,
+.about-section td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.domain-table__summary {
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
+.chip {
+  display: inline-block;
+  margin: 0 0.2rem 0.2rem 0;
+  font-size: 0.78rem;
+}
+
+/* The honesty table: each claim carries its own verdict. */
+.tag {
+  display: inline-block;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  border: 1px solid currentColor;
+}
+
+.tag--yes {
+  color: #35b47a;
+}
+
+.tag--partly {
+  color: #d3972a;
+}
+
+.tag--no {
+  color: #e0645f;
+}
+
+.verdict-table td:nth-child(2) {
+  white-space: nowrap;
 }
 
 .about-section h2 {
-  margin-top: 2.5rem;
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--ifm-toc-border-color);
 }
