@@ -278,9 +278,14 @@ export function view(
  * calls under one key leave two instances. Both measured in the server's
  * `tests/redelivery_under_attack.rs`, under `story:request-key-is-not-idempotency`.
  *
- * So a caller that lost its response should not blind-resend. Read {@link canvas} or {@link log} —
- * every record carries the `request` it was written under — and resend only if the first attempt
- * is absent. Omitting `request` is honest: the server mints one, and the guarantee is the same.
+ * So a caller that lost its response should not blind-resend. {@link log} carries the `request`
+ * each event was written under, so it answers exactly whether the first attempt landed; resend
+ * only if it is absent. {@link canvas} answers the weaker question of whether the effect is there
+ * — a canvas record is an instance and names no key at all.
+ *
+ * Omitting `request` gives up that guard rather than costing nothing: the server mints a fresh key
+ * when the field is absent, and a key spent on no stream can refuse nothing, so a repeat appends.
+ * Measured in the server's `tests/the_request_key_contract.rs`.
  */
 export function issue(
   slug: string,

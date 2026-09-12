@@ -51,11 +51,18 @@ pub struct Issue {
     /// `story:request-key-is-not-idempotency`.
     ///
     /// So what a disconnected client gets is this and no more: it will not double-APPEND to a
-    /// stream the key was already spent on, and everything else it must establish by reading. The
-    /// canvas (`GET /swarms/{slug}`) and the log (`GET /swarms/{slug}/log`, which carries each
-    /// event's `request`) say whether the first attempt landed; a client that cannot tolerate the
-    /// second answer should read before it resends. Omitting the field is honest — the server
-    /// mints a fresh key — and is the same guarantee.
+    /// stream the key was already spent on. Everything else it must establish by reading, and a
+    /// client that cannot tolerate the second answer should read before it resends. The log
+    /// (`GET /swarms/{slug}/log`) carries the `request` each event was written under, so it
+    /// answers exactly whether this key's first attempt landed. The canvas (`GET /swarms/{slug}`)
+    /// answers the weaker question of whether the effect is there: a canvas record is an instance
+    /// — entity, id, state, fields, revision — and names no key at all.
+    ///
+    /// Omitting the field gives up that guard. `issue_command` mints a fresh uuid when it is
+    /// absent, and a key spent on no stream can refuse nothing, so a repeat appends. Measured:
+    /// two `MoveBox` calls under one key append one `BoxMoved`, the same two under minted keys
+    /// append two (`tests/the_request_key_contract.rs`). Sending a key of the client's own is the
+    /// only way to have the guard at all; omitting it is honest about wanting neither.
     ///
     /// Changing that means giving `Swarm::issue` a request-to-answer record, which is a schema in
     /// `ess-runtime` and not a comment. Until then this doc and those two cases move together.
