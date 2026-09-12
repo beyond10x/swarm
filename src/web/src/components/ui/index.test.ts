@@ -225,40 +225,99 @@ test('every component the table says emits is either rendered inert or refused',
 // appear in its row's last column, and the column may name no event the component does not emit.
 // This reads the `.vue` files, as the refusal scan above does, because node cannot import them.
 
-// Vue accepts THREE spellings of `defineEmits`, and a guard that reads one of them reports the
-// other two as "emits nothing" — which is the defect itself, not the absence of it. So all three
-// are read, and, more importantly, the reading FAILS CLOSED: a file that calls `defineEmits` at
-// all and out of which no event name can be read is drift by that fact. A fourth spelling, or a
-// component that builds its emit list some way this file has never seen, therefore fails loudly
-// instead of being silently documented as inert-free.
+// A component EMITS; `defineEmits` is only one way to write that down, and a guard keyed on that
+// token reports every other way as "emits nothing" — which is the defect, not the absence of it.
+// Vue accepts at least five spellings, and the door below is therefore keyed on EMITTING:
+//
+//   defineEmits(['remove'])                   the runtime array
+//   defineEmits<{ remove: [] }>()             the tuple property type
+//   defineEmits<{ (e: 'remove'): void }>()    the call-signature type
+//   defineOptions({ emits: ['remove'] })      the options macro
+//   <button @click="$emit('remove')">         the template call, no declaration at all
+//
+// and, more importantly, on FAILING CLOSED: a file that emits by any of those markers and out of
+// which no event name can be read is drift by that fact. A sixth spelling fails loudly instead of
+// being silently documented as inert-free, because the marker and the names are read separately
+// and disagreeing is an error.
 
-/** The event names a component declares, in every form `defineEmits` takes. */
+/**
+ * Whether a component emits at all, independent of how its names are written. `defineOptions` only
+ * counts when it actually carries an `emits` key — the macro has other uses, and failing closed on
+ * `defineOptions({ inheritAttrs: false })` would be noise rather than a finding.
+ */
+function emitting(componentSource: string): boolean {
+  if (/\bdefineEmits\b/.test(componentSource)) return true
+  // `\bemit(` covers all three call forms: `emit('x')`, `$emit('x')` and `instance.emit('x')` —
+  // the last needing no declaration and no macro anywhere in the file.
+  if (/\bemit\s*\(/.test(componentSource)) return true
+  return [...componentSource.matchAll(/defineOptions\s*\(/g)].some((options) =>
+    /\bemits\s*:/.test(braced(componentSource, options.index! + options[0].length - 1) ?? ''),
+  )
+}
+
+/**
+ * The body of the first `{…}` after `at`, brace-balanced.
+ *
+ * A non-greedy `([\s\S]*?)\}\s*>` stops at the first `}>` in the file, which inside
+ * `defineEmits<{ remove: [reason: Partial<{ why: string }>], clear: [] }>()` is the one closing the
+ * PAYLOAD type — so everything after it, `clear` here, is invisible and the guard compares a subset
+ * against the full row and calls them equal. Counting braces is the whole fix.
+ */
+function braced(source: string, at: number): string | undefined {
+  const open = source.indexOf('{', at)
+  if (open < 0) return undefined
+  let depth = 0
+  for (let i = open; i < source.length; i += 1) {
+    if (source[i] === '{') depth += 1
+    else if (source[i] === '}') {
+      depth -= 1
+      if (depth === 0) return source.slice(open + 1, i)
+    }
+  }
+  return undefined
+}
+
+/** The event names a component declares or fires, in every form it can be written. */
 function emitsOf(name: string, componentSource: string): string[] {
   const names = new Set<string>()
+  const quoted = (text: string) => [...text.matchAll(/['"]([^'"]+)['"]/g)].map((m) => m[1])
 
-  // 1. the runtime array: `defineEmits(['remove'])`
+  // 1. the runtime array, and 4. the options macro: `defineEmits(['remove'])`,
+  //    `defineOptions({ emits: ['remove'] })`.
   for (const call of componentSource.matchAll(/defineEmits\s*(?:<[^>]*>)?\s*\(\s*(\[[^\]]*\])/g)) {
-    for (const quoted of call[1].matchAll(/['"]([^'"]+)['"]/g)) names.add(quoted[1])
+    for (const event of quoted(call[1])) names.add(event)
+  }
+  for (const options of componentSource.matchAll(/defineOptions\s*\(/g)) {
+    const body = braced(componentSource, options.index! + options[0].length - 1) ?? ''
+    const emits = /\bemits\s*:\s*(\[[^\]]*\])/.exec(body)
+    if (emits) for (const event of quoted(emits[1])) names.add(event)
   }
 
-  const generic = /defineEmits\s*<\s*\{([\s\S]*?)\}\s*>/.exec(componentSource)
-  if (generic) {
-    // 2. the tuple property form: `{ 'row-click': [row: Row] }`
-    for (const pair of generic[1].matchAll(/(?:'([^']+)'|"([^"]+)"|([A-Za-z][\w:-]*))\s*:\s*\[/g)) {
+  // 2. the tuple property type and 3. the call-signature type, read out of a BRACE-BALANCED body so
+  //    a nested object type does not truncate it.
+  for (const declaration of componentSource.matchAll(/defineEmits\s*</g)) {
+    const body = braced(componentSource, declaration.index! + declaration[0].length - 1) ?? ''
+    for (const pair of body.matchAll(/(?:'([^']+)'|"([^"]+)"|([A-Za-z][\w:-]*))\s*:\s*\[/g)) {
       names.add(pair[1] ?? pair[2] ?? pair[3])
     }
-    // 3. the call-signature form: `{ (e: 'remove'): void }`, including `(e: 'a' | 'b')`
-    for (const signature of generic[1].matchAll(/\(\s*\w+\s*:\s*([^)]*?)\)\s*:/g)) {
-      for (const quoted of signature[1].matchAll(/['"]([^'"]+)['"]/g)) names.add(quoted[1])
+    for (const signature of body.matchAll(/\(\s*\w+\s*:\s*([^)]*?)\)\s*:/g)) {
+      for (const event of quoted(signature[1])) names.add(event)
     }
+  }
+
+  // 5. the call itself, which needs no declaration anywhere: `@click="$emit('remove')"`, and
+  //    equally `emit('remove')` or `getCurrentInstance()!.emit('remove')`.
+  for (const fired of componentSource.matchAll(/\bemit\s*\(\s*(['"][^'"]+['"])/g)) {
+    for (const event of quoted(fired[1])) names.add(event)
   }
 
   // Fail closed. Silence here is what let `UiTable` ship: a component that emits, read as one that
   // does not, is indistinguishable from a correct row — so it is an error, not an empty list.
   assert.ok(
-    names.size > 0 || !/\bdefineEmits\b/.test(componentSource),
-    `${name}.vue calls defineEmits and this guard could read no event name out of it; a spelling it ` +
-      'does not know reads as "emits nothing", which is the drift it exists to catch',
+    names.size > 0 || !emitting(componentSource),
+    `${name}.vue emits — it names defineEmits, defineOptions or $emit — and this guard could read ` +
+      'no event name out of it; a spelling it does not know reads as "emits nothing", which is the ' +
+      'drift it exists to catch',
   )
   return [...names]
 }

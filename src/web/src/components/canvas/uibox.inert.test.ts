@@ -42,6 +42,30 @@ const emitters: string[] = (() => {
     .filter(Boolean)
 })()
 
+/**
+ * The brace-balanced body of `export const <name> = {…}`.
+ *
+ * A non-greedy `\{[\s\S]*?\n\}` — which this file used to carry twice — ends at the first line
+ * that starts with `}`, so a declaration containing a nested object on its own lines is read as a
+ * strict subset and the case then compares that subset with something and finds it equal. Reading
+ * less than is there is the harmful direction: it fails nothing and hides the rest.
+ */
+function objectLiteral(text: string, name: string): string {
+  const at = text.indexOf(`export const ${name}`)
+  assert.ok(at >= 0, `index.ts exports ${name}`)
+  const open = text.indexOf('{', at)
+  assert.ok(open >= 0, `${name} is an object literal`)
+  let depth = 0
+  for (let i = open; i < text.length; i += 1) {
+    if (text[i] === '{') depth += 1
+    else if (text[i] === '}') {
+      depth -= 1
+      if (depth === 0) return text.slice(open, i + 1)
+    }
+  }
+  throw new Error(`${name} is not closed`)
+}
+
 function componentSource(name: string): string {
   return readFileSync(new URL(`../ui/${name}.vue`, import.meta.url), 'utf8')
 }
@@ -80,8 +104,7 @@ test('a box naming UiModal with open true is a panel the canvas mounts', async (
   const { uiBoxSpec } = await import('../../lib/uibox.ts')
 
   const declared = JSON.parse(
-    /export const uiPropTypes[^{]*(\{[\s\S]*?\n\})/
-      .exec(source)![1]
+    objectLiteral(source, 'uiPropTypes')
       .replace(/([{,]\s*)([A-Za-z][A-Za-z0-9]*)\s*:/g, '$1"$2":')
       .replace(/'/g, '"')
       .replace(/,(\s*[}\]])/g, '$1'),
@@ -140,8 +163,7 @@ test('a box naming UiTable is a panel the canvas renders inert, and says so', as
   const { uiBoxSpec } = await import('../../lib/uibox.ts')
 
   const declared = JSON.parse(
-    /export const uiPropTypes[^{]*(\{[\s\S]*?\n\})/
-      .exec(source)![1]
+    objectLiteral(source, 'uiPropTypes')
       .replace(/([{,]\s*)([A-Za-z][A-Za-z0-9]*)\s*:/g, '$1"$2":')
       .replace(/'/g, '"')
       .replace(/,(\s*[}\]])/g, '$1'),
@@ -167,85 +189,32 @@ test('a box naming UiTable is a panel the canvas renders inert, and says so', as
   )
   assert.ok(emitters.includes('UiTable'), 'the contract lists UiTable as an emitter, so UiBox inerts it')
 
-  // The two halves of "renders inert, and says so", asserted against the COMPILED TEMPLATE.
-  //
-  // This case used to match two strings anywhere in the file. Measured by an adversary: replace
-  // `<div :inert="inert || undefined">` with `<div>`, or force the note's `v-if` false, and the
-  // whole suite stayed green — the behaviour this unit exists to deliver, for all eleven emitter
-  // panels, survived deletion untested. So the structure is read instead: the element that mounts
-  // `<component :is>` must carry an `inert` binding, and the note must be shown by a condition
-  // computed from the same value.
-  const { parse } = await import('@vue/compiler-sfc')
-  const box = parse(readFileSync(new URL('./UiBox.vue', import.meta.url), 'utf8'), {
-    filename: 'UiBox.vue',
-  })
-  const template = box.descriptor.template
-  assert.ok(template?.ast, 'UiBox.vue has a template')
+  // "Renders inert, and says so", decided by VALUE. The predicate lives in
+  // `./uibox.inert.guard.ts` because `uibox.inert.mutants.test.ts` runs the SAME predicate
+  // over mutated copies of `UiBox.vue`; a copy in each file would let the mutation harness prove
+  // something about a predicate that is not the one shipping here.
+  const { assertInertGuard } = await import('./uibox.inert.guard.ts')
+  await assertInertGuard(readFileSync(new URL('./UiBox.vue', import.meta.url), 'utf8'))
+})
 
-  interface Node {
-    type: number
-    tag?: string
-    content?: string
-    props?: { type: number; name?: string; arg?: { content?: string }; exp?: { content?: string } }[]
-    children?: Node[]
-  }
-
-  const elements: Node[] = []
-  ;(function walk(node: Node) {
-    if (node.type === 1) elements.push(node)
-    for (const child of node.children ?? []) walk(child as Node)
-  })(template!.ast as unknown as Node)
-
-  /** A directive on an element: `v-if` is `{name: 'if'}`, `:inert` is `{name: 'bind', arg: 'inert'}`. */
-  function directive(node: Node, name: string, arg?: string) {
-    return (node.props ?? []).find(
-      (prop) => prop.type === 7 && prop.name === name && (arg === undefined || prop.arg?.content === arg),
-    )
-  }
-
-  function textIn(node: Node): string {
-    if (node.type === 2 || node.type === 5) return node.content ?? ''
-    return (node.children ?? []).map((child) => textIn(child as Node)).join('')
-  }
-
-  const mount = elements.find((node) =>
-    (node.children ?? []).some(
-      (child) => (child as Node).type === 1 && (child as Node).tag === 'component' && !!directive(child as Node, 'bind', 'is'),
-    ),
-  )
-  assert.ok(mount, 'UiBox.vue mounts the named component with `<component :is>`')
-  const inert = directive(mount!, 'bind', 'inert')
-  assert.ok(
-    inert,
-    'the element wrapping `<component :is>` carries no `inert` binding: every emitter panel — UiTable among them — would take input the canvas then discards',
-  )
-  assert.match(inert!.exp?.content ?? '', /\binert\b/, 'the binding is driven by the box\'s `inert` decision')
-
-  // The element that holds the sentence itself, not an ancestor that contains it.
-  const note = elements.find((node) =>
-    (node.children ?? [])
-      .map((child) => textIn(child as Node))
-      .join('')
-      .includes('Display only: nothing can keep what this component emits.') &&
-    !(node.children ?? []).some((child) => (child as Node).type === 1),
-  )
-  assert.ok(note, 'an inert panel says why it does not respond')
-  const shown = directive(note!, 'if') ?? directive(note!, 'show')
-  assert.ok(shown, 'the note is rendered unconditionally, so it would claim read-only for panels that are not')
-  assert.match(
-    shown!.exp?.content ?? '',
-    /\binert\b/,
-    'the note must be shown for exactly what is inerted, so its condition reads the same value',
-  )
-
-  // The remaining link — the `inert` ref being computed from the contract's `uiEmitters` — is
-  // checked in the compiled SCRIPT rather than by mounting: this suite has no DOM and UiBox pulls
-  // in Vue Flow and the store. `index.test.ts` holds the other end, that `uiEmitters` is the
-  // table.
-  const script = box.descriptor.scriptSetup?.content ?? ''
-  assert.match(
-    /const inert = computed\(([\s\S]*?)\n/.exec(script)?.[1] ?? '',
-    /uiEmitters\.has\(/,
-    '`inert` must follow the contract table, not a second list somebody maintains by hand',
+// The guard reads `UiBox.vue`, so "the guard passes" says nothing until the guard is known to be
+// able to fail. `uibox.inert.mutants.test.ts` shows that against the real file; this shows it
+// against a box small enough to read, and without reference to anything that ships.
+test('the inert guard rejects a box that mounts a component with no inert binding', async () => {
+  const { assertInertGuard, NOTE } = await import('./uibox.inert.guard.ts')
+  const box = (inert: string) => `
+<script setup lang="ts">
+const inert = computed(() => (spec.value ? uiEmitters.has(spec.value.component) : false))
+</script>
+<template>
+  <div${inert}><component :is="component" /></div>
+  <p v-if="inert && !refusal && !feed">${NOTE}</p>
+</template>
+`
+  await assertInertGuard(box(' :inert="inert || undefined"'))
+  await assert.rejects(
+    () => assertInertGuard(box('')),
+    /carries no `inert` binding/,
+    'a guard that cannot reject is not a guard',
   )
 })
