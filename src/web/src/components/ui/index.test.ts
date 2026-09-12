@@ -41,6 +41,8 @@ type PropType = 'string' | 'number' | 'boolean' | 'json'
 interface Declared {
   props: Record<string, PropType>
   emits: boolean
+  /** The event names the table's last column writes after `emits`, `select(path)` read as `select`. */
+  emitted: string[]
 }
 
 /** The table, parsed: `UiBadge  tone: 'ok'|…; text*: string   —`. */
@@ -57,14 +59,17 @@ function tableOf(source: string): Record<string, Declared> {
     const named = /^(Ui[A-Za-z]+)\s{2,}(.*)$/.exec(body)
     if (named) {
       current = named[1]
-      declared[current] = { props: {}, emits: false }
+      declared[current] = { props: {}, emits: false, emitted: [] }
     } else if (!current) {
       continue
     }
     const rest = named ? named[2] : body.trim()
     const chunks = rest.split(/\s{2,}/)
     const tail = chunks.length > 1 ? chunks[chunks.length - 1] : ''
-    if (/emits/.test(tail)) declared[current!].emits = true
+    if (/emits/.test(tail)) {
+      declared[current!].emits = true
+      declared[current!].emitted.push(...emittedIn(tail))
+    }
     for (const entry of chunks.slice(0, chunks.length > 1 ? -1 : undefined).join(' ').split(';')) {
       const pair = /^\s*([A-Za-z][A-Za-z0-9]*)\*?\s*:\s*(.+)$/.exec(entry)
       if (!pair) continue
@@ -72,6 +77,16 @@ function tableOf(source: string): Record<string, Declared> {
     }
   }
   return declared
+}
+
+/** `default, footer; emits click` -> `['click']`; `emits select(path)` -> `['select']`. */
+function emittedIn(tail: string): string[] {
+  const after = /emits\s+(.*)$/.exec(tail)
+  if (!after) return []
+  return after[1]
+    .split(',')
+    .map((name) => name.trim().replace(/\(.*$/, '').trim())
+    .filter(Boolean)
 }
 
 function typeOf(written: string): PropType {
@@ -199,4 +214,37 @@ test('every component the table says emits is either rendered inert or refused',
     [...new Set([...inert, ...refused.filter((name) => documented.includes(name))])].sort(),
   )
   assert.deepEqual(inert.filter((name) => refused.includes(name)), [], 'a component is one or the other')
+})
+
+// The table's emits column is now DATA — `uiEmitters` is built from it and `UiBox.vue` decides
+// `inert` from that — so a component whose `defineEmits` the table does not name is not a
+// documentation slip: it is a panel the canvas lets a person interact with while discarding
+// everything it emits. `UiTable` was exactly that, found by an adversary rather than by a check.
+//
+// So the two are compared directly here: every event name in a component's `defineEmits<{…}>` must
+// appear in its row's last column, and the column may name no event the component does not emit.
+// This reads the `.vue` files, as the refusal scan above does, because node cannot import them.
+
+/** The event names a component declares: `defineEmits<{ 'row-click': [row: Row] }>` -> `row-click`. */
+function emitsOf(componentSource: string): string[] {
+  const generic = /defineEmits<\{([\s\S]*?)\}>/.exec(componentSource)
+  if (!generic) return []
+  return [...generic[1].matchAll(/(?:'([^']+)'|([A-Za-z][\w:-]*))\s*:\s*\[/g)]
+    .map((m) => m[1] ?? m[2])
+    .filter(Boolean)
+}
+
+test('the contract table names exactly the events each component emits', () => {
+  const drift = files
+    .map((file) => ({
+      name: file.name,
+      declared: [...(table[file.name]?.emitted ?? [])].sort(),
+      actual: [...emitsOf(file.source)].sort(),
+    }))
+    .filter((row) => JSON.stringify(row.declared) !== JSON.stringify(row.actual))
+  assert.deepEqual(
+    drift,
+    [],
+    'a component whose emits the table does not name is rendered as if it emitted nothing',
+  )
 })

@@ -125,3 +125,47 @@ test('a box naming UiModal with open true is a panel the canvas mounts', async (
     'the canvas draws a refusal for it, not the component',
   )
 })
+
+// `UiTable` emits `row-click`, and the contract table did not say so, so a table panel took clicks
+// on every row and dropped each one: nothing writes `Box.props` back and no listener is bound by
+// `<component :is>`. The decision taken is that a table panel is inert like every other emitter —
+// the rows still render and still read, and the box says why they do not respond.
+//
+// This is a behaviour change on purpose, so it is asserted rather than inherited.
+test('a box naming UiTable is a panel the canvas renders inert, and says so', async () => {
+  const { uiBoxSpec } = await import('../../lib/uibox.ts')
+
+  const declared = JSON.parse(
+    /export const uiPropTypes[^{]*(\{[\s\S]*?\n\})/
+      .exec(source)![1]
+      .replace(/([{,]\s*)([A-Za-z][A-Za-z0-9]*)\s*:/g, '$1"$2":')
+      .replace(/'/g, '"')
+      .replace(/,(\s*[}\]])/g, '$1'),
+  )
+  const names: ReadonlySet<string> = new Set(Object.keys(declared))
+  const refused: ReadonlySet<string> = new Set(
+    /export const uiRefused[^[]*\[([^\]]*)\]/s
+      .exec(source)![1]
+      .split(',')
+      .map((entry) => entry.trim().replace(/'/g, ''))
+      .filter(Boolean),
+  )
+
+  assert.deepEqual(
+    uiBoxSpec(
+      { entity: 'swarm.blackbox.Box', fields: { kind: 'Ui', ref_id: 'UiTable', props: {} } },
+      names,
+      declared,
+      refused,
+    ),
+    { kind: 'panel', component: 'UiTable', props: {}, view: undefined },
+    'a table is drawn, not refused: it stays inside its own subtree',
+  )
+  assert.ok(emitters.includes('UiTable'), 'the contract lists UiTable as an emitter, so UiBox inerts it')
+
+  // The two halves of "renders inert" as `UiBox.vue` implements them: the attribute is computed
+  // from `uiEmitters`, and the box carries the read-only note for anything it inerts.
+  const box = readFileSync(new URL('./UiBox.vue', import.meta.url), 'utf8')
+  assert.match(box, /uiEmitters\.has\(spec\.value\.component\)/)
+  assert.match(box, /Read-only: nothing can keep what this component emits\./)
+})
