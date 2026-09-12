@@ -11,6 +11,7 @@
 import { computed, ref, shallowRef } from 'vue'
 import { defineStore } from 'pinia'
 import * as runtime from '@/runtime'
+import { OFFERED, disabledNote, whyDisabled, type SwarmAction } from './actions'
 import type { AgentEvent, Change, Instance, Recorded, Spent, Status } from '@/runtime'
 
 /** How many live changes are kept per swarm before the oldest is dropped. */
@@ -23,15 +24,16 @@ const STATUS_MS = 2000
 const TURNS_HELD = 6
 
 /** Which command each action issues. The lifecycle behind them belongs to the specification. */
-const COMMANDS = {
+const COMMANDS: Record<SwarmAction, string> = {
   start: 'swarm.manager.StartSwarm',
   pause: 'swarm.manager.PauseSwarm',
   resume: 'swarm.manager.ResumeSwarm',
   stop: 'swarm.manager.StopSwarm',
   delete: 'swarm.manager.DeleteSwarm',
-} as const
+}
 
-export type SwarmAction = keyof typeof COMMANDS
+export { ACTIONS, OFFERED } from './actions'
+export type { SwarmAction }
 
 const SWARM = 'swarm.manager.Swarm'
 const GOAL = 'swarm.goal.Goal'
@@ -386,6 +388,27 @@ export const useSwarmStore = defineStore('swarms', () => {
     }
   }
 
+  /**
+   * Makes sure one swarm is held, whether or not `GET /swarms` listed it.
+   *
+   * The list is what the server SHOWS, and a swarm in a terminal state is deliberately not on it:
+   * `DeleteSwarm` promises it "no longer appears in the swarms list". The runtime still holds it
+   * and `GET /swarms/{slug}` still serves it, so a page asked for one by name reads it directly
+   * rather than concluding it does not exist — which is what the page did, in those words, for
+   * every swarm somebody had just deleted.
+   *
+   * A slug the server really does not have fails the read, stays unheld, and gets the page's own
+   * "No such swarm".
+   */
+  async function ensure(slug: string): Promise<void> {
+    if (getSwarm(slug)) return
+    try {
+      await refresh(slug)
+    } catch {
+      // Nothing to hold. The page says so; there is no problem banner to raise over it.
+    }
+  }
+
   /** Makes a place for a swarm, then the record itself. */
   async function createSwarm(input: {
     displayName: string
@@ -468,19 +491,29 @@ export const useSwarmStore = defineStore('swarms', () => {
   function canAct(slug: string, action: SwarmAction): boolean {
     const state = getSwarm(slug)?.record?.state
     if (!state) return false
-    const offered: Record<SwarmAction, string[]> = {
-      start: ['Created', 'Stopped'],
-      pause: ['Running'],
-      resume: ['Paused'],
-      stop: ['Running', 'Paused'],
-      delete: ['Created', 'Stopped'],
-    }
-    return offered[action].includes(state)
+    return OFFERED[action].includes(state)
+  }
+
+  /**
+   * Why an action is not offered, or `undefined` when it is.
+   *
+   * The counterpart to `canAct`, and the reason it exists at all: a button that is grey and says
+   * nothing is indistinguishable from a page that has failed to load. A swarm with no record —
+   * `POST /swarms` and no `CreateSwarm` — disables all five, and that was the state nobody could
+   * get out of or explain.
+   */
+  function whyNot(slug: string, action: SwarmAction): string | undefined {
+    return whyDisabled(getSwarm(slug)?.record?.state, action)
+  }
+
+  /** One line for a swarm that offers nothing at all, or `undefined` when it offers something. */
+  function whyNothing(slug: string): string | undefined {
+    return disabledNote(getSwarm(slug)?.record?.state)
   }
 
   return {
     held, loaded, visible, problem, shape, live, status, statusAt, clock, reachable, nextTickIn,
-    load, refresh, getSwarm, goalOf, canAct, createSwarm, follow, unfollow, wake, pollStatus,
+    load, refresh, ensure, getSwarm, goalOf, canAct, whyNot, whyNothing, createSwarm, follow, unfollow, wake, pollStatus,
     recentlyChanged, lastTurn, loadTurn, liveTurn, capOn,
     views, followView, viewState,
     startSwarm, pauseSwarm, resumeSwarm, stopSwarm, deleteSwarm,

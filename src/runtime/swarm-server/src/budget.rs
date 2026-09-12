@@ -5,6 +5,27 @@
 //! somebody notices. On 2026-09-12 a swarm whose goal was the placeholder `2342342` ran 78 turns
 //! and spent $11.10 that way. Nothing in the system said so and nothing stopped it.
 //!
+//! **That happened once, not twice, and the record should say so.** The overrun was read as a
+//! second instance because the figures differ — $11.10 here and $11.35 elsewhere — but both are the
+//! swarm `dsfsdf`, goal `77fc1fcc`, and the difference is one turn. Its `turns/spend.jsonl` holds
+//! 44 rows, iterations 35 to 78, `2026-09-12T00:55:37Z` to `01:29:33Z`, summing to $11.345391; the
+//! first 43 of them sum to $11.098908, so $11.10 is the same file read at turn 77. There is no
+//! other overrun on disk: read at `2026-09-12T12:10Z`, the other five records are `main` 4 rows,
+//! `e2e-1789212621` 2, and `cost-check`, `mail-turn-1789197656` and `test` 1 each — none past turn
+//! 4 and none past $0.44. An earlier revision of this paragraph said every one of them was a single
+//! row, which was false of two and is the sort of round number worth re-counting before writing.
+//! `data/` is live, so these grow; the conclusion does not depend on them staying still.
+//!
+//! So the cap did not fire late and was not lifted. It was **never consulted**, because it did not
+//! exist in the binary that ran: this module and both of `capped`'s call sites arrived together in
+//! `993731e`, committed `2026-09-12T09:15:35+02:00` — `07:15:35Z`, five hours and 46 minutes after
+//! that swarm's last turn. The first 34 turns left no spend row at all for the same reason; the
+//! file begins at turn 35 because that is when a binary that records one started.
+//!
+//! Driven rather than argued: `trigger::bounds` turns the same loop with `SWARM_MAX_TURNS=3` and
+//! stops at three, both for a goal that answers and for one that never does. The overrun could not
+//! be reproduced against this code, which is the finding and not a gap in it.
+//!
 //! A cap is a HOST decision, not a model one, and that is why it lives here rather than in the
 //! specification. The periodic binding's contract already says `eligibility: host_boolean` — the
 //! host decides whether an occurrence runs at all, which is where a paused swarm is excluded. A
@@ -20,8 +41,10 @@
 //!   SWARM_MAX_SPEND_USD   default 5.00    dollars on one goal
 //! ```
 //!
-//! Either may be set to `0` or `off` to lift it. Lifting both restores the old behaviour, which is
-//! a loop that stops when the goal is reached or when a person pauses it.
+//! Either may be set to `0`, `off` or `none` to lift it, and to nothing else: a value that is
+//! merely wrong — `-1`, `nan`, `inf`, `banana` — keeps the default and says so in a warning. Lifting both
+//! restores the old behaviour, which is a loop that stops when the goal is reached or when a person
+//! pauses it.
 
 use serde::Serialize;
 
@@ -51,8 +74,10 @@ impl Default for Caps {
 impl Caps {
     /// Reads the caps from the environment, falling back to the defaults.
     ///
-    /// A value that does not parse is a mistake worth refusing loudly rather than silently
-    /// treating as "no cap", so it keeps the default and says so.
+    /// A value that does not parse, that is below zero, or that is not a finite number at all, is
+    /// a mistake worth refusing loudly rather than silently treating as "no cap", so it keeps the
+    /// default and says so. `read` carries the reason that sentence is worth more than one line —
+    /// and the reason it took three attempts to write.
     pub fn configured() -> Self {
         Self {
             max_turns: read("SWARM_MAX_TURNS", TURNS),
@@ -101,11 +126,26 @@ impl std::fmt::Display for Reached {
     }
 }
 
-/// One cap read from the environment. `0` or `off` lifts it.
-fn read<T>(name: &str, fallback: T) -> Option<T>
-where
-    T: std::str::FromStr + PartialOrd + Default + Copy,
-{
+/// One cap read from the environment. `0`, `off` or `none` lifts it, and nothing else does.
+///
+/// Lifting a cap is `== T::default()` and not `<= T::default()`, because the two differ on exactly
+/// the values a typo produces. `SWARM_MAX_SPEND_USD=-1` parses as `f64`, is below zero, and under
+/// the old comparison removed the spend ceiling outright — while the same typo in `SWARM_MAX_TURNS`
+/// does the documented thing, because `u64` refuses to parse it and the default is kept. One
+/// character, on one of two caps, silently uncapping the money: that asymmetry is the whole reason
+/// this reads the way it does.
+///
+/// So a negative value joins an unparseable one in the branch this module's own doc promised —
+/// refused loudly, default kept. A cap is a bound, and a reader that treats a mistake as "no bound"
+/// is answering a question nobody asked it.
+///
+/// The same argument reaches one value further, and the first version of this function stopped
+/// short of it. `==` and `<` are both FALSE of NaN, so `SWARM_MAX_SPEND_USD=nan` was neither lifted
+/// nor refused: it fell through and became the ceiling, and `spent >= NaN` is false for every spend
+/// there has ever been. `inf` does the same by being a number no spend reaches. Both are caught by
+/// [`Cap::is_usable`] BEFORE the comparisons, because a classification that decides by comparison
+/// cannot classify a value that compares false with everything.
+fn read<T: Cap>(name: &str, fallback: T) -> Option<T> {
     let Ok(raw) = std::env::var(name) else {
         return Some(fallback);
     };
@@ -113,17 +153,43 @@ where
     if raw.eq_ignore_ascii_case("off") || raw.eq_ignore_ascii_case("none") {
         return None;
     }
+    let refuse = |why: &'static str| {
+        tracing::warn!(
+            cap = name,
+            value = raw,
+            why,
+            "unusable cap; keeping the default"
+        );
+        Some(fallback)
+    };
     match raw.parse::<T>() {
-        Ok(value) if value <= T::default() => None,
+        Ok(value) if !value.is_usable() => refuse("it is not a finite number"),
+        Ok(value) if value == T::default() => None,
+        Ok(value) if value < T::default() => refuse("a cap below zero is a mistake, not a lift"),
         Ok(value) => Some(value),
-        Err(_) => {
-            tracing::warn!(
-                cap = name,
-                value = raw,
-                "unreadable cap; keeping the default"
-            );
-            Some(fallback)
-        }
+        Err(_) => refuse("it does not parse"),
+    }
+}
+
+/// A type a cap can be read into.
+///
+/// The one thing [`read`] cannot do generically is decide whether a parsed value is a number at
+/// all. Integers always are; floats have three values that are not — `NaN`, `inf`, `-inf` — and
+/// all three defeat a classification written in `==` and `<`.
+trait Cap: std::str::FromStr + PartialOrd + Default + Copy {
+    /// Whether this value can serve as a bound something might exceed.
+    fn is_usable(self) -> bool;
+}
+
+impl Cap for u64 {
+    fn is_usable(self) -> bool {
+        true
+    }
+}
+
+impl Cap for f64 {
+    fn is_usable(self) -> bool {
+        self.is_finite()
     }
 }
 

@@ -24,7 +24,7 @@ use serde_json::{Map, Value};
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
 
-use crate::state::Server;
+use crate::state::{Removal, Removed, Server};
 use crate::swarm::{Outgoing, Refused};
 
 /// The body of a command request.
@@ -110,7 +110,7 @@ impl IntoResponse for Refused {
 pub fn routes(server: Arc<Server>) -> Router {
     Router::new()
         .route("/swarms", get(list_swarms).post(create_swarm))
-        .route("/swarms/{slug}", get(read_swarm))
+        .route("/swarms/{slug}", get(read_swarm).delete(remove_swarm))
         .route("/swarms/{slug}/events", get(watch_swarm))
         .route("/swarms/{slug}/views/{view}", get(read_view))
         .route("/swarms/{slug}/commands/{command}", post(issue_command))
@@ -124,9 +124,63 @@ pub fn routes(server: Arc<Server>) -> Router {
         .with_state(server)
 }
 
-/// The swarms this server holds.
+/// The swarms this server shows.
+///
+/// Not every swarm it holds: `DeleteSwarm` says the swarm "no longer appears in the swarms list"
+/// (`manager.yaml:326`), so one in a terminal state is not listed. The process still holds its
+/// handle — `Server::slugs` is that question — and `DELETE /swarms/{slug}` is what ends it.
 async fn list_swarms(State(server): State<Arc<Server>>) -> impl IntoResponse {
-    axum::Json(server.slugs().await)
+    axum::Json(server.listed().await)
+}
+
+/// Removes a swarm: its handle, its log and the directory it lived in.
+///
+/// The only route that destroys anything, and the only one whose effect the model cannot record —
+/// an erasure event written into the log being erased is self-refuting, so `manager.yaml:87-89`
+/// says of the lifecycle that "nothing here is deleted" and means it. `Deleted` retires the
+/// records; this unlinks the place they were kept. Which is why it is refused for anything the
+/// specification still considers live: a swarm with a record that is not in a terminal state
+/// answers `409` with `swarm.manager.SwarmStateConflict`, the same error the model declares for a
+/// command that acts from a state the instance is not in.
+///
+/// A place with no swarm in it — `POST /swarms` and no `CreateSwarm` — has no record to refuse it,
+/// and is exactly the case nothing could remove before this route existed.
+/// `204` when the place is gone. `202` when the slug is no longer served but something else was
+/// still holding its handle, so the files go when that holder lets go — saying `204` there would
+/// be a claim about the disk that is not true yet.
+async fn remove_swarm(
+    State(server): State<Arc<Server>>,
+    Path(slug): Path<String>,
+) -> Result<impl IntoResponse, Gone> {
+    match server.remove(&slug).await.map_err(Gone)? {
+        Removed::Now => Ok(StatusCode::NO_CONTENT),
+        Removed::WhenReadersLetGo => Ok(StatusCode::ACCEPTED),
+    }
+}
+
+/// A removal that did not happen, on the wire.
+struct Gone(Removal);
+
+impl IntoResponse for Gone {
+    fn into_response(self) -> Response {
+        let (status, kind) = match &self.0 {
+            // The caller's, and the only one of these that is a refusal about the NAME. Every
+            // route that takes a slug refuses the same set, in `state::check`.
+            Removal::BadSlug { .. } => (StatusCode::BAD_REQUEST, "command"),
+            Removal::NotHere(_) => (StatusCode::NOT_FOUND, "view"),
+            // Named rather than described: the client already knows this error from every
+            // lifecycle command, and a second word for one fact is a second thing to handle.
+            Removal::StateConflict { .. } => {
+                (StatusCode::CONFLICT, "swarm.manager.SwarmStateConflict")
+            }
+            Removal::Undeletable { .. } => (StatusCode::INTERNAL_SERVER_ERROR, "store"),
+        };
+        let body = axum::Json(Problem {
+            error: self.0.to_string(),
+            kind,
+        });
+        (status, body).into_response()
+    }
 }
 
 /// Opens a swarm's log, creating its directory if this is the first time.
