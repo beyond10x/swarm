@@ -18,7 +18,7 @@ import { MiniMap } from '@vue-flow/minimap'
 import InstanceNode, { type InstanceNodeData } from '@/components/canvas/InstanceNode.vue'
 import UiBox, { type UiBoxData } from '@/components/canvas/UiBox.vue'
 import { uiBoxSpec } from '@/lib/uibox'
-import { uiComponentNames } from '@/components/ui'
+import { uiComponentNames, uiPropTypes } from '@/components/ui'
 import { layoutDag } from '@/lib/layout'
 import type { Canvas, Instance, Shape } from '@/runtime'
 import '@vue-flow/core/dist/style.css'
@@ -93,11 +93,13 @@ function reconcile(): void {
   const laid = fresh.length
     ? layoutDag(
         wanted.map((instance) => {
-          const panel = uiBoxSpec(instance, uiComponentNames)
+          // A refusal is a line of text, not a panel: only a box that draws a component is given
+          // a panel's room.
+          const drawn = uiBoxSpec(instance, uiComponentNames, uiPropTypes)?.kind === 'panel'
           return {
             id: instance.id,
-            width: panel ? PANEL_W : NODE_W,
-            height: panel ? PANEL_H : NODE_H,
+            width: drawn ? PANEL_W : NODE_W,
+            height: drawn ? PANEL_H : NODE_H,
           }
         }),
         edges.value.flatMap((edge) =>
@@ -112,12 +114,13 @@ function reconcile(): void {
   const next: Node[] = []
   wanted.forEach((instance, index) => {
     const changed = props.recent?.has(instance.id) ?? false
-    // A Ui box naming a component the library has is drawn as that component; everything else,
-    // including a Ui box naming a component nobody wrote, is an instance like any other.
-    const panel = uiBoxSpec(instance, uiComponentNames)
-    const type = panel ? 'ui' : 'instance'
-    const data: InstanceNodeData | UiBoxData = panel
-      ? { instance, slug: props.slug, changed }
+    // A Ui box is drawn by `UiBox` whether or not the library has the component it names: a box
+    // naming one nobody wrote is a refusal that has to be SEEN, and an instance node listing
+    // `ref_id` among its fields never says the library has no such thing.
+    const decided = uiBoxSpec(instance, uiComponentNames, uiPropTypes)
+    const type = decided ? 'ui' : 'instance'
+    const data: InstanceNodeData | UiBoxData = decided
+      ? { instance, decision: decided, slug: props.slug, changed }
       : { instance, terminal: terminal.value.get(instance.entity), changed }
     const existing = held.get(instance.id)
     if (existing) {

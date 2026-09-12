@@ -11,16 +11,30 @@
 // `@/lib/uibox`, which owns the decision as a pure function; this file only mounts the result.
 //
 // A box naming a component the library does not have draws as a refusal rather than as nothing: an
-// agent wrote that name, and an empty rectangle would look like a panel that had not loaded.
+// agent wrote that name, and an empty rectangle would look like a panel that had not loaded. That
+// refusal is reachable — `uiBoxSpec` tells "not a Ui box" from "a Ui box naming nothing the library
+// has", and `SwarmCanvas` mounts this component for both a panel and a refusal.
+//
+// A component the contract says EMITS is rendered inert, and says so. Nothing writes `Box.props`
+// back — no command does, and `blackbox.yaml` records that as UNMAPPED — so a text input a person
+// could type into would discard the typing on the next refresh. That looks like it worked, which is
+// worse than plainly not offering it.
 import { computed, watchEffect } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
-import { uiComponentNames, uiComponents } from '@/components/ui'
-import { columnsFrom, uiBoxSpec } from '@/lib/uibox'
+import { uiComponents, uiEmitters } from '@/components/ui'
+import { columnsFrom, type UiBoxSpec } from '@/lib/uibox'
 import type { Instance } from '@/runtime'
 import { useSwarmStore } from '@/stores/swarms'
 
 export interface UiBoxData {
   instance: Instance
+  /**
+   * What the canvas decided this box is: a panel, or a name the library does not have.
+   *
+   * Carried rather than decided again here, so there is no state this component can be mounted in
+   * that it has no drawing for — `SwarmCanvas` mounts it for exactly these two.
+   */
+  decision: UiBoxSpec
   /** The swarm this box sits on, so a view it is fed from can be read. */
   slug?: string
   /** Whether it changed a moment ago. Lit while true, as every other node is. */
@@ -33,16 +47,28 @@ const props = defineProps<{ id: string; data: UiBoxData; selected?: boolean }>()
 const store = useSwarmStore()
 
 const instance = computed(() => props.data.instance)
-const spec = computed(() => uiBoxSpec(instance.value, uiComponentNames))
+const decision = computed(() => props.data.decision)
+
+/** The panel, when the box names a component the library has. */
+const spec = computed(() => (decision.value.kind === 'panel' ? decision.value : undefined))
+
 const component = computed(() =>
   spec.value ? (uiComponents as Record<string, unknown>)[spec.value.component] : undefined,
 )
 
-/** The name on the box, whether or not the library has it — a refusal has to say what it refused. */
-const named = computed(() => {
-  const ref_id = instance.value.fields.ref_id
-  return typeof ref_id === 'string' ? ref_id : undefined
-})
+/** The name on the box — a refusal has to say what it refused, and a panel says what it is. */
+const named = computed(() =>
+  decision.value.kind === 'unknown-component' ? decision.value.named : decision.value.component,
+)
+
+/**
+ * Whether the component this box names emits, per the contract table.
+ *
+ * Read from `uiEmitters`, which is that table as data and checked against it by
+ * `components/ui/index.test.ts`: a component that starts emitting is inert here by having been
+ * documented, not by somebody remembering to add it to a list.
+ */
+const inert = computed(() => (spec.value ? uiEmitters.has(spec.value.component) : false))
 
 const title = computed(() => {
   const name = instance.value.fields.name
@@ -87,15 +113,21 @@ const bound = computed<Record<string, unknown>>(() => {
 
     <header class="head">
       <span class="title">{{ title }}</span>
-      <span class="named">{{ named ?? '—' }}</span>
+      <span class="named">{{ named }}</span>
     </header>
 
     <div v-if="component" class="body nodrag nowheel">
-      <component :is="component" v-bind="bound" />
+      <!-- `inert` is the whole mechanism: the component renders exactly as it would, and takes no
+           input, because there is nowhere for what it emits to go. -->
+      <div :inert="inert || undefined">
+        <component :is="component" v-bind="bound" />
+      </div>
     </div>
     <p v-else class="refused">
-      No component named <code>{{ named ?? 'nothing' }}</code> in the library.
+      No component named <code>{{ named }}</code> in the library.
     </p>
+
+    <p v-if="inert" class="note">Read-only: nothing can keep what this component emits.</p>
 
     <Handle id="out" type="source" :position="Position.Right" />
   </div>
@@ -144,6 +176,13 @@ const bound = computed<Record<string, unknown>>(() => {
   padding: var(--space-2);
   max-height: 22rem;
   overflow: auto;
+}
+
+.note {
+  margin: 0;
+  padding: 0 var(--space-3) var(--space-2);
+  color: var(--color-text-muted);
+  font-size: 0.6875rem;
 }
 
 .refused {

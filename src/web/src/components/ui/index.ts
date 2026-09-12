@@ -106,3 +106,56 @@ export const uiComponents = {
 
 /** The names a box's `ref_id` may legally take. Anything else names nothing and draws nothing. */
 export const uiComponentNames: ReadonlySet<string> = new Set(Object.keys(uiComponents))
+
+// What each prop MEANS, from the table above.
+//
+// A box carries its props as `Map<String, String>` — ess/1 has no other map — so a reader has to
+// be told whether `404` is a number or the three characters an author typed. The table above is
+// where that is already written down, and this is the same table as data. `index.test.ts` parses
+// the comment and fails if the two disagree, so the sentence a person reads and the rule a panel
+// obeys cannot come apart.
+//
+// A bare name in the table (`label`, `placeholder`, `min`) declares no type and is absent here:
+// the contract does not say, so nothing here pretends it does.
+export const uiPropTypes = {
+  UiButton: { variant: 'string', size: 'string', disabled: 'boolean', loading: 'boolean', icon: 'string' },
+  UiIconButton: { icon: 'string', label: 'string' },
+  UiTile: { title: 'string', subtitle: 'string', accent: 'string', big: 'boolean', clickable: 'boolean' },
+  UiCard: { title: 'string' },
+  UiPanel: { title: 'string', collapsible: 'boolean', open: 'boolean' },
+  UiBadge: { tone: 'string', text: 'string' },
+  UiTag: { text: 'string', removable: 'boolean' },
+  UiTable: { columns: 'json', rows: 'json', rowKey: 'string', dense: 'boolean' },
+  UiFileList: { files: 'json', selected: 'string' },
+  UiModal: { open: 'boolean', title: 'string', width: 'string' },
+  UiTextInput: { modelValue: 'string', mono: 'boolean' },
+  UiTextArea: { modelValue: 'string', rows: 'number' },
+  UiNumberInput: { modelValue: 'number' },
+  UiSelect: { modelValue: 'string', options: 'json' },
+  UiField: { label: 'string', hint: 'string', error: 'string' },
+  UiToolbar: {},
+  UiEmptyState: { title: 'string', text: 'string', icon: 'string' },
+  UiSpinner: { size: 'string' },
+  UiTabs: { modelValue: 'string', tabs: 'json' },
+  UiKeyValue: { items: 'json', mono: 'boolean' },
+  UiStateBadge: { state: 'string' },
+} as const
+
+// The components that emit.
+//
+// Taken from the table's last column. A `Box{kind: Ui}` has no way to keep what a component
+// emits — nothing writes `Box.props` back, and no command exists to — so a panel renders one of
+// these inert and says so, rather than offering an edit that is discarded on the next refresh.
+export const uiEmitters: ReadonlySet<string> = new Set([
+  'UiButton',
+  'UiIconButton',
+  'UiTile',
+  'UiTag',
+  'UiFileList',
+  'UiModal',
+  'UiTextInput',
+  'UiTextArea',
+  'UiNumberInput',
+  'UiSelect',
+  'UiTabs',
+])

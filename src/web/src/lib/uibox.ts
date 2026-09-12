@@ -24,15 +24,36 @@ export interface BoxLike {
   fields: Record<string, unknown>
 }
 
+/** How a prop's text is read, as `components/ui/index.ts` declares the prop's type. */
+export type PropType = 'string' | 'number' | 'boolean' | 'json'
+
+/** Every component's declared props, by name: `uiPropTypes` from the contract. */
+export type Declared = Readonly<Record<string, Readonly<Record<string, PropType>>>>
+
 /** What to render for one Ui box. */
-export interface UiBoxSpec {
+export interface UiBoxPanel {
+  kind: 'panel'
   /** A component exported by `@/components/ui`, by name. */
   component: string
-  /** What to pass it, decoded from the box's `props`. */
+  /** What to pass it, each value read as the type the contract declares. */
   props: Record<string, unknown>
   /** The runtime view whose rows feed the component, when the box names one. */
   view: string | undefined
 }
+
+/**
+ * A Ui box naming a component the library does not have.
+ *
+ * Distinct from `undefined`, which means "not a Ui box at all". A caller handed the same value for
+ * both cannot draw them differently, and the difference is the whole point: an agent wrote that
+ * name, and nobody learns it was wrong from a node that quietly lists `ref_id` as a field.
+ */
+export interface UiBoxUnknown {
+  kind: 'unknown-component'
+  named: string
+}
+
+export type UiBoxSpec = UiBoxPanel | UiBoxUnknown
 
 const BOX = 'swarm.blackbox.Box'
 
@@ -52,12 +73,20 @@ const FEED = 'view'
  * a box may name a component that does not exist — an agent wrote it — and drawing nothing for it
  * is a choice, where guessing a nearest match would be an invention.
  */
-export function uiBoxSpec(instance: BoxLike, known: ReadonlySet<string>): UiBoxSpec | undefined {
+export function uiBoxSpec(
+  instance: BoxLike,
+  known: ReadonlySet<string>,
+  declared?: Declared,
+): UiBoxSpec | undefined {
   if (instance.entity !== BOX) return undefined
   if (instance.fields.kind !== 'Ui') return undefined
 
   const component = instance.fields.ref_id
-  if (typeof component !== 'string' || !known.has(component)) return undefined
+  // A Ui box that names nothing has refused nothing: there is no component to report as missing.
+  if (typeof component !== 'string' || !component) return undefined
+  if (!known.has(component)) return { kind: 'unknown-component', named: component }
+
+  const types = declared?.[component]
 
   const written = instance.fields.props
   // `null` is ESS for "nothing has written this", and anything that is not a map of strings is a
@@ -76,24 +105,50 @@ export function uiBoxSpec(instance: BoxLike, known: ReadonlySet<string>): UiBoxS
       view = value
       continue
     }
-    props[name] = decode(value)
+    props[name] = decode(value, types?.[name])
   }
-  return { component, props, view }
+  return { kind: 'panel', component, props, view }
 }
 
 /**
- * One prop value, as the component wants it.
+ * One prop value, read as the type the contract declares for it.
  *
- * The map's values are strings because that is the only map ess/1 has. A value that parses as JSON
- * is that JSON — so `columns` arrives as an array and `dense` as a boolean — and a value that does
- * not is the string itself. A prop that must stay the string "12" is written with its quotes,
- * `"12"`, which is what makes the rule one rule instead of a table of special cases.
+ * The map's values are strings because that is the only map ess/1 has, so something has to say
+ * what a string means. That something is `components/ui/index.ts` — the same table a person reads
+ * before writing the box — and never the text itself: `text*: string` means `404` is the three
+ * characters an author typed, and a rule that guessed from the digits would make the obvious thing
+ * the wrong thing.
+ *
+ * A value that does not read as its declared type is left as written. A `rows: number` given
+ * `many` is a mistake worth seeing on the panel, and `NaN` would hide which mistake it was.
+ *
+ * A prop the table does not type — `label`, `placeholder`, `min` and the other bare names — is
+ * text, unless it is bracketed: `[` or `{` opens a value no scalar prop could want, and that is as
+ * far as a guess may go where the contract declares nothing.
  */
-function decode(value: string): unknown {
+function decode(value: string, type: PropType | undefined): unknown {
+  switch (type) {
+    case 'string':
+      return value
+    case 'boolean':
+      return value === 'true' ? true : value === 'false' ? false : value
+    case 'number': {
+      const number = Number(value)
+      return value.trim() !== '' && Number.isFinite(number) ? number : value
+    }
+    case 'json':
+      return parsed(value) ?? value
+    default:
+      return /^\s*[[{]/.test(value) ? (parsed(value) ?? value) : value
+  }
+}
+
+/** The JSON a string holds, or undefined when it holds none. */
+function parsed(value: string): unknown {
   try {
     return JSON.parse(value) as unknown
   } catch {
-    return value
+    return undefined
   }
 }
 

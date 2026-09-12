@@ -227,10 +227,21 @@ entities:
       # carries WHICH component (see above), not WITH WHAT.
       #
       # Map<String, String> and not a struct because the component library's 21 components take 21
-      # different prop shapes and ess/1 has no union over them; a value that is not a scalar (a
-      # table's `columns`) is written as JSON text and decoded by the reader. Optional because a
-      # Service or Store box has no props at all, and "nothing has written this" is the true answer
-      # for one, not an empty map that claims a Ui box with no props.
+      # different prop shapes and ess/1 has no union over them. Optional because a Service or Store
+      # box has no props at all, and "nothing has written this" is the true answer for one, not an
+      # empty map that claims a Ui box with no props.
+      #
+      # HOW A VALUE IS READ, and it is not read from the text: every value here is a string, and
+      # what it MEANS is decided by the type `components/ui/index.ts` declares for that prop of that
+      # component. `UiBadge` declares `text*: string`, so `text: "404"` is those three characters
+      # and never the number; `UiTable` declares `columns*: {key,label,…}[]`, so its value is a
+      # JSON array written as text; `dense: boolean` reads the words `true` and `false`. A value
+      # that does not read as its declared type is passed on as written, so a mistake is visible
+      # rather than silently turned into something else.
+      #
+      # A prop the contract does not type — the bare names in its table, `label`, `min` — is text,
+      # unless it opens with `[` or `{`, which no scalar prop wants. That is as far as a reader may
+      # guess where nothing is declared.
       #
       # UNMAPPED: no command changes props after `DraftBox`; model.ts has no counterpart at all.
       - name: props
@@ -560,8 +571,9 @@ commands:
         type: List<swarm.blackbox.Port>
       - name: ref_id
         type: Optional<String>
-      # What a Ui box is drawn with; see `Box.props`. Given with `ref_id` when the kind is Ui, and
-      # not at all otherwise — a `when:` compares one input to a literal and cannot pair two, so
+      # What a Ui box is drawn with; see `Box.props` for how a value is read — by the type the
+      # component contract declares, never by what the text looks like. Given with `ref_id` when
+      # the kind is Ui, and not at all otherwise — a `when:` compares one input to a literal and cannot pair two, so
       # like the `ref_id` rule above this is prose the implementation checks.
       - name: props
         type: Optional<Map<String, String>>
