@@ -17,6 +17,9 @@ use ess_runtime::Spec;
 use crate::budget::{Caps, Reached};
 use crate::swarm::{Refused, Summary, Swarm, now};
 
+/// The entity a slug names one of. Its lifecycle decides what "finished" means.
+const SWARM: &str = "swarm.manager.Swarm";
+
 /// The whole server.
 pub struct Server {
     spec: Arc<Spec>,
@@ -142,6 +145,120 @@ impl Server {
         Ok(swarm)
     }
 
+    /// Removes a swarm: its handle, its log, and the directory it lived in.
+    ///
+    /// Removable means **absent from the model or in a terminal state**. A place made by
+    /// `POST /swarms` that no `CreateSwarm` ever followed has no `swarm.manager.Swarm` record at
+    /// all, and nothing in the model can be asked about it — that is the swarm the operator could
+    /// not remove and removed by hand. Anything else is refused with the error the specification
+    /// already declares for a command that acts from a state the instance is not in.
+    ///
+    /// Which states are terminal is read from the specification, not written here: `manager.yaml`
+    /// says `terminal: [Deleted]`, and a lifecycle that grows a second end should not need this
+    /// file edited to agree with it.
+    ///
+    /// Three things this has to get right, all of them documented above:
+    ///
+    /// 1. **The per-slug `opening` gate is taken**, the same one `Server::open` takes. Removal and
+    ///    construction of one slug are the same critical section: without it an open that missed
+    ///    the map read constructs a handle while this is unlinking and inserts it afterwards,
+    ///    leaving a live handle over a log that is gone.
+    /// 2. **The handle leaves the map and the `Arc` is dropped before the files go.** Dropping it
+    ///    closes the SQLite handle. This is the only eviction path there is — `.remove()` was never
+    ///    called on `swarms` before this method existed — so nothing else will do it later.
+    /// 3. **`eventlog.sqlite3`, `-wal` and `-shm` go together.** Removing the database and leaving
+    ///    the WAL behind makes the next open of this slug run recovery against a fresh empty file.
+    ///
+    /// A handle held elsewhere — the trigger walks `all()` — keeps its own `Arc` alive, so the
+    /// close happens when that reader lets go. The files are unlinked either way: on this platform
+    /// an open descriptor does not block the unlink, and the slug is out of the map, so nothing
+    /// hands that handle to a new caller.
+    pub async fn remove(&self, slug: &str) -> Result<(), Removal> {
+        // The same gate `open` takes, and for the same reason: at most one of "construct this
+        // slug" and "remove this slug" runs at a time.
+        let gate = Arc::clone(
+            self.opening
+                .lock()
+                .expect("not poisoned")
+                .entry(slug.to_owned())
+                .or_default(),
+        );
+        let _removing = gate.lock().await;
+
+        let held = self.swarms.read().await.get(slug).map(Arc::clone);
+        let directory = self.root.join("swarms").join(slug);
+        if held.is_none() && !directory.exists() {
+            return Err(Removal::NotHere(slug.to_owned()));
+        }
+
+        // What the model says about it, if the model has been told it exists at all.
+        if let Some(swarm) = &held {
+            let state = swarm.summary().await.state;
+            if let Some(state) = state
+                && !self.terminal_states().contains(&state)
+            {
+                return Err(Removal::StateConflict {
+                    slug: slug.to_owned(),
+                    state,
+                });
+            }
+        }
+
+        // Out of the map, then the last `Arc` this function holds, then the files. In that order.
+        self.swarms.write().await.remove(slug);
+        drop(held);
+
+        // The log and everything SQLite keeps beside it, together. A `-wal` that outlives its
+        // database is read as a journal to recover the next time this slug is opened.
+        let database = directory.join("eventlog.sqlite3");
+        for file in [
+            database.clone(),
+            with_suffix(&database, "-wal"),
+            with_suffix(&database, "-shm"),
+        ] {
+            match std::fs::remove_file(&file) {
+                Ok(()) => {}
+                Err(why) if why.kind() == std::io::ErrorKind::NotFound => {}
+                Err(why) => {
+                    return Err(Removal::Undeletable {
+                        path: file.display().to_string(),
+                        why: why.to_string(),
+                    });
+                }
+            }
+        }
+
+        match std::fs::remove_dir_all(&directory) {
+            Ok(()) => Ok(()),
+            Err(why) if why.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(why) => Err(Removal::Undeletable {
+                path: directory.display().to_string(),
+                why: why.to_string(),
+            }),
+        }
+    }
+
+    /// The states the specification calls ends for a swarm.
+    ///
+    /// Read from the compiled IR rather than spelled here, so `terminal: [Deleted]` remains the one
+    /// place that decides it.
+    fn terminal_states(&self) -> Vec<String> {
+        self.spec
+            .ir()
+            .entities()
+            .iter()
+            .find(|(name, _)| name.to_string() == SWARM)
+            .map(|(_, entity)| {
+                entity
+                    .lifecycle
+                    .terminal
+                    .iter()
+                    .map(|state| state.as_str().to_owned())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     /// One open swarm.
     pub async fn get(&self, slug: &str) -> Result<Arc<Swarm>, Refused> {
         self.swarms
@@ -152,9 +269,40 @@ impl Server {
             .ok_or_else(|| Refused::View(format!("no swarm `{slug}`")))
     }
 
-    /// Every open swarm, by slug.
+    /// Every open swarm, by slug. Terminal ones included: this is what the process holds.
     pub async fn slugs(&self) -> Vec<String> {
         self.swarms.read().await.keys().cloned().collect()
+    }
+
+    /// Every swarm a client is shown, by slug — which is every open one that is not finished.
+    ///
+    /// `DeleteSwarm` promises the swarm "no longer appears in the swarms list"
+    /// (`manager.yaml:326`), and for as long as the list was the keys of the handle map that
+    /// promise was simply false: six swarms sat in `Deleted` and all six were listed. Terminal is
+    /// the specification's word, read from the lifecycle, not a name matched here.
+    ///
+    /// Separate from `slugs()` rather than a filter inside it: what the process HOLDS and what a
+    /// client is SHOWN are two different questions, and boot logs the first.
+    pub async fn listed(&self) -> Vec<String> {
+        let terminal = self.terminal_states();
+        // The map's lock is dropped before the first await: a summary takes the swarm's own world
+        // lock, and holding the map across that is how two locks become an order to get wrong.
+        let held: Vec<(String, Arc<Swarm>)> = self
+            .swarms
+            .read()
+            .await
+            .iter()
+            .map(|(slug, swarm)| (slug.clone(), Arc::clone(swarm)))
+            .collect();
+
+        let mut shown = Vec::new();
+        for (slug, swarm) in held {
+            match swarm.summary().await.state {
+                Some(state) if terminal.contains(&state) => {}
+                _ => shown.push(slug),
+            }
+        }
+        shown
     }
 
     /// Every open swarm, for the trigger to walk.
@@ -364,6 +512,43 @@ impl Server {
         }
     }
 }
+
+/// The same path with something appended to its file name: `x.sqlite3` and `-wal` is
+/// `x.sqlite3-wal`, which is not what `set_extension` would give.
+fn with_suffix(path: &std::path::Path, suffix: &str) -> PathBuf {
+    let mut name = path.as_os_str().to_owned();
+    name.push(suffix);
+    PathBuf::from(name)
+}
+
+/// Why a swarm was not removed.
+#[derive(Debug)]
+pub enum Removal {
+    /// No handle and no directory: there is nothing here by that name.
+    NotHere(String),
+    /// The model holds a record, and it is not finished. The specification declares this refusal
+    /// for every command that acts from a state the instance is not in; removal is not a command,
+    /// but it is the same answer to the same question and inventing a second name for it would put
+    /// two words in front of a client for one fact.
+    StateConflict { slug: String, state: String },
+    /// The files would not go.
+    Undeletable { path: String, why: String },
+}
+
+impl std::fmt::Display for Removal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotHere(slug) => write!(f, "no swarm `{slug}`"),
+            Self::StateConflict { slug, state } => write!(
+                f,
+                "`{slug}` is {state}, and only a swarm with no record or in a terminal state is removed"
+            ),
+            Self::Undeletable { path, why } => write!(f, "{path} could not be removed: {why}"),
+        }
+    }
+}
+
+impl std::error::Error for Removal {}
 
 /// One goal the loop has stopped asking about.
 #[derive(Clone, Debug, Serialize)]

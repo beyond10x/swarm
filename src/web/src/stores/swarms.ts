@@ -11,6 +11,7 @@
 import { computed, ref, shallowRef } from 'vue'
 import { defineStore } from 'pinia'
 import * as runtime from '@/runtime'
+import { OFFERED, disabledNote, whyDisabled, type SwarmAction } from './actions'
 import type { AgentEvent, Change, Instance, Recorded, Spent, Status } from '@/runtime'
 
 /** How many live changes are kept per swarm before the oldest is dropped. */
@@ -23,15 +24,16 @@ const STATUS_MS = 2000
 const TURNS_HELD = 6
 
 /** Which command each action issues. The lifecycle behind them belongs to the specification. */
-const COMMANDS = {
+const COMMANDS: Record<SwarmAction, string> = {
   start: 'swarm.manager.StartSwarm',
   pause: 'swarm.manager.PauseSwarm',
   resume: 'swarm.manager.ResumeSwarm',
   stop: 'swarm.manager.StopSwarm',
   delete: 'swarm.manager.DeleteSwarm',
-} as const
+}
 
-export type SwarmAction = keyof typeof COMMANDS
+export { ACTIONS, OFFERED } from './actions'
+export type { SwarmAction }
 
 const SWARM = 'swarm.manager.Swarm'
 const GOAL = 'swarm.goal.Goal'
@@ -468,19 +470,29 @@ export const useSwarmStore = defineStore('swarms', () => {
   function canAct(slug: string, action: SwarmAction): boolean {
     const state = getSwarm(slug)?.record?.state
     if (!state) return false
-    const offered: Record<SwarmAction, string[]> = {
-      start: ['Created', 'Stopped'],
-      pause: ['Running'],
-      resume: ['Paused'],
-      stop: ['Running', 'Paused'],
-      delete: ['Created', 'Stopped'],
-    }
-    return offered[action].includes(state)
+    return OFFERED[action].includes(state)
+  }
+
+  /**
+   * Why an action is not offered, or `undefined` when it is.
+   *
+   * The counterpart to `canAct`, and the reason it exists at all: a button that is grey and says
+   * nothing is indistinguishable from a page that has failed to load. A swarm with no record —
+   * `POST /swarms` and no `CreateSwarm` — disables all five, and that was the state nobody could
+   * get out of or explain.
+   */
+  function whyNot(slug: string, action: SwarmAction): string | undefined {
+    return whyDisabled(getSwarm(slug)?.record?.state, action)
+  }
+
+  /** One line for a swarm that offers nothing at all, or `undefined` when it offers something. */
+  function whyNothing(slug: string): string | undefined {
+    return disabledNote(getSwarm(slug)?.record?.state)
   }
 
   return {
     held, loaded, visible, problem, shape, live, status, statusAt, clock, reachable, nextTickIn,
-    load, refresh, getSwarm, goalOf, canAct, createSwarm, follow, unfollow, wake, pollStatus,
+    load, refresh, getSwarm, goalOf, canAct, whyNot, whyNothing, createSwarm, follow, unfollow, wake, pollStatus,
     recentlyChanged, lastTurn, loadTurn, liveTurn, capOn,
     views, followView, viewState,
     startSwarm, pauseSwarm, resumeSwarm, stopSwarm, deleteSwarm,
