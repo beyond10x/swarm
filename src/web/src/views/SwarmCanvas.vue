@@ -16,6 +16,9 @@ import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
 import InstanceNode, { type InstanceNodeData } from '@/components/canvas/InstanceNode.vue'
+import UiBox, { type UiBoxData } from '@/components/canvas/UiBox.vue'
+import { uiBoxSpec } from '@/lib/uibox'
+import { uiComponentNames, uiPropTypes, uiRefused } from '@/components/ui'
 import { layoutDag } from '@/lib/layout'
 import type { Canvas, Instance, Shape } from '@/runtime'
 import '@vue-flow/core/dist/style.css'
@@ -30,10 +33,16 @@ const props = defineProps<{
   flowId?: string
   /** Instances that changed a moment ago, drawn lit so a change is seen rather than found. */
   recent?: Set<string>
+  /** Which swarm this is, so a Ui box fed from a view can read that view's rows. */
+  slug?: string
 }>()
 
 const NODE_W = 220
 const NODE_H = 130
+// A panel is a component, not a summary, and is wider and taller than a node that lists fields.
+// Laying one out at a node's size is a panel drawn over its neighbours.
+const PANEL_W = 360
+const PANEL_H = 280
 
 /**
  * One component for every entity.
@@ -41,7 +50,7 @@ const NODE_H = 130
  * A map rather than a single default, because this is the seam where an entity that deserves its
  * own drawing gets one — a Ui box rendering an actual control, say — without the rest changing.
  */
-const nodeTypes = markRaw({ instance: InstanceNode }) as unknown as NodeTypesObject
+const nodeTypes = markRaw({ instance: InstanceNode, ui: UiBox }) as unknown as NodeTypesObject
 
 const CONNECTION = 'swarm.blackbox.Connection'
 
@@ -83,7 +92,16 @@ function reconcile(): void {
   // Only newcomers are laid out, and among the others so they land near what they relate to.
   const laid = fresh.length
     ? layoutDag(
-        wanted.map((instance) => ({ id: instance.id, width: NODE_W, height: NODE_H })),
+        wanted.map((instance) => {
+          // A refusal is a line of text, not a panel: only a box that draws a component is given
+          // a panel's room.
+          const drawn = uiBoxSpec(instance, uiComponentNames, uiPropTypes, uiRefused)?.kind === 'panel'
+          return {
+            id: instance.id,
+            width: drawn ? PANEL_W : NODE_W,
+            height: drawn ? PANEL_H : NODE_H,
+          }
+        }),
         edges.value.flatMap((edge) =>
           typeof edge.source === 'string' && typeof edge.target === 'string'
             ? [{ from: edge.source, to: edge.target }]
@@ -95,19 +113,24 @@ function reconcile(): void {
 
   const next: Node[] = []
   wanted.forEach((instance, index) => {
-    const data: InstanceNodeData = {
-      instance,
-      terminal: terminal.value.get(instance.entity),
-      changed: props.recent?.has(instance.id) ?? false,
-    }
+    const changed = props.recent?.has(instance.id) ?? false
+    // A Ui box is drawn by `UiBox` whether or not the library has the component it names: a box
+    // naming one nobody wrote is a refusal that has to be SEEN, and an instance node listing
+    // `ref_id` among its fields never says the library has no such thing.
+    const decided = uiBoxSpec(instance, uiComponentNames, uiPropTypes, uiRefused)
+    const type = decided ? 'ui' : 'instance'
+    const data: InstanceNodeData | UiBoxData = decided
+      ? { instance, decision: decided, slug: props.slug, changed }
+      : { instance, terminal: terminal.value.get(instance.entity), changed }
     const existing = held.get(instance.id)
     if (existing) {
       existing.data = data
+      existing.type = type
       next.push(existing)
     } else {
       next.push({
         id: instance.id,
-        type: 'instance',
+        type,
         position: laid?.get(instance.id) ?? { x: 0, y: index * (NODE_H + 32) },
         data,
       })
