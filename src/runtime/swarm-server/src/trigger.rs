@@ -30,6 +30,10 @@ use crate::swarm::{Swarm, TurnPhase, What};
 /// `goal_id`, and which goals need one is the host's question to answer.
 const AWAITING: &str = "swarm.goal.GoalsAwaitingATick";
 
+/// The role slug a swarm's first agent holds. `swarm.agent.Role` declares exactly one variant, so
+/// there is exactly one of these until the enum grows.
+pub const COORDINATOR: &str = "coordinator";
+
 /// Drives every periodic binding the specification declares, for every swarm the server holds.
 ///
 /// Runs until cancelled. One task for the server rather than one per swarm: the cadence belongs to
@@ -81,6 +85,12 @@ pub async fn run(server: Arc<Server>) {
 /// trigger for three minutes, and `overlap: serial_per_instance` is kept by the claim on the goal
 /// rather than by running everything in one line.
 async fn ask_the_coordinator(server: &Arc<Server>, swarm: &Arc<Swarm>) {
+    // The coordinator is a record before it is a process, so it can be addressed, drawn and
+    // written to. Idempotent; a swarm made before this existed gets one here.
+    if let Err(why) = swarm.ensure_coordinator(COORDINATOR).await {
+        tracing::warn!(swarm = %swarm.slug(), error = %why, "the coordinator could not be registered");
+    }
+
     for instance in swarm.instances("swarm.goal.Goal").await {
         if instance.get("state").and_then(Json::as_str) != Some("Pursuing") {
             continue;
@@ -113,14 +123,14 @@ async fn ask_the_coordinator(server: &Arc<Server>, swarm: &Arc<Swarm>) {
         let swarm = Arc::clone(swarm);
         let id = id.to_owned();
         tokio::spawn(async move {
-            one_turn(&swarm, &id, &goal, iterations).await;
+            one_turn(&swarm, COORDINATOR, &id, &goal, iterations).await;
             server.release_turn(swarm.slug(), &id);
         });
     }
 }
 
 /// One coordinator turn, announced at both ends.
-async fn one_turn(swarm: &Arc<Swarm>, id: &str, goal: &str, iterations: u64) {
+async fn one_turn(swarm: &Arc<Swarm>, actor: &str, id: &str, goal: &str, iterations: u64) {
     // Watchers hear the turn begin, so a coordinator that takes a minute is seen working
     // rather than seen as a loop that stalled.
     swarm.announce(What::Turn {
@@ -135,7 +145,7 @@ async fn one_turn(swarm: &Arc<Swarm>, id: &str, goal: &str, iterations: u64) {
     });
     let began = Instant::now();
 
-    match coordinator::take_a_turn(swarm, id, goal, iterations).await {
+    match coordinator::take_a_turn(swarm, actor, id, goal, iterations).await {
         Ok(answer) => {
             tracing::info!(swarm = %swarm.slug(), goal = %id, reached = answer.verdict.reached,
                            "a turn was answered");
@@ -162,6 +172,12 @@ async fn one_turn(swarm: &Arc<Swarm>, id: &str, goal: &str, iterations: u64) {
                     tracing::warn!(swarm = %swarm.slug(), goal = %id, error = %why,
                                    "the turn could not be finished");
                 }
+            }
+            // A turn that failed still ran and still cost money. Recording it is what makes the
+            // caps able to see a coordinator that never answers; without this, the goal stays at
+            // the same turn number for ever and both caps read zero while the money goes out.
+            if let Some(spent) = why.spent() {
+                swarm.record_spend(id, iterations, spent, None, Some(&why.to_string()));
             }
             swarm.announce(What::Turn {
                 goal: id.to_owned(),
@@ -244,11 +260,18 @@ async fn fire(server: &Server, swarm: &Arc<Swarm>, binding: &str) -> Result<(), 
 
 /// Whether this goal has used up what it may.
 ///
-/// Turns come from the goal's own count rather than from the spend record, because a turn that
-/// crashed before reporting still happened and still cost something.
-fn capped(server: &Server, swarm: &Arc<Swarm>, goal_id: &str, turns: u64) -> Option<Reached> {
-    let (spent, _) = swarm.spend_on(goal_id);
-    server.caps().exceeded(turns, spent.cost_usd)
+/// Measured on ATTEMPTS, not on the goal's own `iterations`. A turn that fails leaves the goal
+/// where it was, so the next attempt carries the same number — and a coordinator that never writes
+/// a verdict would sit at turn 1 for ever, with the turn cap reading 1 on every pass, while it
+/// spent without limit. Observed 2026-09-12, which is how this line came to be written.
+///
+/// The larger of the two is used, because a swarm whose records were archived should not have its
+/// cap reset by the absence.
+fn capped(server: &Server, swarm: &Arc<Swarm>, goal_id: &str, iterations: u64) -> Option<Reached> {
+    let (spent, attempts) = swarm.spend_on(goal_id);
+    server
+        .caps()
+        .exceeded(iterations.max(attempts), spent.cost_usd)
 }
 
 /// Whether this swarm's loop should turn at all.

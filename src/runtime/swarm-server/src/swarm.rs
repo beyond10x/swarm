@@ -160,6 +160,8 @@ pub struct Summary {
 pub struct TurnRecord {
     pub name: String,
     pub iterations: u64,
+    /// Which attempt at this turn number. A turn that failed is retried with the same number.
+    pub attempt: u64,
     /// The first eight characters of the goal's identity.
     pub goal: String,
     pub bytes: u64,
@@ -284,12 +286,17 @@ impl Swarm {
     /// Appends one finished turn's figures to `turns/spend.jsonl`.
     ///
     /// A small file beside the transcripts, so a total can be read without reading every run.
+    /// Appends one ATTEMPT's figures, whether or not it produced a verdict.
+    ///
+    /// A turn that was cut off before it answered still ran and still cost money, and until
+    /// 2026-09-12 only answered turns were recorded — so a coordinator that never wrote a verdict
+    /// spent without limit while both caps read zero.
     pub fn record_spend(
         &self,
         goal_id: &str,
         iterations: u64,
         spent: &Spent,
-        reached: bool,
+        reached: Option<bool>,
         note: Option<&str>,
     ) {
         let dir = self.dir.join("turns");
@@ -300,6 +307,7 @@ impl Swarm {
             "iterations": iterations,
             "reached": reached,
             "note": note,
+            "finished": reached.is_some(),
             "spent": spent,
         });
         if let Ok(mut file) = std::fs::OpenOptions::new()
@@ -317,7 +325,11 @@ impl Swarm {
         self.spend_where(|_| true)
     }
 
-    /// The same, for one goal. What a cap is measured against.
+    /// The same, for one goal, counting ATTEMPTS rather than answered turns.
+    ///
+    /// This is what a cap is measured against, and it must not be the goal's own `iterations`: a
+    /// turn that fails leaves the goal where it was, so the next attempt carries the same number
+    /// and a goal that never answers would sit at turn 1 for ever while the money went out.
     pub fn spend_on(&self, goal_id: &str) -> (Spent, u64) {
         self.spend_where(|row| row.get("goal").and_then(Json::as_str) == Some(goal_id))
     }
@@ -384,11 +396,15 @@ impl Swarm {
                 let Some(stem) = name.strip_suffix(".jsonl") else {
                     continue;
                 };
-                let Some((turn, goal)) = stem.split_once('-') else {
+                let mut parts = stem.splitn(3, '-');
+                let (Some(turn), Some(attempt), Some(goal)) =
+                    (parts.next(), parts.next(), parts.next())
+                else {
                     continue;
                 };
                 let goal = goal.to_owned();
-                let Ok(iterations) = turn.parse::<u64>() else {
+                let (Ok(iterations), Ok(attempt)) = (turn.parse::<u64>(), attempt.parse::<u64>())
+                else {
                     continue;
                 };
                 let bytes = entry.metadata().map(|meta| meta.len()).unwrap_or_default();
@@ -396,6 +412,7 @@ impl Swarm {
                 found.push(TurnRecord {
                     name,
                     iterations,
+                    attempt,
                     reached: verdict.map(|(reached, _, _)| *reached),
                     note: verdict.and_then(|(_, note, _)| note.clone()),
                     ended_at: verdict.map(|(_, _, at)| at.clone()),
@@ -404,7 +421,11 @@ impl Swarm {
                 });
             }
         }
-        found.sort_by(|a, b| b.iterations.cmp(&a.iterations).then(b.name.cmp(&a.name)));
+        found.sort_by(|a, b| {
+            b.iterations
+                .cmp(&a.iterations)
+                .then(b.attempt.cmp(&a.attempt))
+        });
         found
     }
 
@@ -628,6 +649,85 @@ impl Swarm {
             });
         }
         Ok(true)
+    }
+
+    /// Makes sure the coordinator is a record and has somewhere to be written to.
+    ///
+    /// The coordinator was a process and nothing else: `swarm.agent.Agent` held no instances, so
+    /// the `[coordinator]` of the birth graph was drawn by the UI and was not a thing the model
+    /// knew about. Nothing could address it, and a swarm's own agent could not be sent anything.
+    ///
+    /// Done by the host and not by a binding, for the reason everything else here is: `Spawn` needs
+    /// a swarm id and a role, and no event carries both at the moment a swarm starts.
+    ///
+    /// Idempotent, and called before every turn rather than once at start, so a swarm created
+    /// before this existed gets its coordinator the next time the loop turns.
+    pub async fn ensure_coordinator(&self, agent_id: &str) -> Result<(), Refused> {
+        let Some(swarm_id) = self.swarm_id().await else {
+            return Ok(());
+        };
+
+        let known = {
+            let world = self.world.lock().await;
+            world.contains_key(&("swarm.agent.Agent".to_owned(), agent_id.to_owned()))
+        };
+        if !known {
+            let mut input = Map::new();
+            input.insert("agent_id".into(), Json::String(agent_id.to_owned()));
+            input.insert("swarm_id".into(), Json::String(swarm_id.clone()));
+            input.insert("role".into(), Json::String("Coordinator".into()));
+            input.insert("harness".into(), Json::String("ClaudeCode".into()));
+            input.insert(
+                "display_name".into(),
+                Json::String("The coordinator".into()),
+            );
+            input.insert("host".into(), Json::Object(Map::new()));
+            self.issue(
+                None,
+                "swarm.agent.Spawn",
+                input,
+                &format!("spawn:{agent_id}"),
+            )
+            .await?;
+        }
+
+        // One mailbox, named `main`, created by the host. Any further one the agent opens itself
+        // with `swarm mailbox <name>`. The 2026-09-11 board rejected auto-creation outright; one is
+        // the compromise, because an agent that cannot receive until it thinks to ask for a mailbox
+        // cannot be written to by anybody who arrives first.
+        let has_mailbox = self
+            .view("swarm.mailbox.OpenMailboxes")
+            .await?
+            .iter()
+            .any(|row| {
+                row.get("agent_id").and_then(Json::as_str) == Some(agent_id)
+                    && row.get("name").and_then(Json::as_str) == Some("main")
+            });
+        if !has_mailbox {
+            let mut input = Map::new();
+            input.insert("swarm_id".into(), Json::String(swarm_id));
+            input.insert("agent_id".into(), Json::String(agent_id.to_owned()));
+            input.insert("name".into(), Json::String("main".into()));
+            input.insert("created_at".into(), Json::String(now()));
+            self.issue(
+                Some("swarm.mailbox.SwarmAgent"),
+                "swarm.mailbox.OpenMailbox",
+                input,
+                &format!("mailbox:{agent_id}:main"),
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
+    /// The unread messages addressed to one agent, newest first.
+    pub async fn unread_for(&self, agent_id: &str) -> Vec<Map<String, Json>> {
+        self.view("swarm.mailbox.UnreadMessages")
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|row| row.get("recipient_id").and_then(Json::as_str) == Some(agent_id))
+            .collect()
     }
 
     /// The swarm's own record id, once `CreateSwarm` has made one.

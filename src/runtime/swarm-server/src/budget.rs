@@ -168,3 +168,32 @@ mod tests {
         assert!(caps.exceeded(20, None).is_some());
     }
 }
+
+#[cfg(test)]
+mod retries {
+    use super::*;
+
+    /// The hole this file had on the day it was written.
+    ///
+    /// A turn that is cut off before it writes a verdict leaves the goal where it was, so the next
+    /// attempt carries the same number. Measured on the goal's own count, the cap reads 1 on every
+    /// pass and never trips; measured on attempts, it trips. Observed live 2026-09-12: attempt one
+    /// ran out of vendor turns, attempt two answered, and both were turn 1.
+    #[test]
+    fn a_turn_that_never_answers_still_counts() {
+        let caps = Caps {
+            max_turns: Some(3),
+            max_spend_usd: None,
+        };
+        let iterations = 1;
+        let attempts = 4;
+        assert!(
+            caps.exceeded(iterations, None).is_none(),
+            "the goal's own count never advances"
+        );
+        assert!(
+            caps.exceeded(iterations.max(attempts), None).is_some(),
+            "attempts do"
+        );
+    }
+}

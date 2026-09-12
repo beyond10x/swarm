@@ -30,7 +30,7 @@ use std::process::Stdio;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Value as Json, json};
+use serde_json::{Map, Value as Json, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 
@@ -47,6 +47,9 @@ struct Asked<'a> {
     swarm: &'a str,
     /// Where it may work: a directory of the swarm's own, kept between turns.
     work: String,
+    /// Its unread mail, rendered for the prompt. Empty when there is none.
+    #[serde(skip)]
+    mail: String,
 }
 
 /// What the coordinator answers.
@@ -254,6 +257,63 @@ pub fn configured() -> Option<Launch> {
     (!parts.is_empty()).then_some(Launch::Program(parts))
 }
 
+/// The settings the `swarm` CLI reads, written into the work directory before every turn.
+///
+/// A file and not an environment variable, because the hermetic launch builds the child's
+/// environment from a seven-key allowlist and nothing of ours is in it.
+fn write_settings(
+    work: &std::path::Path,
+    swarm: &str,
+    agent: &str,
+    url: &str,
+) -> std::io::Result<()> {
+    let directory = work.join(".swarm");
+    std::fs::create_dir_all(&directory)?;
+    let settings = json!({
+        "url": url,
+        "swarm": swarm,
+        "agent": agent,
+        "mailbox": "main",
+    });
+    std::fs::write(
+        directory.join("config.json"),
+        format!("{}\n", serde_json::to_string_pretty(&settings)?),
+    )
+}
+
+/// The unread mail, as the prompt carries it.
+///
+/// Verbatim, and with the id, because the next thing an agent does with a message is read it, act
+/// on it and ack it — and it cannot ack what it cannot name. Nothing here marks anything read: the
+/// agent does that, or it does not, and a runtime that marked mail read on delivery would be
+/// answering for a reader the way it must never answer for a coordinator.
+fn mail_section(unread: &[Map<String, Json>]) -> String {
+    if unread.is_empty() {
+        return String::new();
+    }
+    let mut text = format!(
+        "\n## Your mail — {} unread\n\nRead them with `swarm read <id>`, and `swarm ack <id>` once \
+you have dealt with one.\n",
+        unread.len()
+    );
+    for row in unread {
+        let field = |name: &str| row.get(name).and_then(Json::as_str).unwrap_or_default();
+        text.push_str(&format!(
+            "\n- **{}** from `{}` (id `{}`){}\n\n      {}\n",
+            field("subject"),
+            field("sender_id"),
+            field("message_id"),
+            if row.get("broadcast_id").and_then(Json::as_str).is_some() {
+                " — a broadcast"
+            } else {
+                ""
+            },
+            field("body").replace('\n', "\n      "),
+        ));
+    }
+    text
+}
+
 /// The prompt a turn starts with.
 fn prompt_for(asked: &Asked<'_>) -> String {
     format!(
@@ -264,12 +324,34 @@ with no memory of earlier turns except what is on disk there. Keep a `NOTES.md` 
 first, and update it before you finish, so the next turn knows what was done and what is left.\n\n\
 Do as much toward the goal as one turn allows. Then decide, honestly, whether the goal as written \
 is met. Do not claim it is met to end the loop; the loop only ends when it is.\n\n\
+## What you can reach\n\n\
+`swarm` is on your PATH and talks to the runtime that started you. It is how you do anything to \
+this swarm beyond writing files:\n\n\
+      swarm inbox                     what has been said to you\n\
+      swarm read <id>                 read one, and mark it read\n\
+      swarm ack <id> --note \"...\"     say you have dealt with it\n\
+      swarm send --to <agent> --subject S --body B\n\
+      swarm broadcast --subject S --body B\n\
+      swarm canvas                    what the swarm holds\n\
+      swarm view <name>               any view the specification declares\n\
+      swarm spec                      every command, and what it takes\n\
+      swarm do <command> --input '{{...}}'\n\n\
+`swarm do` reaches every command, so you can spawn agents, draw boxes on the canvas and wire \
+connections between them. `swarm spec` tells you what those are called; read it before you guess. \
+What you may do is decided by the specification, not by the CLI — a refusal comes back naming the \
+rule.\n\
+{mail}\n\
+## Finishing\n\n\
+You have a bounded number of steps in this turn, and a turn that runs out before it writes the \
+line below produced nothing that could be reported — the goal stays where it was and the whole turn \
+is spent again. Leave yourself room: write `NOTES.md` and the verdict before you run out.\n\n\
 End your reply with exactly one line, and nothing after it:\n\n\
 VERDICT {{\"reached\": true or false, \"note\": \"one sentence on where things stand\"}}\n",
         swarm = asked.swarm,
         goal = asked.goal,
         turn = asked.iterations,
         work = asked.work,
+        mail = asked.mail,
     )
 }
 
@@ -291,7 +373,7 @@ fn metaharness_argv(asked: &Asked<'_>) -> Vec<String> {
         "--decisions",
         "observe",
         "--max-turns",
-        &knob("SWARM_COORDINATOR_MAX_TURNS", "15"),
+        &knob("SWARM_COORDINATOR_MAX_TURNS", "30"),
         "--max-budget-usd",
         &knob("SWARM_COORDINATOR_BUDGET_USD", "1.00"),
         "--cwd",
@@ -323,13 +405,31 @@ fn verdict_in(text: &str) -> Option<Verdict> {
     serde_json::from_str(&rest[start..=end]).ok()
 }
 
-/// The file one turn's run is written to.
+/// Where the runtime answers, as the agent must address it.
+///
+/// The port the server bound, not a guess: `SWARM_PORT` is read the same way `main` reads it.
+fn server_url() -> String {
+    let port = std::env::var("SWARM_PORT").unwrap_or_else(|_| "5000".to_owned());
+    format!("http://localhost:{port}")
+}
+
+/// The file one attempt at one turn is written to.
+///
+/// The attempt is in the name because a turn that fails is retried with the SAME number — the goal
+/// did not move — and a name keyed only on the turn would have the retry overwrite the record of
+/// what went wrong. Observed 2026-09-12: a first attempt read its mail, ran out of vendor turns
+/// before writing a verdict, and its whole transcript was replaced by the attempt that followed.
 pub fn turn_file(swarm: &Swarm, goal_id: &str, iterations: u64) -> PathBuf {
     let short: String = goal_id.chars().take(8).collect();
-    swarm
-        .dir()
-        .join("turns")
-        .join(format!("{iterations:04}-{short}.jsonl"))
+    let directory = swarm.dir().join("turns");
+    let mut attempt = 1;
+    while directory
+        .join(format!("{iterations:04}-{attempt:02}-{short}.jsonl"))
+        .exists()
+    {
+        attempt += 1;
+    }
+    directory.join(format!("{iterations:04}-{attempt:02}-{short}.jsonl"))
 }
 
 /// Asks the coordinator about one goal and reports what it says.
@@ -342,6 +442,7 @@ pub fn turn_file(swarm: &Swarm, goal_id: &str, iterations: u64) -> PathBuf {
 #[allow(clippy::result_large_err)]
 pub async fn take_a_turn(
     swarm: &Arc<Swarm>,
+    actor: &str,
     goal_id: &str,
     goal: &str,
     iterations: u64,
@@ -355,12 +456,28 @@ pub async fn take_a_turn(
         spent: spent.clone(),
     })?;
 
+    // Mail is read at the start of a turn. There is no poller and no wake: at the declared cadence
+    // a message is never more than one period from being seen, and an interrupt would be a second
+    // way into a loop that has one.
+    let unread = swarm.unread_for(actor).await;
+    if !unread.is_empty() {
+        tracing::info!(swarm = %swarm.slug(), agent = actor, unread = unread.len(),
+                       "the coordinator has mail");
+    }
+
     let asked = Asked {
         goal,
         iterations,
         swarm: swarm.slug(),
         work: work.display().to_string(),
+        mail: mail_section(&unread),
     };
+
+    // What the CLI reads to know which runtime and which swarm it is talking to.
+    if let Err(why) = write_settings(&work, swarm.slug(), actor, &server_url()) {
+        tracing::warn!(swarm = %swarm.slug(), error = %why,
+                       "the agent's settings could not be written; `swarm` will not find them");
+    }
     let program = match &launch {
         Launch::Metaharness => metaharness_argv(&asked),
         Launch::Program(parts) => parts.clone(),
@@ -494,7 +611,7 @@ pub async fn take_a_turn(
         goal_id,
         iterations,
         &spent,
-        verdict.reached,
+        Some(verdict.reached),
         verdict.note.as_deref(),
     );
 

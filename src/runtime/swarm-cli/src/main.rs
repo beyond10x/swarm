@@ -113,7 +113,7 @@ enum Verb {
     Canvas,
     /// Read one of the views the specification declares.
     View {
-        /// Its name, for example `swarm.mailbox.UnreadMessages`.
+        /// Its name. `UnreadMessages` and `swarm.mailbox.UnreadMessages` both work.
         name: String,
     },
     /// What may be issued, and what each command takes.
@@ -220,8 +220,9 @@ fn run(cli: &Cli) -> Result<(), String> {
             Ok(())
         }
         Verb::View { name } => {
+            let full = resolve_view(&settings, name)?;
             let rows: Json = get(&format!(
-                "{}/swarms/{}/views/{name}",
+                "{}/swarms/{}/views/{full}",
                 settings.url, settings.swarm
             ))?;
             println!("{rows:#}");
@@ -432,6 +433,47 @@ fn describe(settings: &Settings, command: Option<&str>, entities: bool) -> Resul
         println!("{name}  {}", inputs.join(" "));
     }
     Ok(())
+}
+
+/// A view's full name, from whatever the caller typed.
+///
+/// Views are declared as `swarm.mailbox.UnreadMessages` and an agent reasonably types
+/// `UnreadMessages`; before this, that was a 404 with nothing to go on. A short name that matches
+/// exactly one declared view is that view, and one that matches several is refused with the list,
+/// because guessing between them would be this binary deciding which the caller meant.
+fn resolve_view(settings: &Settings, name: &str) -> Result<String, String> {
+    if name.contains('.') {
+        return Ok(name.to_owned());
+    }
+    let spec: Json = get(&format!("{}/spec", settings.url))?;
+    let declared: Vec<String> = spec
+        .get("views")
+        .and_then(Json::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Json::as_str)
+        .map(ToOwned::to_owned)
+        .collect();
+
+    let matched: Vec<&String> = declared
+        .iter()
+        .filter(|view| view.rsplit('.').next() == Some(name))
+        .collect();
+    match matched.as_slice() {
+        [one] => Ok((*one).clone()),
+        [] => Err(format!(
+            "no view called `{name}`. Declared:\n  {}",
+            declared.join("\n  ")
+        )),
+        several => Err(format!(
+            "`{name}` names several views:\n  {}",
+            several
+                .iter()
+                .map(|view| view.as_str())
+                .collect::<Vec<_>>()
+                .join("\n  ")
+        )),
+    }
 }
 
 /// Issues one command as this agent.
