@@ -2,7 +2,7 @@
 format: aep.planning-md/1
 id: story:request-key-is-not-idempotency
 kind: story
-status: active
+status: implemented
 title: A request key does not make a retry idempotent
 summary: The documented idempotency key guards the append, not the application.
 relations:
@@ -17,9 +17,13 @@ scope:
   path: src/runtime/swarm-server/src/swarm.rs
 - confidence: cited
   path: src/runtime/swarm-server/tests/redelivery_under_attack.rs
+- confidence: cited
+  path: src/runtime/swarm-server/tests/the_request_key_contract.rs
+- confidence: cited
+  path: src/runtime/swarm-server/tests/the_request_key_contract_under_attack.rs
 - confidence: inferred
   path: src/web/src/runtime.ts
-revision: 6
+revision: 9
 ---
 ## What
 
@@ -55,23 +59,26 @@ corrected there; this story is the surface underneath it.
 
 ## Scope
 
-Derived 2026-09-12 by `story-scoper`. Every line is **cited** (read from the story or the tree) or
-**inferred** (a reading that could be wrong).
+Rewritten 2026-09-12 from the implementor's confirmation table after the unit merged. The
+corrections are visible rather than deleted, because the next wave selects on overlap by reading
+this section.
 
-- **Primary surface:** `src/runtime/swarm-server` — cited, the story names `http.rs` and reaches the defect through `issue_command`
-- **Files:** `src/runtime/swarm-server/src/http.rs:39` — cited, the `Issue::request` doc the story quotes verbatim
-- **Files:** `src/runtime/swarm-server/src/http.rs:134` — cited, `issue_command` takes the key from the body verbatim
-- **Files:** `src/runtime/swarm-server/src/swarm.rs:653` — cited, `Swarm::issue` applies the command before the append, which is where a retry is re-applied
-- **Files:** `src/runtime/swarm-server/tests/redelivery_under_attack.rs` — cited, both tests name this story and assert today's behaviour, so a fix turns them red
-- **Symbols:** `Issue::request`, `Swarm::issue`, `Swarm::delivery_key`, `Delivery::request` — cited
-- **Also likely:** `src/runtime/ess-runtime/src/store.rs:136` — inferred, `Store::commit`'s doc is the accurate account of the append guard
-- **Also likely:** `src/web/src/runtime.ts:271` — inferred, the TS client repeats the same wrong promise
-- **Also likely:** `src/runtime/swarm-server/src/swarm.rs:324` — inferred, `Delivery::request`'s doc would be restated by whatever this story decides
-- **Documents:** none — cited, no `.md`, `.mdx` or `website/` page mentions the request key
-- **Confidence:** high — the story names the file, the field and the two measured failures, and each was read in the tree
-- **Would collide with:** any unit touching `swarm-server`'s HTTP surface or `Swarm::issue`/the redelivery queue in `swarm.rs`
+**What the unit actually touched**, read from `git diff 0c24ac0...wave/2026-09-12b/request-key`:
 
-Not established: which acceptance branch wins. "Make it idempotent" is code in `Swarm::issue` plus a
-request-to-answer record; "say it guards the append" is doc across four files and would not touch
-the store. A durable request-to-answer table would widen into `ess-runtime`'s schema, which the
-scoper did not read.
+| path | the mark it carried | what it turned out to be |
+|---|---|---|
+| `src/runtime/swarm-server/src/http.rs` | cited | touched. `Issue::request`'s doc, the omission clause, the log window and the canvas-record enumeration |
+| `src/runtime/swarm-server/tests/redelivery_under_attack.rs` | cited | touched. Three stale present-tense quotations corrected; one case moved out of it |
+| `src/web/src/runtime.ts` | **inferred** | **right.** It carried the wrong promise verbatim and was corrected |
+| `src/runtime/ess-runtime/src/store.rs` | **inferred** | **wrong as a surface.** Read and found accurate; nothing in it changed. It is the definition the other three restate |
+| `src/runtime/swarm-server/src/swarm.rs` | cited | **not touched.** `Delivery::request`'s doc had already been corrected by the redelivery unit on 2026-09-12 and satisfies the new check as it stands |
+| `src/runtime/swarm-server/tests/the_request_key_contract.rs` | not scoped | **new file.** The whole check lives here |
+| `src/runtime/swarm-server/tests/the_request_key_contract_under_attack.rs` | not scoped | **new file.** The adversary's, kept: an independent reimplementation of the rule that does not name the story, so it is not in the population it measures |
+
+Two of the five scoped paths were wrong, in opposite directions: `store.rs` was named and needed
+nothing, `swarm.rs` was cited and needed nothing. The scoper's own note said the doc branch would
+not touch the store, and the doc branch is what the operator chose.
+
+- **Confidence:** settled. Every line above is read from the merged diff.
+- **Collides with:** any unit touching `swarm-server`'s HTTP surface, `src/web/src/runtime.ts`, or
+  the two contract test files. `swarm.rs` and `store.rs` are **not** this story's surface.

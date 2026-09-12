@@ -2,7 +2,7 @@
 format: aep.planning-md/1
 id: story:open-is-a-read-then-insert
 kind: story
-status: active
+status: implemented
 title: Server::open can replace a live Swarm handle
 summary: A read-then-insert across an await lets a second open drop the first handle and whatever it owed.
 relations:
@@ -11,9 +11,13 @@ relations:
 scope:
 - confidence: cited
   path: src/runtime/swarm-server/src/state.rs
+- confidence: cited
+  path: src/runtime/swarm-server/tests/open_does_not_queue_behind_an_unrelated_slug.rs
+- confidence: cited
+  path: src/runtime/swarm-server/tests/open_is_one_swarm_under_contention.rs
 - confidence: inferred
   path: src/runtime/swarm-server/tests/serves_a_swarm.rs
-revision: 5
+revision: 8
 ---
 ## What
 
@@ -47,7 +51,21 @@ Any change to `Swarm::open` itself, and any cross-process coordination. This is 
 
 ## Scope
 
-- **Files:** `src/runtime/swarm-server/src/state.rs:75` (`Server::open`) — cited, read on `main` at `b66ef29`
-- **Files:** `src/runtime/swarm-server/tests/serves_a_swarm.rs` — inferred, the verifier named it or a `state.rs` unit module as where a regression test would go
-- **Confidence:** high — one function, read in the tree, and the fix named is `entry(slug).or_insert` or a re-check under the write guard
-- **Would collide with:** any unit touching `state.rs`, which is five of the seven other stories
+Rewritten 2026-09-12 from the implementor's confirmation after the unit merged.
+
+**What the unit actually touched**, read from `git diff 0c24ac0...wave/2026-09-12b/open-race`:
+
+| path | the mark it carried | what it turned out to be |
+|---|---|---|
+| `src/runtime/swarm-server/src/state.rs` | cited | touched. `Server::open`, the `opening` per-slug lock map, and three doc corrections |
+| `src/runtime/swarm-server/tests/serves_a_swarm.rs` | **inferred** | **right.** The concurrent-open case belongs there and not in a new file; its retry loop was removed |
+| `src/runtime/swarm-server/tests/open_is_one_swarm_under_contention.rs` | not scoped | **new file**, the adversary's, kept. Two cases; two more were lifted out to `.engineering/waves/2026-09-12b-evidence/slug-validation-cases.rs` because they belong to `story:slug-is-not-validated` |
+| `src/runtime/swarm-server/tests/open_does_not_queue_behind_an_unrelated_slug.rs` | not scoped | **new file**, the adversary's, kept. It measures the 253 ms an unrelated slug waited under the first, global lock |
+
+The one inferred line was right. No path outside `swarm-server` was touched: the fix is one
+function and its lock map.
+
+- **Confidence:** settled. Read from the merged diff.
+- **Collides with:** any unit touching `state.rs` or `swarm-server`'s test directory. `ess-runtime`
+  is **not** this story's surface — the SQLITE_BUSY it answers is answered by not producing the
+  contention, and `store.rs`'s no-`busy_timeout` policy is untouched.

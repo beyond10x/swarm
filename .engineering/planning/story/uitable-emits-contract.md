@@ -2,15 +2,19 @@
 format: aep.planning-md/1
 id: story:uitable-emits-contract
 kind: story
-status: active
+status: implemented
 title: UiTable emits what the contract does not declare
 summary: The component library's contract table disagrees with UiTable, and correcting it changes canvas behaviour.
 relations:
 - decomposes: epic:executable-boxes
 - serves: vision:swarm-builds-itself
 scope:
+- confidence: cited
+  path: src/web/package.json
 - confidence: inferred
   path: src/web/src/components/canvas/UiBox.vue
+- confidence: cited
+  path: src/web/src/components/canvas/uibox.inert.guard.ts
 - confidence: inferred
   path: src/web/src/components/canvas/uibox.inert.test.ts
 - confidence: cited
@@ -23,7 +27,7 @@ scope:
   path: src/web/src/lib/uibox.ts
 - confidence: inferred
   path: src/web/src/views/SwarmCanvas.vue
-revision: 6
+revision: 9
 ---
 ## What
 
@@ -58,20 +62,27 @@ assumed.
 
 ## Scope
 
-Derived 2026-09-12 by `story-scoper`. Every line is **cited** (read from the story or the tree) or
-**inferred** (a reading that could be wrong).
+Rewritten 2026-09-12 from the implementor's confirmation after the unit merged.
 
-- **Primary surface:** `src/web/src/components/ui/index.ts` — cited, the story names it as the contract whose table is wrong
-- **Files:** `src/web/src/components/ui/index.ts:15` (the `UiTable` table row), `src/web/src/components/ui/index.ts:158` (`uiEmitters`) — cited
-- **Files:** `src/web/src/components/ui/UiTable.vue:15` — cited, the `defineEmits` is there
-- **Files:** `src/web/src/components/ui/index.test.ts` — cited, the story requires the drift test stay
-- **Symbols:** `uiEmitters`, `uiRefused`, `defineEmits<{ 'row-click': [row: Row] }>` — cited
-- **Also likely:** `src/web/src/components/canvas/UiBox.vue` and `src/web/src/components/canvas/uibox.inert.test.ts` — inferred, both read `uiEmitters` (`UiBox.vue:88` computes `inert` from it)
-- **Also likely:** `src/web/src/lib/uibox.ts` and `src/web/src/views/SwarmCanvas.vue` — inferred, they carry the panel/refused decision
-- **Documents:** none — cited, the contract table is a comment inside `index.ts`
-- **Confidence:** high — the story names the file, the component and the behaviour, and the tree confirms the emit and the emitter set at those lines
-- **Would collide with:** any unit touching `src/web/src/components/ui/index.ts`, its drift test, or the canvas inert rule in `src/web/src/components/canvas/`
+**What the unit actually touched**, read from `git diff 0c24ac0...wave/2026-09-12b/uitable-emits`:
 
-Not established: which acceptance branch is taken. "Table panel goes inert" touches only the three
-cited files; "the emitter rule distinguishes an actionable emit" rewrites `UiBox.vue` and its inert
-test, so the four inferred paths are conditional on a decision the story leaves open.
+| path | the mark it carried | what it turned out to be |
+|---|---|---|
+| `src/web/src/components/ui/index.ts` | cited | touched. The `UiTable` row's emits column, and `UiTable` joining `uiEmitters` |
+| `src/web/src/components/ui/index.test.ts` | cited | touched. The drift guard: three `defineEmits` spellings, then five emitting markers, brace-balanced reads, fail-closed |
+| `src/web/src/components/ui/UiTable.vue` | cited | **not touched.** It was already correct; the contract was the wrong half |
+| `src/web/src/components/canvas/UiBox.vue` | **inferred** | **right.** The note's wording changed; the `inert` binding did not |
+| `src/web/src/components/canvas/uibox.inert.test.ts` | **inferred** | **right.** Rewritten twice — source-text assertion, then AST tokens, then evaluating the expressions |
+| `src/web/src/lib/uibox.ts` | **inferred** | **wrong.** The inert decision lives in `UiBox.vue`; this file carries the panel/refused decision and needed nothing |
+| `src/web/src/views/SwarmCanvas.vue` | **inferred** | **wrong.** It carries no part of the emitter or inert rule |
+| `src/web/src/components/canvas/uibox.inert.guard.ts` | not scoped | **new file.** The evaluating predicate, imported by both the suite and the adversary's mutant file so the harness cannot certify a copy |
+| `src/web/package.json`, `package-lock.json` | not scoped | touched. `@vue/compiler-sfc` declared; it had been resolving only through npm hoisting it out of `vue` |
+| three `*.test.ts` from the adversary | not scoped | **new files**, kept: `index.emits-guard.test.ts`, `index.emits-open.test.ts`, `test-deps.test.ts` |
+
+Two of the four inferred paths were wrong, and both were conditional on the acceptance branch the
+operator did not take. The scoper said so at the time.
+
+- **Confidence:** settled. Read from the merged diff.
+- **Collides with:** anything under `src/web/src/components/ui/` or `src/web/src/components/canvas/`,
+  and now `src/web/package.json`. `lib/uibox.ts` and `views/SwarmCanvas.vue` are **not** this
+  story's surface.
