@@ -5,12 +5,13 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant;
 
 use serde_json::{Value as Json, json};
 
 use ess_runtime::Spec;
 use swarm_server::state::Server;
-use swarm_server::swarm::Swarm;
+use swarm_server::swarm::{MAX_ATTEMPTS, RETRY_DELAY, Swarm};
 
 fn kernel() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -207,4 +208,169 @@ async fn a_command_the_specification_refuses_is_a_bad_request_not_a_crash() {
         .await
         .expect_err("text is required");
     assert!(incomplete.to_string().contains("requires input field"));
+}
+
+/// A failed at-least-once delivery is kept and re-attempted, not dropped.
+///
+/// `adopt-activated-config` declares `delivery: at_least_once` with `on_failure: retry`, and the
+/// command it carries the event to acts on the swarm the config names. Activating a config for a
+/// swarm this log has never seen is therefore a failed delivery of a binding that asked to be
+/// retried — which `pump()` hands out as `Routed.result` and `Swarm::issue` used to discard.
+#[tokio::test]
+async fn a_failed_at_least_once_delivery_is_kept_and_retried_rather_than_dropped() {
+    let (server, _data) = server().await;
+    let swarm = server.open("retries").await.expect("a swarm opens");
+
+    // No `CreateSwarm`: this identity names a swarm that is not in this world.
+    let ghost = "11111111-1111-4111-8111-111111111111";
+    issue(
+        &swarm,
+        "swarm.config.DraftConfig",
+        json!({"swarm_id": ghost, "paths": {}, "launch": {}, "schedules": {},
+               "budgets": {}, "board": {}}),
+    )
+    .await;
+    let config = swarm.instances("swarm.config.Config").await[0]["id"]
+        .as_str()
+        .expect("an identity")
+        .to_owned();
+
+    issue(
+        &swarm,
+        "swarm.config.ActivateConfig",
+        json!({"config_id": config, "swarm_id": ghost}),
+    )
+    .await;
+
+    let queued = swarm.deliveries().await;
+    assert_eq!(
+        queued.len(),
+        1,
+        "a failed at_least_once delivery is held for another attempt, not dropped"
+    );
+    assert_eq!(queued[0].binding, "adopt-activated-config");
+    assert_eq!(
+        queued[0].attempts, 1,
+        "a caller can read how many attempts a delivery has had"
+    );
+
+    // The delay between attempts is real: a drain before it has passed re-attempts nothing.
+    let began = Instant::now();
+    assert_eq!(swarm.redeliver(began).await, 0);
+    assert_eq!(swarm.deliveries().await[0].attempts, 1);
+
+    // And the attempts are bounded: the delivery is given up rather than retried for ever.
+    for attempt in 2..=MAX_ATTEMPTS {
+        let at = began + RETRY_DELAY * (attempt - 1);
+        assert_eq!(swarm.redeliver(at).await, 1, "attempt {attempt} was made");
+        let held = swarm.deliveries().await;
+        if attempt < MAX_ATTEMPTS {
+            assert_eq!(held[0].attempts, attempt);
+        } else {
+            assert!(
+                held.is_empty(),
+                "after {MAX_ATTEMPTS} attempts the delivery is given up, not retried for ever"
+            );
+        }
+    }
+}
+
+/// A redelivery that succeeds commits what the first attempt could not — the whole path.
+///
+/// The transient failure is a stale world, which is the ordinary shape of one: the second handle's
+/// world was folded before the first handle wrote the swarm, so the binding's command acts on an
+/// instance its world does not hold yet and fails. `reload` is what makes the next attempt see it.
+///
+/// **Why it is built from two handles on one log, which `store.rs` does not admit.** That module
+/// says one writer per file, and this opens two connections to one. It is deliberate and it is the
+/// best available proof of the WHOLE path — a real `pump()` failure, owed by `owe()`, drained by
+/// `redeliver()` — because this kernel offers no transient failure that one handle can produce:
+/// every way a binding's command can fail here is permanent. A missing subject stays missing
+/// (identities for `Swarm` and `Config` are minted by the implementation, so no later command can
+/// supply the one the delivery wants), and a terminal state is absorbing. A failure that heals must
+/// therefore be manufactured, and a stale fold is the smallest manufacture available.
+///
+/// What would replace it: a seam that makes `apply` or `store.commit` fail once on demand, or a
+/// kernel binding whose command has a precondition a later command can satisfy. Either removes the
+/// two-connection trick from this file. Until then the narrower claim — a due delivery applies,
+/// commits and stops being owed — is proved with one handle in `swarm.rs`'s own unit tests, so if
+/// this case is ever deleted for touching a state the store excludes, the queue is not left
+/// unproved. It is deterministic rather than flaky: the writes are sequential, awaited one at a
+/// time, and no two are in flight together.
+#[tokio::test]
+async fn a_redelivery_that_succeeds_commits_what_the_first_attempt_could_not() {
+    let data = tempdir::TempDir::new("swarm-redeliver").expect("a scratch directory");
+    let spec = Arc::new(Spec::load(kernel()).expect("the kernel resolves"));
+
+    let stale = Arc::new(
+        Swarm::open(Arc::clone(&spec), data.path(), "stale")
+            .await
+            .expect("a swarm opens"),
+    );
+    let writer = Arc::new(
+        Swarm::open(Arc::clone(&spec), data.path(), "stale")
+            .await
+            .expect("the same swarm opens twice"),
+    );
+
+    issue(
+        &writer,
+        "swarm.manager.CreateSwarm",
+        json!({"display_name": "Stale", "tmux_session": "s", "home": "/tmp/stale",
+               "created_at": "2026-09-12T10:00:00Z"}),
+    )
+    .await;
+    let id = writer.instances("swarm.manager.Swarm").await[0]["id"]
+        .as_str()
+        .expect("an identity")
+        .to_owned();
+    assert!(
+        stale.instances("swarm.manager.Swarm").await.is_empty(),
+        "the second handle has not seen the swarm yet, which is the failure this test needs"
+    );
+
+    issue(
+        &stale,
+        "swarm.config.DraftConfig",
+        json!({"swarm_id": id, "paths": {}, "launch": {}, "schedules": {},
+               "budgets": {}, "board": {}}),
+    )
+    .await;
+    let config = stale.instances("swarm.config.Config").await[0]["id"]
+        .as_str()
+        .expect("an identity")
+        .to_owned();
+    issue(
+        &stale,
+        "swarm.config.ActivateConfig",
+        json!({"config_id": config, "swarm_id": id}),
+    )
+    .await;
+
+    assert_eq!(stale.deliveries().await.len(), 1, "the delivery failed");
+
+    stale.reload().await.expect("the log replays");
+    assert_eq!(
+        stale.redeliver(Instant::now() + RETRY_DELAY).await,
+        1,
+        "the delivery is attempted again"
+    );
+    assert!(
+        stale.deliveries().await.is_empty(),
+        "a delivery that succeeded is no longer owed"
+    );
+
+    let adopted = stale.instances("swarm.manager.Swarm").await;
+    assert_eq!(
+        adopted[0]["fields"]["active_config_id"],
+        json!(config),
+        "the redelivered command landed in the world"
+    );
+
+    // And in the log, not only in the world the retry wrote to.
+    stale.reload().await.expect("the log replays");
+    assert_eq!(
+        stale.instances("swarm.manager.Swarm").await[0]["fields"]["active_config_id"],
+        json!(config)
+    );
 }

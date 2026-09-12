@@ -154,6 +154,7 @@ async function act(action: SwarmAction): Promise<void> {
               v-if="tab === 'canvas'"
               :canvas="swarm.canvas"
               :shape="store.shape"
+              :slug="props.id"
               :flow-id="props.id"
               :recent="recent"
             />

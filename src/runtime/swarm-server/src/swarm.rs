@@ -4,13 +4,29 @@
 //! Both are true at once because the fold is deterministic — the in-memory copy is a cache of the
 //! replay, and [`Swarm::reload`] throws it away and rebuilds when that needs proving.
 //!
-//! Every mutation goes through [`Swarm::issue`], which is the only place a command is applied, the
-//! only place the log is written, and the only place the pump runs. A second path into the world
-//! would be a second answer to what happened.
+//! Three methods apply a command and write the log, and there are three rather than one because a
+//! command arrives here three ways: [`Swarm::issue`] for one a caller asked for, [`Swarm::tick`]
+//! for one a period caused, and [`Swarm::redeliver`] for one whose first delivery failed. All
+//! three run the pump over what the command emitted, so a cascade does not depend on which door
+//! the command came in by — that difference is what a fourth path into the world would really be,
+//! and it is the thing to keep out rather than the count of methods.
+//!
+//! Until 2026-09-12 this said `issue` was the only one of the three. The sentence survived being
+//! false of `tick` from the day it was written, because nothing reads a module doc for a
+//! contradiction — so when the claim above was first corrected it was corrected into a second
+//! false sentence, `tick` having no pump at all. It is true now because `tick` was changed, not
+//! because the sentence was.
+//!
+//! Two call sites serve the three doors, and the difference between them is worth knowing before
+//! reading further: `issue` routes and commits inline, because the cascade of a command a caller
+//! asked for is part of that request and a refusal in it is the caller's answer. `tick` and
+//! `redeliver` both go through [`Swarm::pump_cascade`], because nobody is waiting on either — a
+//! failure there is logged and owed, and there is no request to fail.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use serde_json::{Map, Value as Json};
@@ -20,11 +36,33 @@ use crate::budget::Reached;
 use crate::coordinator::Spent;
 use ess_runtime::apply::Emitted;
 use ess_runtime::{
-    Recorded, Spec, Store, World, apply, pump, route::Occurrence, route::tick, view,
+    Recorded, Spec, Store, World, apply, pump, route::Occurrence, route::Routed,
+    route::needs_redelivery, route::tick, view,
 };
 
 /// How many events a slow reader may fall behind before it is dropped and told to resync.
 const BACKLOG: usize = 256;
+
+/// How many times a failed `at_least_once` delivery is attempted in total, the first included.
+///
+/// Neither number is the specification's. ESS declares `delivery` and `on_failure` and says nothing
+/// about how many attempts or how far apart, so the bound is the host's and is written here rather
+/// than inferred: an unbounded retry of a delivery that fails for a permanent reason — a command
+/// whose subject was never created — is a queue that grows for as long as the process runs.
+///
+/// Three, because the failure this serves is a stale read losing a race with a write, and a
+/// delivery still failing on its third attempt is failing for a reason another attempt will not
+/// change. [`RETRY_DELAY`] is `PT30S` — the same period `components.yaml` gives `turn-the-loop`,
+/// because the trigger's loop is what drains this queue and a second cadence would be a second
+/// thing to keep in step with the first.
+///
+/// It is a FLOOR and not a period. Nothing is re-attempted before it, and the actual wait is this
+/// plus however far the delivery was queued from the next drain — between one and two trigger
+/// periods, 30 to 60 seconds as the kernel stands. `trigger.rs` says what widens it further.
+pub const MAX_ATTEMPTS: u32 = 3;
+
+/// How long a failed delivery waits before it is attempted again. See [`MAX_ATTEMPTS`].
+pub const RETRY_DELAY: Duration = Duration::from_secs(30);
 
 /// Something that happened, as the UI hears about it.
 ///
@@ -95,6 +133,16 @@ pub enum What {
         turns: u64,
         spent_usd: Option<f64>,
         reached: Reached,
+        why: String,
+    },
+    /// A binding that asked to be retried was given up on after [`MAX_ATTEMPTS`].
+    ///
+    /// The one thing a watcher must be told: the delivery the specification promised did not
+    /// happen. Silence here is the defect this variant was added to end.
+    Undelivered {
+        binding: String,
+        command: String,
+        attempts: u32,
         why: String,
     },
     /// The in-memory world was thrown away and rebuilt from the log.
@@ -237,6 +285,63 @@ impl std::fmt::Display for Refused {
     }
 }
 
+/// A delivery a binding asked for, that failed, and that is owed another attempt.
+///
+/// **Where this lives is a decision the story left open, and it is here rather than in the
+/// eventlog.** `store.rs` holds what the specification declares: an event is appended because an
+/// outcome emitted it, and `bin/check-sets-are-emitted.py` refuses a spec whose outcome writes a
+/// field no event carries. There is no ESS event for "a delivery was attempted and failed" — the
+/// nearest thing, `swarm.agent.AssignmentUndelivered`, is an escalation the model declares for one
+/// binding — so putting attempts in the log would mean the runtime inventing a record the
+/// specification does not declare. That is the rule this repository exists to keep: a fact the
+/// model does not name is not written to the model'"'"'s log. An attempt is a fact about this
+/// process'"'"'s effort to deliver, not about the swarm, and it is held per-server accordingly.
+///
+/// **A pending delivery is in memory, so it does not survive the process, and "at least once"
+/// therefore holds only for as long as the server does.** This is a real limit, not a rounding:
+/// a crash between the failed attempt and the last retry loses the delivery with no trace but a
+/// log line. Closing it needs the queue to be durable BEFORE the first attempt is made — a table
+/// beside the eventlog in `data/swarms/<slug>/`, written under the same request key used for the
+/// commit, drained at `Swarm::open`. That is a store schema and a boot path, which is a larger
+/// change than this one and belongs to whoever decides the log gets a second table.
+#[derive(Clone, Debug, Serialize)]
+pub struct Delivery {
+    /// The binding whose delivery failed.
+    pub binding: String,
+    /// The command it was carrying the event to.
+    pub command: String,
+    /// How many attempts this delivery has had, the first one included.
+    pub attempts: u32,
+    /// Why the last attempt failed.
+    pub why: String,
+    /// The input the binding'"'"'s mapping built. Not on the wire; a reader wants the count and the
+    /// reason, and the payload is the pump'"'"'s business.
+    #[serde(skip)]
+    input: Map<String, Json>,
+    /// The key the successful attempt commits under. The same one on every attempt.
+    ///
+    /// **It is not what stops a delivery landing twice, and an earlier version of this comment said
+    /// it was.** `store.rs` scopes an idempotency key to the INSTANCE'S STREAM, so it can only
+    /// refuse a second append to a stream it was already spent on. That covers a command that
+    /// `updates` an existing instance — `AdoptConfig` and `Note`, two of the three bindings this
+    /// queue serves — and does nothing at all for one that `creates`: `RecordAssignment` mints a
+    /// fresh `Assignment` id per attempt, so every attempt writes to a stream where the key has
+    /// never been spent and nothing refuses anything. Measured, not reasoned:
+    /// `tests/redelivery_under_attack.rs` spends one key twice on `DraftConfig` and gets two
+    /// Configs. Filed as `story:request-key-is-not-idempotency`.
+    ///
+    /// What actually stops a double delivery here is this queue: a delivery is held once, attempted
+    /// once per drain, and removed on the first success. That is a property of THIS type, held in
+    /// THIS process — so it is worth exactly as much as the process is, which is the same limit the
+    /// doc on this struct states. Cross-stream idempotency is a `Claim` in the log, which `store.rs`
+    /// says is not used here; making the key mean what the old comment claimed is that change.
+    #[serde(skip)]
+    request: String,
+    /// When the next attempt may be made.
+    #[serde(skip)]
+    due: Instant,
+}
+
 /// One swarm, running.
 pub struct Swarm {
     spec: Arc<Spec>,
@@ -246,6 +351,14 @@ pub struct Swarm {
     slug: String,
     /// `data/swarms/<slug>`: the log, the work directory, the turns.
     dir: PathBuf,
+    /// Failed deliveries of bindings that declared `at_least_once` with `retry`, awaiting another
+    /// attempt. See [`Delivery`] for why this is here and not in the log.
+    owed: Mutex<Vec<Delivery>>,
+    /// The bindings this swarm keeps failures for, read off the specification once at open.
+    ///
+    /// `Routed` carries the binding'"'"'s name and not its policy, so the host cross-references the
+    /// pump'"'"'s own answer rather than re-deciding what `at_least_once` means.
+    redelivers: Vec<String>,
 }
 
 impl Swarm {
@@ -263,6 +376,8 @@ impl Swarm {
             .map_err(|why| Refused::Store(why.to_string()))?;
         let (changes, _) = broadcast::channel(BACKLOG);
 
+        let redelivers = needs_redelivery(spec.ir());
+
         Ok(Self {
             spec,
             store,
@@ -270,6 +385,8 @@ impl Swarm {
             changes,
             slug: slug.to_owned(),
             dir: root.join("swarms").join(slug),
+            owed: Mutex::new(Vec::new()),
+            redelivers,
         })
     }
 
@@ -582,30 +699,309 @@ impl Swarm {
         )
         .map_err(|why| Refused::Routing(why.to_string()))?;
 
-        for routed in &caused {
-            if let Ok(applied) = &routed.result {
-                self.store
-                    .commit(applied, None, &format!("{request}:{}", routed.binding))
-                    .await
-                    .map_err(|why| Refused::Store(why.to_string()))?;
-                appended.extend(applied.events.iter().map(Record::from));
-                self.announce(What::Routed {
-                    binding: routed.binding.clone(),
-                    command: routed.command.clone(),
-                    outcome: applied.outcome.clone(),
-                    instance: applied
-                        .instance
-                        .as_ref()
-                        .and_then(|instance| serde_json::to_value(instance).ok()),
-                });
-            }
-        }
+        appended.extend(self.commit_caused(&caused, request).await?);
 
         Ok(Issued {
             outcome: done.outcome,
             error: done.error,
             events: appended,
         })
+    }
+
+    /// The key one binding's delivery commits under, whichever attempt lands.
+    ///
+    /// It distinguishes the deliveries of one request from each other and from the request's own
+    /// command. What it does not do is make a second landing impossible — see [`Delivery::request`]
+    /// and `story:request-key-is-not-idempotency`.
+    fn delivery_key(&self, request: &str, binding: &str) -> String {
+        format!("{request}:{binding}")
+    }
+
+    /// Commits everything the bindings caused, and keeps the failures they asked to have kept.
+    ///
+    /// One method for every path that runs the pump, so that what happens to a caused command does
+    /// not depend on which of them ran it. Before this existed the `Ok` arm was written out at each
+    /// site and the `Err` arm at only one, which is how a failed delivery came to be dropped.
+    ///
+    /// **Every binding in `caused` is dealt with, whichever way each one went.** The first version
+    /// of this used `?` on the commit, which returned from the middle of the loop: in the one
+    /// fan-out this kernel has — `AssignmentPosted` to `record-the-assignment` AND
+    /// `note-the-assignment`, both `at_least_once` — a store failure on the first left the second
+    /// unexamined and its delivery neither owed nor announced. A delivery is not lost because
+    /// another delivery failed. The refusal is still returned, because the caller asked for a
+    /// command and part of what it asked for did not land; it is returned after the loop, not
+    /// instead of it, and the first one is the one reported.
+    ///
+    /// A commit failure is owed like an apply failure. The command applied against the world in
+    /// memory and only the log refused, so the retry re-applies and re-commits under the same key —
+    /// which is the one case where that key does what a key is for, because the stream it names is
+    /// the one the failed append was for.
+    async fn commit_caused(
+        &self,
+        caused: &[Routed],
+        request: &str,
+    ) -> Result<Vec<Record>, Refused> {
+        let mut appended = Vec::new();
+        let mut refused: Option<Refused> = None;
+
+        for routed in caused {
+            match &routed.result {
+                Ok(applied) => {
+                    match self
+                        .store
+                        .commit(applied, None, &self.delivery_key(request, &routed.binding))
+                        .await
+                    {
+                        Ok(()) => {
+                            appended.extend(applied.events.iter().map(Record::from));
+                            self.announce(What::Routed {
+                                binding: routed.binding.clone(),
+                                command: routed.command.clone(),
+                                outcome: applied.outcome.clone(),
+                                instance: applied
+                                    .instance
+                                    .as_ref()
+                                    .and_then(|instance| serde_json::to_value(instance).ok()),
+                            });
+                        }
+                        Err(why) => {
+                            self.owe(routed, &why.to_string(), request).await;
+                            refused.get_or_insert(Refused::Store(why.to_string()));
+                        }
+                    }
+                }
+                // The failure the pump hands out. Until 2026-09-12 nothing read this arm, so every
+                // failed delivery of the three bindings that declare `at_least_once`/`retry` was
+                // discarded — the promise the specification makes and nothing kept. A binding that
+                // declares any other policy is the pump's business and not this one's: `Escalate`
+                // has already published its event and `Drop` means what it says.
+                Err(why) => self.owe(routed, &why.to_string(), request).await,
+            }
+        }
+
+        match refused {
+            Some(why) => Err(why),
+            None => Ok(appended),
+        }
+    }
+
+    /// Stops trying, and says so.
+    ///
+    /// Every arm that abandons a delivery goes through here. There are two — the attempt that could
+    /// not be applied and the one that could not be committed — and until 2026-09-12 only the first
+    /// announced anything, so a delivery lost to a store failure was lost in the silence this
+    /// variant exists to end. A third arm that forgets is the failure mode; there is one place to
+    /// forget in now.
+    fn give_up(&self, delivery: &Delivery) {
+        tracing::error!(swarm = %self.slug, binding = %delivery.binding,
+                        command = %delivery.command, attempts = delivery.attempts,
+                        error = %delivery.why, "a delivery was given up on");
+        self.announce(What::Undelivered {
+            binding: delivery.binding.clone(),
+            command: delivery.command.clone(),
+            attempts: delivery.attempts,
+            why: delivery.why.clone(),
+        });
+    }
+
+    /// Keeps a failed delivery that its binding asked to have retried.
+    ///
+    /// A binding that did not ask is not kept. The list comes from `route::needs_redelivery`, so
+    /// "which bindings asked" is answered by the specification through the pump rather than by a
+    /// second reading of the model here.
+    async fn owe(&self, routed: &Routed, why: &str, request: &str) {
+        if !self.redelivers.iter().any(|name| name == &routed.binding) {
+            tracing::debug!(swarm = %self.slug, binding = %routed.binding, error = %why,
+                            "a delivery failed and its binding asked for no retry");
+            return;
+        }
+
+        tracing::warn!(swarm = %self.slug, binding = %routed.binding, command = %routed.command,
+                       error = %why, "a delivery failed and is owed another attempt");
+        self.owed.lock().await.push(Delivery {
+            binding: routed.binding.clone(),
+            command: routed.command.clone(),
+            // The attempt that just failed. A caller reading `attempts` wants how many times the
+            // delivery has been tried, not how many times this queue has tried it.
+            attempts: 1,
+            why: why.to_owned(),
+            input: routed.input.clone(),
+            request: self.delivery_key(request, &routed.binding),
+            due: Instant::now() + RETRY_DELAY,
+        });
+    }
+
+    /// Takes every delivery due at `now` out of the queue, leaving the rest.
+    ///
+    /// One of the four places the implementation locks `self.owed` — `owe`, this, `keep_owed`,
+    /// `deliveries` — and in none of them does the guard outlive the statements that read and write
+    /// the vector. **That is the rule this type keeps: an `owed` guard is never held across a
+    /// call.** It is not checkable by a lint, so it is checkable by reading four short methods,
+    /// which is why there are four of them and why `self.owed` is named nowhere else.
+    /// (`grep 'self.owed' swarm.rs` is the audit; the unit tests seed the queue through `swarm.owed`
+    /// and take no guard across anything either.) `owe` takes the same lock, `commit_caused` calls `owe`, and
+    /// `redeliver` calls `commit_caused` — so a drain that held the guard for its duration
+    /// deadlocked on itself the moment a cascade failed, and did it while holding `world`, which
+    /// hangs every `issue`, `view` and `instances` on that swarm for ever. `tokio::sync::Mutex` is
+    /// not reentrant and gives no warning; the only defence is that no guard outlives its
+    /// statement, which is why `redeliver` no longer names this field at all.
+    async fn take_due(&self, now: Instant) -> Vec<Delivery> {
+        let mut owed = self.owed.lock().await;
+        let (due, keep) = owed.drain(..).partition(|delivery| delivery.due <= now);
+        *owed = keep;
+        due
+    }
+
+    /// Puts deliveries back, keeping whatever arrived while they were out.
+    ///
+    /// Extends, never assigns. A drain that assigned the vector it computed before running the
+    /// cascade overwrote the delivery the cascade had just owed — lost with no `give_up`, no
+    /// `What::Undelivered` and no log line, which is the exact silence this queue exists to end.
+    async fn keep_owed(&self, deliveries: Vec<Delivery>) {
+        self.owed.lock().await.extend(deliveries);
+    }
+
+    /// Every delivery still owed, and how many attempts each has had.
+    pub async fn deliveries(&self) -> Vec<Delivery> {
+        self.owed.lock().await.clone()
+    }
+
+    /// Attempts every delivery that is due at `now`, and returns how many were attempted.
+    ///
+    /// `now` is passed in rather than read here for the reason every other timestamp in this system
+    /// is passed in: the caller owns the clock. The trigger hands it `Instant::now()`; a test hands
+    /// it a later instant and does not wait thirty seconds to find out whether the bound holds.
+    ///
+    /// A delivery that succeeds is pumped like any other command — see the module doc. Nothing in
+    /// the kernel this repository ships binds an event that these three commands emit, so the
+    /// cascade is empty as things stand; running it anyway is what keeps that a fact about
+    /// `components.yaml` rather than a difference between this method and `issue`.
+    ///
+    /// A binding added tomorrow on one of those events needs no change here — which is a claim the
+    /// same sentence made before that binding hung the swarm, so it is now written down as what it
+    /// rests on: the queue is not locked while the cascade runs (see [`Swarm::take_due`]), and a
+    /// delivery the cascade owes is added to the queue rather than overwritten by it (see
+    /// [`Swarm::keep_owed`]). `tests/the_cascade_of_a_caused_command.rs` adds exactly such a
+    /// binding to a copy of the kernel and drives it.
+    ///
+    /// What this does NOT rest on is the idempotency key refusing a second landing. See
+    /// [`Delivery::request`]: the key is stream-scoped and a creating command mints a new stream per
+    /// attempt. A delivery lands at most once because it is held once and dropped on success, in
+    /// this process, and for as long as this process lives.
+    pub async fn redeliver(&self, now: Instant) -> usize {
+        // Taken before the world is locked, and put back after it is released. Nothing is held
+        // across the attempts but `world`, which the commands need.
+        let due = self.take_due(now).await;
+        if due.is_empty() {
+            return 0;
+        }
+        let attempted = due.len();
+        let mut keep = Vec::new();
+
+        {
+            let mut world = self.world.lock().await;
+
+            for mut delivery in due {
+                delivery.attempts += 1;
+                let minted = mint();
+                // No actor, for the reason the pump has none: a binding is the system acting on
+                // itself.
+                let result = apply(
+                    self.spec.ir(),
+                    &world,
+                    None,
+                    &delivery.command,
+                    &delivery.input,
+                    Some(&minted),
+                );
+
+                let applied = match result {
+                    Ok(applied) => applied,
+                    Err(why) => {
+                        self.defer_or_give_up(&mut delivery, why.to_string(), now, &mut keep);
+                        continue;
+                    }
+                };
+
+                // The command applied and the log would not take it. Keeping the delivery is the
+                // only answer that does not lose the write, and the world is left untouched so that
+                // what is in memory still matches what is on disk.
+                if let Err(why) = self.store.commit(&applied, None, &delivery.request).await {
+                    self.defer_or_give_up(&mut delivery, why.to_string(), now, &mut keep);
+                    continue;
+                }
+
+                if let Some(instance) = applied.instance.clone() {
+                    world.insert((instance.entity.clone(), instance.id.clone()), instance);
+                }
+                tracing::info!(swarm = %self.slug, binding = %delivery.binding,
+                               attempts = delivery.attempts, "a delivery was made at last");
+                self.announce(What::Routed {
+                    binding: delivery.binding.clone(),
+                    command: delivery.command.clone(),
+                    outcome: applied.outcome.clone(),
+                    instance: applied
+                        .instance
+                        .as_ref()
+                        .and_then(|instance| serde_json::to_value(instance).ok()),
+                });
+
+                // Whatever the redelivered command set off. A failure in the cascade is owed the
+                // same way any other failed delivery is, under a key of its own so it cannot
+                // collide with the delivery that caused it.
+                self.pump_cascade(
+                    &mut world,
+                    &applied.events,
+                    &format!("{}:cascade", delivery.request),
+                    &delivery.binding,
+                )
+                .await;
+            }
+        }
+
+        self.keep_owed(keep).await;
+        attempted
+    }
+
+    /// Routes what a command emitted, and commits what that caused.
+    ///
+    /// The three doors — `issue`, `tick`, `redeliver` — differ in how a command arrives and in
+    /// nothing after it has been applied, which is what this method is for. `what` names the thing
+    /// being pumped for the log line, because a cascade that cannot be routed is worth attributing.
+    async fn pump_cascade(&self, world: &mut World, events: &[Emitted], request: &str, what: &str) {
+        match pump(self.spec.ir(), world, events.to_vec(), &mut mint_each()) {
+            Ok(caused) => {
+                if let Err(why) = self.commit_caused(&caused, request).await {
+                    tracing::error!(swarm = %self.slug, what, error = %why,
+                                    "a caused command's cascade could not be committed");
+                }
+            }
+            Err(why) => {
+                tracing::error!(swarm = %self.slug, what, error = %why,
+                                "a command's events could not be routed");
+            }
+        }
+    }
+
+    /// Sets a failed attempt aside for later, or stops trying and says so.
+    ///
+    /// The two failure arms of a drain — could not apply, could not commit — decided this
+    /// identically and wrote it out twice, which is how one of them came to be silent at the bound.
+    /// One place to decide it in, and `keep` is the drain's own list so the queue is not touched.
+    fn defer_or_give_up(
+        &self,
+        delivery: &mut Delivery,
+        why: String,
+        now: Instant,
+        keep: &mut Vec<Delivery>,
+    ) {
+        delivery.why = why;
+        delivery.due = now + RETRY_DELAY;
+        if delivery.attempts >= MAX_ATTEMPTS {
+            self.give_up(delivery);
+        } else {
+            keep.push(delivery.clone());
+        }
     }
 
     /// Runs one occurrence of a periodic binding.
@@ -632,21 +1028,44 @@ impl Swarm {
             return Ok(false);
         };
 
-        if let Ok(applied) = &turned.result {
-            self.store
-                .commit(applied, None, &format!("tick:{}", mint()))
-                .await
-                .map_err(|why| Refused::Store(why.to_string()))?;
-            self.announce(What::Ticked {
-                binding: turned.binding.clone(),
-                command: turned.command.clone(),
-                goal,
-                iterations,
-                instance: applied
-                    .instance
-                    .as_ref()
-                    .and_then(|instance| serde_json::to_value(instance).ok()),
-            });
+        let request = format!("tick:{}", mint());
+        match &turned.result {
+            Ok(applied) => {
+                self.store
+                    .commit(applied, None, &request)
+                    .await
+                    .map_err(|why| Refused::Store(why.to_string()))?;
+                self.announce(What::Ticked {
+                    binding: turned.binding.clone(),
+                    command: turned.command.clone(),
+                    goal,
+                    iterations,
+                    instance: applied
+                        .instance
+                        .as_ref()
+                        .and_then(|instance| serde_json::to_value(instance).ok()),
+                });
+
+                // A command a period caused causes its bindings, exactly as one a caller asked for
+                // does. This was missing until 2026-09-12 while the module doc said otherwise, and
+                // adding it is a real change of behaviour: an event a periodic command emits now
+                // reaches every binding that names it. Nothing in the kernel this repository ships
+                // names one — `turn-the-loop` invokes `Pursue`, and no binding's `when` is
+                // `GoalPursued` — so the change is visible only to a specification that adds one,
+                // which is the whole point of the specification being the system.
+                self.pump_cascade(
+                    &mut world,
+                    &applied.events,
+                    &format!("{request}:cascade"),
+                    &turned.binding,
+                )
+                .await;
+            }
+            // A periodic binding's own failure, handled the way an event-caused one is. The kernel's
+            // only periodic binding declares `at_most_once`/`drop`, so `owe` will decline it and say
+            // so — but the arm is written rather than assumed, because which policy a binding
+            // declares is the specification's to change and not this method's to know.
+            Err(why) => self.owe(&turned, &why.to_string(), &request).await,
         }
         Ok(true)
     }
@@ -916,4 +1335,144 @@ fn mint() -> String {
 /// The same, as the interpreter asks for them.
 fn mint_each() -> impl FnMut() -> String {
     || mint()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A redelivery that succeeds, proved from a state `store.rs` admits: ONE handle on the log.
+    ///
+    /// The end-to-end proof in `tests/serves_a_swarm.rs` manufactures its transient failure by
+    /// opening two `Swarm` handles over one SQLite file, which is a second connection to a database
+    /// the store's own doc says has one writer. This one owes the delivery by hand instead — the
+    /// queue is right here — so the thing being proved (a due delivery applies, commits, and stops
+    /// being owed) rests on nothing the module excludes.
+    #[tokio::test]
+    async fn a_due_delivery_that_applies_is_committed_and_no_longer_owed() {
+        let data = tempdir::TempDir::new("swarm-owed").expect("a scratch directory");
+        let kernel = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../src/core")
+            .canonicalize()
+            .expect("the kernel specification is beside this crate");
+        let spec = Arc::new(Spec::load(kernel).expect("the kernel resolves"));
+        let swarm = Swarm::open(spec, data.path(), "owed")
+            .await
+            .expect("a swarm opens");
+
+        let object = |value: Json| value.as_object().expect("an object").clone();
+        swarm
+            .issue(
+                None,
+                "swarm.manager.CreateSwarm",
+                object(
+                    serde_json::json!({"display_name": "Owed", "tmux_session": "s",
+                       "home": "/tmp/owed", "created_at": "2026-09-12T10:00:00Z"}),
+                ),
+                "make",
+            )
+            .await
+            .expect("the swarm is created");
+        let swarm_id = swarm.instances("swarm.manager.Swarm").await[0]["id"]
+            .as_str()
+            .expect("an identity")
+            .to_owned();
+        swarm
+            .issue(
+                None,
+                "swarm.config.DraftConfig",
+                object(
+                    serde_json::json!({"swarm_id": swarm_id, "paths": {}, "launch": {},
+                       "schedules": {}, "budgets": {}, "board": {}}),
+                ),
+                "draft",
+            )
+            .await
+            .expect("a config is drafted");
+        let config_id = swarm.instances("swarm.config.Config").await[0]["id"]
+            .as_str()
+            .expect("an identity")
+            .to_owned();
+
+        // One delivery owed, exactly as `owe()` would have left it after a first attempt that lost
+        // a race with the write that created the swarm.
+        swarm.owed.lock().await.push(Delivery {
+            binding: "adopt-activated-config".to_owned(),
+            command: "swarm.manager.AdoptConfig".to_owned(),
+            attempts: 1,
+            why: "the world had no such swarm yet".to_owned(),
+            input: object(
+                serde_json::json!({"swarm_id": swarm_id, "config_id": config_id.clone()}),
+            ),
+            request: "activate:adopt-activated-config".to_owned(),
+            due: Instant::now(),
+        });
+
+        assert_eq!(swarm.redeliver(Instant::now()).await, 1);
+        assert!(
+            swarm.deliveries().await.is_empty(),
+            "a delivery that succeeded is no longer owed"
+        );
+        assert_eq!(
+            swarm.instances("swarm.manager.Swarm").await[0]["fields"]["active_config_id"],
+            serde_json::json!(config_id)
+        );
+
+        // In the log, not only in the world the retry wrote to.
+        swarm.reload().await.expect("the log replays");
+        assert_eq!(
+            swarm.instances("swarm.manager.Swarm").await[0]["fields"]["active_config_id"],
+            serde_json::json!(config_id)
+        );
+    }
+
+    /// A delivery not yet due is not attempted, and one past the bound is given up with a word.
+    #[tokio::test]
+    async fn a_delivery_that_cannot_apply_is_bounded_and_announced() {
+        let data = tempdir::TempDir::new("swarm-bound").expect("a scratch directory");
+        let kernel = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../src/core")
+            .canonicalize()
+            .expect("the kernel specification is beside this crate");
+        let spec = Arc::new(Spec::load(kernel).expect("the kernel resolves"));
+        let swarm = Swarm::open(spec, data.path(), "bound")
+            .await
+            .expect("a swarm opens");
+        let mut watching = swarm.watch();
+
+        let began = Instant::now();
+        swarm.owed.lock().await.push(Delivery {
+            binding: "adopt-activated-config".to_owned(),
+            command: "swarm.manager.AdoptConfig".to_owned(),
+            attempts: 1,
+            why: "no such swarm".to_owned(),
+            // A swarm no command ever created: this never applies, however often it is attempted.
+            input: serde_json::json!({"swarm_id": "33333333-3333-4333-8333-333333333333",
+                                      "config_id": "44444444-4444-4444-8444-444444444444"})
+            .as_object()
+            .expect("an object")
+            .clone(),
+            request: "never:adopt-activated-config".to_owned(),
+            due: began + RETRY_DELAY,
+        });
+
+        assert_eq!(swarm.redeliver(began).await, 0, "not due yet");
+        for attempt in 2..=MAX_ATTEMPTS {
+            assert_eq!(
+                swarm.redeliver(began + RETRY_DELAY * (attempt - 1)).await,
+                1
+            );
+        }
+        assert!(swarm.deliveries().await.is_empty(), "bounded, and given up");
+
+        // The watcher is told which delivery was lost and after how many attempts. A delivery that
+        // is dropped in silence is the defect this whole change exists to end.
+        let mut said = None;
+        while let Ok(change) = watching.try_recv() {
+            if let What::Undelivered { attempts, .. } = change.what {
+                said = Some(attempts);
+            }
+        }
+        assert_eq!(said, Some(MAX_ATTEMPTS), "the loss was announced");
+    }
 }

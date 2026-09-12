@@ -110,6 +110,55 @@ export const useSwarmStore = defineStore('swarms', () => {
     return held.value.find((swarm) => swarm.slug === slug)
   }
 
+  /**
+   * Rows of the views something on the canvas is drawn from, by slug then view name.
+   *
+   * A `Box{kind: Ui}` may name a view to be fed from, and a view is computed by the server against
+   * its own world — it is not on the canvas payload and cannot be derived from it. Only views
+   * somebody asked for are read: a swarm declares many and a panel watches one.
+   */
+  const views = ref<Record<string, Record<string, ViewRead>>>({})
+  /** Which views are being drawn, per swarm, so a change re-reads exactly those. */
+  const viewed = new Map<string, Set<string>>()
+
+  /** Asks for one view's rows, now and after every change. Idempotent. */
+  function followView(slug: string, name: string): void {
+    let wanted = viewed.get(slug)
+    if (!wanted) viewed.set(slug, (wanted = new Set()))
+    if (wanted.has(name)) return
+    wanted.add(name)
+    void readView(slug, name)
+  }
+
+  /**
+   * One view as last read: its rows, or why they could not be read.
+   *
+   * Not bare rows. A view that was refused and a view with nothing in it both end up as `[]`, and
+   * a panel showing "No rows" for the first is stating the one thing that is certainly untrue.
+   */
+  function viewState(slug: string, name: string): ViewRead | undefined {
+    return views.value[slug]?.[name]
+  }
+
+  async function readView(slug: string, name: string): Promise<void> {
+    const held = (views.value[slug] ??= {})
+    try {
+      held[name] = { rows: await runtime.view(slug, name) }
+    } catch (why) {
+      // The rows already read are kept beside the failure: a view that has gone away had rows a
+      // moment ago, and blanking the panel would hide that it ever did.
+      held[name] = {
+        rows: held[name]?.rows,
+        error: why instanceof Error ? why.message : 'the runtime could not be reached',
+      }
+    }
+  }
+
+  /** Re-reads every view being drawn for one swarm. */
+  function refreshViews(slug: string): void {
+    for (const name of viewed.get(slug) ?? []) void readView(slug, name)
+  }
+
   /** Reads one swarm's canvas from the server, replacing whatever was held. */
   async function refresh(slug: string): Promise<void> {
     const canvas = await runtime.canvas(slug)
@@ -121,6 +170,9 @@ export const useSwarmStore = defineStore('swarms', () => {
     } else {
       held.value.push({ slug, canvas, record })
     }
+    // Whatever is drawn from a view is redrawn with the canvas: one change may have written rows
+    // the canvas payload says nothing about.
+    refreshViews(slug)
   }
 
   function liveOf(slug: string): Live {
@@ -430,9 +482,16 @@ export const useSwarmStore = defineStore('swarms', () => {
     held, loaded, visible, problem, shape, live, status, statusAt, clock, reachable, nextTickIn,
     load, refresh, getSwarm, goalOf, canAct, createSwarm, follow, unfollow, wake, pollStatus,
     recentlyChanged, lastTurn, loadTurn, liveTurn, capOn,
+    views, followView, viewState,
     startSwarm, pauseSwarm, resumeSwarm, stopSwarm, deleteSwarm,
   }
 })
+
+/** One view as last read: the rows it held, and the reason if the last read failed. */
+export interface ViewRead {
+  rows?: Record<string, unknown>[]
+  error?: string
+}
 
 /** What a recorded run cost, summed the same way the server sums a live one. */
 function sumSpent(events: AgentEvent[]): Spent {
