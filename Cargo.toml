@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["src/runtime/ess-runtime", "src/runtime/swarm-server"]
+members = ["src/runtime/ess-runtime", "src/runtime/swarm-cli", "src/runtime/swarm-server"]
 
 [workspace.package]
 version = "0.1.0"
@@ -37,5 +37,9 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4"] }
 ess-runtime = { path = "src/runtime/ess-runtime" }
+# The agent's own CLI. `ureq` rather than reqwest: a command that makes one blocking request wants
+# no runtime, and this binary is spawned once per invocation inside a hermetic Claude Code run.
+ureq = { version = "3", default-features = false, features = ["json"] }
+clap = { version = "4", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
