@@ -279,9 +279,12 @@ export function view(
  * `tests/redelivery_under_attack.rs`, under `story:request-key-is-not-idempotency`.
  *
  * So a caller that lost its response should not blind-resend. {@link log} carries the `request`
- * each event was written under, so it answers exactly whether the first attempt landed; resend
- * only if it is absent. {@link canvas} answers the weaker question of whether the effect is there
- * — a canvas record is an instance and names no key at all.
+ * each event was written under, so it answers whether the first attempt landed — within the window
+ * it returns, and no further. That window is a tail: `limit` defaults to 200 and the server caps it
+ * at 1000, and there is no cursor and no way to ask about one key, so an attempt older than `limit`
+ * events is unreachable and reads exactly like one that never happened. Resending on absence past
+ * the window resends a command that landed. {@link canvas} answers the weaker question of whether
+ * the effect is there — a canvas record is an instance and names no key at all.
  *
  * Omitting `request` gives up that guard rather than costing nothing: the server mints a fresh key
  * when the field is absent, and a key spent on no stream can refuse nothing, so a repeat appends.

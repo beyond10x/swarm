@@ -158,16 +158,17 @@ async fn omitting_the_request_key_gives_up_the_only_guarantee_it_has() {
 
     // So neither document may call the omission the same guarantee, and both must name the cost.
     for (path, declaration) in [HTTP, TS] {
-        let doc = contract_doc(path, declaration).to_lowercase();
-        for (_, claim) in refuted_in(&doc) {
-            assert!(
-                !claim.contains("guarantee"),
-                "{path}: the doc of `{declaration}` says omitting the key leaves the guarantee \
-                 untouched — \"{claim}\" — and the measurement above says it is \
-                 {under_one_key} append against {under_minted_keys} \
-                 (story:request-key-is-not-idempotency)"
-            );
-        }
+        let doc = contract_doc(path, declaration);
+        let untouched: Vec<&str> = refuted_in(&doc)
+            .into_iter()
+            .filter(|claim| claim.contains("guarantee"))
+            .collect();
+        assert!(
+            untouched.is_empty(),
+            "{path}: the doc of `{declaration}` says omitting the key leaves the guarantee \
+             untouched — {untouched:?} — and the measurement above says it is {under_one_key} \
+             append against {under_minted_keys} (story:request-key-is-not-idempotency)"
+        );
         assert!(
             doc.contains("gives up")
                 || doc.contains("gives it up")
@@ -218,7 +219,7 @@ async fn only_the_log_carries_the_request_a_record_was_written_under() {
 
     for (path, declaration) in [HTTP, TS] {
         let doc = contract_doc(path, declaration);
-        for sentence in doc.to_lowercase().split(['.', ';']) {
+        for sentence in doc.split(['.', ';']) {
             if !(sentence.contains("carries") && sentence.contains("request")) {
                 continue;
             }
@@ -238,9 +239,9 @@ async fn only_the_log_carries_the_request_a_record_was_written_under() {
 /// The unit named its own defect class precisely: one claim about the request key copied to
 /// several reader-facing surfaces, corrected one at a time, each correction invisible to the
 /// others. Its first check enumerated three paths by hand, and the gap was realised the same day on
-/// a fourth: `tests/redelivery_under_attack.rs` said in the present tense that "`http.rs` documents
-/// `Issue::request` as \"the idempotency key. Retrying with the same one is a retry, not a second
-/// request\"" — the sentence the same commit had removed from `http.rs`. Both corrected surfaces
+/// a fourth: `tests/redelivery_under_attack.rs` used to say, in the present tense, that "`http.rs`
+/// documents `Issue::request` as \"the idempotency key. Retrying with the same one is a retry, not
+/// a second request\"" — the sentence the same commit had removed from `http.rs`. Both corrected surfaces
 /// send the reader to that file by name, so it is on the documented path of anybody who wants the
 /// measurement.
 ///
@@ -262,18 +263,24 @@ fn no_document_presents_a_refuted_promise_as_current() {
         );
     }
 
+    let mut unmarked: Vec<String> = Vec::new();
     for (path, text) in &surfaces {
-        for (at, _) in refuted_in(text) {
-            let paragraph = paragraph_around(text, at);
-            assert!(
-                PAST.iter().any(|marker| paragraph.contains(marker)),
-                "{path}: a promise this story measured false is quoted here with nothing saying \
-                 it is history, so a reader takes it as what the surface says today. Write it in \
-                 the past tense — {PAST:?} — or delete it \
-                 (story:request-key-is-not-idempotency). Read:\n{paragraph}"
-            );
+        for paragraph in paragraphs(text) {
+            let carried = refuted_in(&paragraph);
+            if carried.is_empty() || PAST.iter().any(|marker| paragraph.contains(marker)) {
+                continue;
+            }
+            unmarked.push(format!("{path}: {carried:?} in:\n{paragraph}"));
         }
     }
+
+    assert!(
+        unmarked.is_empty(),
+        "a promise this story measured false is quoted with nothing saying it is history, so a \
+         reader takes it as what that surface says today. Attribute it in the past tense — \
+         {PAST:?} — or delete it (story:request-key-is-not-idempotency). Found:\n\n{}",
+        unmarked.join("\n\n")
+    );
 }
 
 /// Every reader-facing document of the request key states the same contract.
@@ -297,7 +304,7 @@ fn no_document_presents_a_refuted_promise_as_current() {
 fn every_document_of_the_request_key_states_the_same_contract() {
     for (path, declaration) in [HTTP, SWARM, TS] {
         let doc = contract_doc(path, declaration);
-        let stated = doc.to_lowercase();
+        let stated = &doc;
 
         assert!(
             stated.contains("instance's stream"),
@@ -310,7 +317,7 @@ fn every_document_of_the_request_key_states_the_same_contract() {
             "{path}: the doc of `{declaration}` must name \
              story:request-key-is-not-idempotency, where the measurements live. Read:\n{doc}"
         );
-        let promised: Vec<&str> = refuted_in(&stated).into_iter().map(|(_, c)| c).collect();
+        let promised = refuted_in(stated);
         assert!(
             promised.is_empty(),
             "{path}: the doc of `{declaration}` promises {promised:?}, which the cases in \
@@ -339,48 +346,75 @@ const REFUTED: &[&str] = &[
 ];
 
 /// What marks a quotation as history rather than as what a surface says now.
-const PAST: &[&str] = &["used to", "no longer", "an earlier", "had written", "wrote"];
+///
+/// Each of these attributes the sentence to a past state of a document. The bare verb `wrote` was
+/// here and is not: any paragraph mentioning that somebody wrote anything satisfied it without
+/// saying the quotation is stale, and it was the only marker holding one paragraph green.
+const PAST: &[&str] = &[
+    "used to",
+    "no longer",
+    "an earlier",
+    "had written",
+    "wrote of",
+    "was corrected",
+    "has been corrected",
+];
 
-/// Where each refuted sentence sits in `text`, lowercased, and which one it is.
-fn refuted_in(text: &str) -> Vec<(usize, &'static str)> {
-    let said = text.to_lowercase();
-    let mut found = Vec::new();
-    for claim in REFUTED {
-        let mut from = 0;
-        while let Some(at) = said[from..].find(claim) {
-            found.push((from + at, *claim));
-            from += at + claim.len();
-        }
-    }
-    found
+/// Which refuted sentences `read` carries. `read` must have come through `as_a_reader_reads_it`.
+///
+/// Matching a sentence as one raw substring is what the first version did, and every doc comment in
+/// this tree wraps near column 100, so a sentence with a `\n///` through it was invisible — the
+/// guard became a function of where the wrap happened to fall, and it missed the very quotation its
+/// own doc holds up as the example. Normalising first is the whole of the fix.
+fn refuted_in(read: &str) -> Vec<&'static str> {
+    REFUTED
+        .iter()
+        .copied()
+        .filter(|claim| read.contains(claim))
+        .collect()
 }
 
-/// The comment paragraph `at` sits in: back to the last blank comment line or non-comment line,
-/// forward to the next. A quotation and its attribution are one paragraph.
-fn paragraph_around(text: &str, at: usize) -> String {
-    let empty = |line: &str| {
-        let line = line
-            .trim()
-            .trim_start_matches("///")
-            .trim_start_matches("//!");
-        line.trim().trim_start_matches('*').trim().is_empty()
-    };
-    let mut start = 0;
-    let mut end = text.len();
-    let mut cursor = 0;
-    for line in text.split_inclusive('\n') {
-        let next = cursor + line.len();
+/// The file cut into comment paragraphs, each one read the way a reader reads it. A blank line, or
+/// a comment line with nothing on it, ends a paragraph; a quotation and its attribution are one.
+fn paragraphs(text: &str) -> Vec<String> {
+    let empty = |line: &str| as_a_reader_reads_it(line).is_empty();
+    let mut out = Vec::new();
+    let mut current: Vec<&str> = Vec::new();
+    for line in text.lines() {
         if empty(line) {
-            if next <= at {
-                start = next;
-            } else if cursor >= at {
-                end = cursor;
-                break;
+            if !current.is_empty() {
+                out.push(as_a_reader_reads_it(&current.join("\n")));
+                current.clear();
             }
+        } else {
+            current.push(line);
         }
-        cursor = next;
     }
-    text[start..end].to_string()
+    if !current.is_empty() {
+        out.push(as_a_reader_reads_it(&current.join("\n")));
+    }
+    out
+}
+
+/// Text as the sentence a reader reads: comment markers off, runs of whitespace collapsed to one
+/// space, lowercased ONCE so that every later match — refuted sentence and past-tense marker alike
+/// — is made against the same string. Two strings were two bugs: an offset taken in the lowercased
+/// text and used in the original, which shifts or panics the moment a character's lowercase is a
+/// different length in UTF-8, and a marker compared case-sensitively against prose that may open a
+/// sentence with it.
+fn as_a_reader_reads_it(text: &str) -> String {
+    let mut words: Vec<String> = Vec::new();
+    for line in text.lines() {
+        let line = line.trim();
+        let line = line
+            .strip_prefix("///")
+            .or_else(|| line.strip_prefix("//!"))
+            .or_else(|| line.strip_prefix("//"))
+            .or_else(|| line.strip_prefix('*'))
+            .unwrap_or(line);
+        words.extend(line.split_whitespace().map(|word| word.to_lowercase()));
+    }
+    words.join(" ")
 }
 
 /// Every source file under this crate and the web client that names the story, with its text. The
@@ -408,7 +442,12 @@ fn documents_about_the_request_key() -> Vec<(String, String)> {
     found
 }
 
-/// Every `.rs` and `.ts` file under `dir`, recursively.
+/// Every source file under `dir` a reader could meet this contract in, recursively.
+///
+/// `.vue` is here because `src/web/src` holds 35 of them. None names the story today, so this is
+/// the one hand-written list left, and it is the kind that was the defect elsewhere: a file whose
+/// extension is missing is a document the derivation cannot see. Adding a language to the client
+/// means adding it here.
 fn collect(dir: &Path, into: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
@@ -419,20 +458,23 @@ fn collect(dir: &Path, into: &mut Vec<PathBuf>) {
             collect(&path, into);
         } else if matches!(
             path.extension().and_then(|kind| kind.to_str()),
-            Some("rs") | Some("ts")
+            Some("rs") | Some("ts") | Some("vue")
         ) {
             into.push(path);
         }
     }
 }
 
-/// The doc block above `declaration` in `path`, which is the contract that declaration carries.
+/// The doc block above `declaration` in `path`, which is the contract that declaration carries,
+/// read the way a reader reads it. Normalised here and nowhere else, so no caller can match a
+/// wrapped sentence against raw text by mistake.
 fn contract_doc(path: &str, declaration: &str) -> String {
     let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(path);
     let source = std::fs::read_to_string(&file)
         .unwrap_or_else(|why| panic!("{} is readable: {why}", file.display()));
-    doc_block_above(&source, declaration)
-        .unwrap_or_else(|| panic!("{path} declares `{declaration}` with a doc block above it"))
+    let block = doc_block_above(&source, declaration)
+        .unwrap_or_else(|| panic!("{path} declares `{declaration}` with a doc block above it"));
+    as_a_reader_reads_it(&block)
 }
 
 /// The comment block immediately above `declaration`, attributes skipped. Handles `///` and

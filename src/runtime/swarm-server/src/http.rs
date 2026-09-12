@@ -54,9 +54,18 @@ pub struct Issue {
     /// stream the key was already spent on. Everything else it must establish by reading, and a
     /// client that cannot tolerate the second answer should read before it resends. The log
     /// (`GET /swarms/{slug}/log`) carries the `request` each event was written under, so it
-    /// answers exactly whether this key's first attempt landed. The canvas (`GET /swarms/{slug}`)
-    /// answers the weaker question of whether the effect is there: a canvas record is an instance
-    /// — entity, id, state, fields, revision — and names no key at all.
+    /// answers whether this key's first attempt landed — within the window it returns, and no
+    /// further.
+    ///
+    /// That window is a TAIL. `limit` defaults to 200 and is capped at 1000, `Store::history`
+    /// returns the newest that many, and there is no cursor, no offset and no way to ask the
+    /// endpoint about one key. An attempt older than `limit` events is therefore unreachable, and
+    /// reads exactly like one that never happened — so a client that resends on absence past the
+    /// window resends a command that landed, which is the failure this whole doc is about.
+    /// Measured in `tests/the_request_key_contract.rs`. Read early, read with the largest limit,
+    /// or accept the second answer. The canvas (`GET /swarms/{slug}`) answers the weaker question
+    /// of whether the effect is there: a canvas record is an instance — entity, id,
+    /// identity_field, state, fields, revision — and names no key at all.
     ///
     /// Omitting the field gives up that guard. `issue_command` mints a fresh uuid when it is
     /// absent, and a key spent on no stream can refuse nothing, so a repeat appends. Measured:
