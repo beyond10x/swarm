@@ -24,7 +24,7 @@ use serde_json::{Map, Value};
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
 
-use crate::state::{Removal, Server};
+use crate::state::{Removal, Removed, Server};
 use crate::swarm::{Outgoing, Refused};
 
 /// The body of a command request.
@@ -145,12 +145,17 @@ async fn list_swarms(State(server): State<Arc<Server>>) -> impl IntoResponse {
 ///
 /// A place with no swarm in it — `POST /swarms` and no `CreateSwarm` — has no record to refuse it,
 /// and is exactly the case nothing could remove before this route existed.
+/// `204` when the place is gone. `202` when the slug is no longer served but something else was
+/// still holding its handle, so the files go when that holder lets go — saying `204` there would
+/// be a claim about the disk that is not true yet.
 async fn remove_swarm(
     State(server): State<Arc<Server>>,
     Path(slug): Path<String>,
 ) -> Result<impl IntoResponse, Gone> {
-    server.remove(&slug).await.map_err(Gone)?;
-    Ok(StatusCode::NO_CONTENT)
+    match server.remove(&slug).await.map_err(Gone)? {
+        Removed::Now => Ok(StatusCode::NO_CONTENT),
+        Removed::WhenReadersLetGo => Ok(StatusCode::ACCEPTED),
+    }
 }
 
 /// A removal that did not happen, on the wire.
@@ -159,6 +164,9 @@ struct Gone(Removal);
 impl IntoResponse for Gone {
     fn into_response(self) -> Response {
         let (status, kind) = match &self.0 {
+            // The caller's, and the only one of these that is a refusal about the NAME. Every
+            // route that takes a slug refuses the same set, in `state::check`.
+            Removal::BadSlug { .. } => (StatusCode::BAD_REQUEST, "command"),
             Removal::NotHere(_) => (StatusCode::NOT_FOUND, "view"),
             // Named rather than described: the client already knows this error from every
             // lifecycle command, and a second word for one fact is a second thing to handle.

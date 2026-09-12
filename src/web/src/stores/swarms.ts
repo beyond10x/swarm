@@ -388,6 +388,27 @@ export const useSwarmStore = defineStore('swarms', () => {
     }
   }
 
+  /**
+   * Makes sure one swarm is held, whether or not `GET /swarms` listed it.
+   *
+   * The list is what the server SHOWS, and a swarm in a terminal state is deliberately not on it:
+   * `DeleteSwarm` promises it "no longer appears in the swarms list". The runtime still holds it
+   * and `GET /swarms/{slug}` still serves it, so a page asked for one by name reads it directly
+   * rather than concluding it does not exist — which is what the page did, in those words, for
+   * every swarm somebody had just deleted.
+   *
+   * A slug the server really does not have fails the read, stays unheld, and gets the page's own
+   * "No such swarm".
+   */
+  async function ensure(slug: string): Promise<void> {
+    if (getSwarm(slug)) return
+    try {
+      await refresh(slug)
+    } catch {
+      // Nothing to hold. The page says so; there is no problem banner to raise over it.
+    }
+  }
+
   /** Makes a place for a swarm, then the record itself. */
   async function createSwarm(input: {
     displayName: string
@@ -492,7 +513,7 @@ export const useSwarmStore = defineStore('swarms', () => {
 
   return {
     held, loaded, visible, problem, shape, live, status, statusAt, clock, reachable, nextTickIn,
-    load, refresh, getSwarm, goalOf, canAct, whyNot, whyNothing, createSwarm, follow, unfollow, wake, pollStatus,
+    load, refresh, ensure, getSwarm, goalOf, canAct, whyNot, whyNothing, createSwarm, follow, unfollow, wake, pollStatus,
     recentlyChanged, lastTurn, loadTurn, liveTurn, capOn,
     views, followView, viewState,
     startSwarm, pauseSwarm, resumeSwarm, stopSwarm, deleteSwarm,

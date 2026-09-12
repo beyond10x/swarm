@@ -95,3 +95,41 @@ test('the actions checked here are every action the store offers', () => {
     assert.ok(commands.includes(`${action}:`), `${action} is not a command the store issues`)
   }
 })
+
+// `GET /swarms` no longer lists a swarm in a terminal state — that is the specification's own
+// promise (`manager.yaml:326`). The store loads `held` from exactly that list, so the page for a
+// `Deleted` swarm rendered "No such swarm — the runtime does not hold one by that name", which is
+// false: the runtime holds it, `GET /swarms/{slug}` serves it, and `disabledNote('Deleted')` is the
+// one line that tells an operator how to finish the job. A note nothing can reach is not a note.
+//
+// There is no store harness here — `swarms.ts` imports pinia, vue and the runtime client, none of
+// which node's test runner resolves — so this reads the wiring rather than driving it. It is a
+// weaker check than the ones above and is written down as such.
+test('a swarm the list does not carry is still reachable by its own slug', () => {
+  const store = readFileSync(fileURLToPath(new URL('./swarms.ts', import.meta.url)), 'utf8')
+  assert.match(
+    store,
+    /function ensure\(/,
+    'the store has no way to hold a swarm that `GET /swarms` did not list',
+  )
+  assert.match(
+    store,
+    /ensure[\s\S]{0,600}refresh\(slug\)/,
+    'ensure does not fall back to reading the swarm by its own slug',
+  )
+
+  const view = readFileSync(VIEW, 'utf8')
+  assert.match(
+    view,
+    /store\.ensure\(props\.id\)/,
+    'the page never asks for a swarm the list left out, so a Deleted swarm still reads as absent',
+  )
+})
+
+test('the terminal note is reachable from the page that shows a terminal swarm', () => {
+  // Belt and braces on the case above: the note exists, the page renders it, and the state that
+  // produces it is the one the list now hides.
+  assert.ok(disabledNote('Deleted'), 'there is no note for a terminal swarm')
+  const view = readFileSync(VIEW, 'utf8')
+  assert.match(view, /v-if="disabledNote"/, 'the note has no branch that renders it')
+})

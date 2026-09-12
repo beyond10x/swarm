@@ -22,6 +22,9 @@ const router = useRouter()
 
 onMounted(async () => {
   await store.load()
+  // The list leaves out a swarm in a terminal state, on purpose. This page was asked for one by
+  // name, so it reads it by name rather than reporting that the runtime does not hold it.
+  await store.ensure(props.id)
   // This page is the one that watches: the stream is opened here and closed on leaving.
   store.follow(props.id)
 })

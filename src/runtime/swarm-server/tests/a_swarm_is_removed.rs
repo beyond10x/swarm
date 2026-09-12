@@ -115,6 +115,33 @@ async fn create_record(swarm: &Arc<Swarm>, slug: &str) -> String {
     made[0]["id"].as_str().expect("an identity").to_owned()
 }
 
+/// One more `swarm.manager.Swarm` record under a session name of its own, and its id.
+///
+/// Nothing enforces one record per slug: `CreateSwarm` with a fresh `tmux_session` is accepted
+/// however many records the log already holds.
+async fn create_named_record(swarm: &Arc<Swarm>, slug: &str, session: &str) -> String {
+    let before: Vec<String> = swarm
+        .instances("swarm.manager.Swarm")
+        .await
+        .iter()
+        .map(|made| made["id"].as_str().expect("an identity").to_owned())
+        .collect();
+    issue(
+        swarm,
+        "swarm.manager.CreateSwarm",
+        json!({"display_name": slug, "tmux_session": session, "home": format!("swarms/{slug}"),
+               "created_at": "2026-09-12T10:00:00Z"}),
+    )
+    .await;
+    swarm
+        .instances("swarm.manager.Swarm")
+        .await
+        .iter()
+        .map(|made| made["id"].as_str().expect("an identity").to_owned())
+        .find(|id| !before.contains(id))
+        .expect("a new record")
+}
+
 fn swarm_dir(data: &tempdir::TempDir, slug: &str) -> PathBuf {
     data.path().join("swarms").join(slug)
 }
@@ -300,14 +327,163 @@ async fn a_removal_racing_an_open_leaves_the_map_agreeing_with_the_disk() {
         assert!(
             opened.is_ok(),
             "round {round}: an open racing a removal failed: {:?}",
-            opened.err(),
+            opened.as_ref().err(),
         );
+
+        // The state that must never exist: a handle being served for a log that is not there. The
+        // converse — on disk and not served — is a removal waiting for its last holder to let go,
+        // which is `pending`, and the lines below settle it rather than allowing it.
+        let held = server.slugs().await.contains(&slug);
+        let on_disk = swarm_dir(&data, &slug).is_dir();
+        assert!(
+            !(held && !on_disk),
+            "round {round}: the map serves `{slug}` and its log is gone",
+        );
+
+        // Let go of the handle the open produced and give the server one entry point to sweep on.
+        drop(opened);
+        let _ = server.listed().await;
 
         let held = server.slugs().await.contains(&slug);
         let on_disk = swarm_dir(&data, &slug).is_dir();
         assert_eq!(
             held, on_disk,
-            "round {round}: the map holds it: {held}; the disk has it: {on_disk}",
+            "round {round}: once nothing holds `{slug}`, the map says {held} and the disk says \
+             {on_disk}",
         );
     }
+}
+
+/// The class behind the traversal, checked over the route table itself rather than over one route.
+///
+/// A slug arrives from the wire and is joined onto the data root. `story:slug-is-not-validated` is
+/// open and says so in general; this file only has to hold the line for the routes that exist, so
+/// the list of them is read out of `http.rs` instead of being typed here — a route added with
+/// `{slug}` in it and no validation behind it fails this case on the day it is added.
+///
+/// `..%2Fescaped` is one segment on the wire: axum matches `{slug}` against the ENCODED segment and
+/// the extractor percent-decodes it, so the handler is reached with `../escaped` in hand.
+#[tokio::test]
+async fn no_route_that_takes_a_slug_reaches_outside_the_swarms_directory() {
+    let table =
+        std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/http.rs"))
+            .expect("the route table is beside this crate");
+    let routes: Vec<String> = table
+        .lines()
+        .filter_map(|line| {
+            let (_, rest) = line.split_once(".route(\"")?;
+            let (path, _) = rest.split_once('"')?;
+            path.contains("{slug}").then(|| path.to_owned())
+        })
+        .collect();
+    assert!(
+        routes.len() >= 9,
+        "only {} routes with a slug in them were found; the table's shape has changed and this \
+         case is no longer reading it: {routes:?}",
+        routes.len(),
+    );
+
+    let (server, data) = server().await;
+    // `swarms/` on disk, because it is the component every escaping path walks through. A root
+    // that has never held a swarm does not have it, and that is the only thing that hid this.
+    server.open("ordinary").await.expect("a place is made");
+    let outside = data.path().join("escaped");
+    std::fs::create_dir_all(&outside).expect("the place is made");
+    std::fs::write(outside.join("precious.json"), b"{}").expect("a file is written");
+
+    let at = serving(Arc::clone(&server)).await;
+    for route in &routes {
+        let path = route
+            .replace("{slug}", "..%2Fescaped")
+            .replace("{view}", "v")
+            .replace("{command}", "c")
+            .replace("{name}", "n");
+        for method in ["GET", "POST", "DELETE"] {
+            let (status, body) = call(at, method, &path).await;
+            assert!(
+                status >= 400,
+                "{method} {path} answered {status} ({body}) for a slug that is not a path \
+                 component",
+            );
+            assert!(
+                outside.join("precious.json").exists(),
+                "{method} {path} erased {}, which is not under the swarms directory at all",
+                outside.display(),
+            );
+        }
+    }
+}
+
+/// The same class on the way IN. `POST /swarms` takes the slug from a body rather than a path, and
+/// `Server::open` joins it onto the root and creates the directory: the traversal makes a place
+/// outside `swarms/` rather than erasing one, and it is the same unvalidated string.
+#[tokio::test]
+async fn a_place_is_not_made_outside_the_swarms_directory_either() {
+    let (server, data) = server().await;
+    let outside = data.path().join("escaped");
+
+    let made = server.open("../escaped").await;
+    assert!(
+        made.is_err(),
+        "opening `../escaped` was allowed and made a place at {}",
+        outside.display(),
+    );
+    assert!(
+        !outside.exists(),
+        "a place was made outside the swarms directory"
+    );
+}
+
+/// Every entry point that takes a slug refuses the same set, so a caller cannot reach one of them
+/// by a name another one would have refused. `./busy` and `busy` are one directory and two map
+/// keys, which is how a Running swarm was erased without its state ever being consulted.
+#[tokio::test]
+async fn one_rule_for_what_a_slug_is_holds_at_every_entry_point() {
+    let (server, _data) = server().await;
+    server.open("busy").await.expect("a place is made");
+
+    for bad in [
+        "",
+        ".",
+        "..",
+        "./busy",
+        "../escaped",
+        "a/b",
+        "/absolute",
+        "swarms/busy",
+        "busy/",
+    ] {
+        assert!(server.open(bad).await.is_err(), "open accepted `{bad}`");
+        assert!(server.get(bad).await.is_err(), "get accepted `{bad}`");
+        assert!(server.remove(bad).await.is_err(), "remove accepted `{bad}`");
+    }
+}
+
+/// The listing has the same one-state-for-a-world defect the removal had: `summary()` keeps the
+/// LAST `swarm.manager.Swarm` it walks, and a slug can hold several. One `Deleted` record must not
+/// hide a slug whose other record is Running.
+#[tokio::test]
+async fn a_slug_holding_a_live_record_is_listed_however_its_records_sort() {
+    let (server, _data) = server().await;
+    let swarm = server.open("mixed").await.expect("a place is made");
+
+    let running = create_named_record(&swarm, "mixed", "mixed-live").await;
+    let retired = create_named_record(&swarm, "mixed", "mixed-old").await;
+    issue(
+        &swarm,
+        "swarm.manager.StartSwarm",
+        json!({"swarm_id": running, "started_at": "2026-09-12T10:01:00Z"}),
+    )
+    .await;
+    issue(
+        &swarm,
+        "swarm.manager.DeleteSwarm",
+        json!({"swarm_id": retired}),
+    )
+    .await;
+
+    assert!(
+        server.listed().await.contains(&"mixed".to_owned()),
+        "a slug holding a Running record was hidden from the list by a Deleted one beside it",
+    );
 }

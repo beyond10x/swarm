@@ -20,6 +20,77 @@ use crate::swarm::{Refused, Summary, Swarm, now};
 /// The entity a slug names one of. Its lifecycle decides what "finished" means.
 const SWARM: &str = "swarm.manager.Swarm";
 
+/// How long one swarm gets to answer what it holds before the list goes on without it.
+const LIST_BUDGET: Duration = Duration::from_millis(50);
+
+/// Whether a slug is a name this server will put on a path or in the handle map.
+///
+/// One rule, used by `open`, `get` and `remove` alike, because an entry point that accepts a name
+/// another refuses is how a check is walked around: `./busy` and `busy` are one directory and two
+/// map keys, and a removal reached the second while the refusal looked at the first.
+///
+/// A slug must be exactly one ordinary path component, spelled the way it is stored. `..`, `.`,
+/// anything with a separator in it, an empty name and a leading dot are all refused —
+/// `story:slug-is-not-validated` is the general home for this rule, and it is open; this is the
+/// part of it a destructive verb cannot wait for.
+pub fn check(slug: &str) -> Result<(), Removal> {
+    let bad = |why: &str| {
+        Err(Removal::BadSlug {
+            slug: slug.to_owned(),
+            why: why.to_owned(),
+        })
+    };
+    if slug.is_empty() {
+        return bad("a slug cannot be empty");
+    }
+    if slug.starts_with('.') {
+        return bad("a slug cannot start with a dot");
+    }
+    if slug.contains('\0') {
+        return bad("a slug cannot contain a NUL");
+    }
+    let mut parts = std::path::Path::new(slug).components();
+    match (parts.next(), parts.next()) {
+        (Some(std::path::Component::Normal(only)), None) if only == std::ffi::OsStr::new(slug) => {
+            Ok(())
+        }
+        _ => bad("a slug has to be one ordinary path component"),
+    }
+}
+
+/// The log, everything SQLite keeps beside it, and then the directory — in that order.
+///
+/// The three files together: removing the database and leaving the `-wal` behind makes the next
+/// open of this slug run WAL recovery against a fresh empty file.
+fn unlink(directory: &std::path::Path) -> Result<(), Removal> {
+    let database = directory.join("eventlog.sqlite3");
+    for file in [
+        database.clone(),
+        with_suffix(&database, "-wal"),
+        with_suffix(&database, "-shm"),
+    ] {
+        match std::fs::remove_file(&file) {
+            Ok(()) => {}
+            Err(why) if why.kind() == std::io::ErrorKind::NotFound => {}
+            Err(why) => {
+                return Err(Removal::Undeletable {
+                    path: file.display().to_string(),
+                    why: why.to_string(),
+                });
+            }
+        }
+    }
+
+    match std::fs::remove_dir_all(directory) {
+        Ok(()) => Ok(()),
+        Err(why) if why.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(why) => Err(Removal::Undeletable {
+            path: directory.display().to_string(),
+            why: why.to_string(),
+        }),
+    }
+}
+
 /// The whole server.
 pub struct Server {
     spec: Arc<Spec>,
@@ -42,6 +113,21 @@ pub struct Server {
     /// never across an await. One entry per slug ever opened, which is bounded by the swarms on
     /// disk; nothing removes them, because a slug that was opened once may be opened again.
     opening: Mutex<BTreeMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    /// Swarms a removal has evicted whose files are still on disk, because something else was
+    /// still holding a handle when the removal ran.
+    ///
+    /// Unlinking under a live handle is not a filesystem problem on this platform — it succeeds —
+    /// it is a HONESTY problem: the holder's writes keep landing in the unlinked inode and keep
+    /// answering `created`, so a client is told a command was applied that no reader of that slug
+    /// can ever see. Measured. Truncating the files instead kills the process: SQLite has the
+    /// `-shm` mapped, and a write to a truncated mapping is a SIGBUS (measured, signal 7).
+    ///
+    /// So a removal that cannot have the files to itself parks the handle here, and the files go
+    /// when the last holder lets go — `sweep` does it, at the next entry point anybody uses. An
+    /// `open` of the slug before that takes the entry back and returns the SAME handle, which is
+    /// not a courtesy: constructing a second one over a log the first is still writing to is the
+    /// two-worlds-over-one-log defect the `opening` gate exists to prevent.
+    pending: Mutex<BTreeMap<String, Arc<Swarm>>>,
     /// When this process started, RFC 3339.
     started_at: String,
     /// When the trigger will next fire, RFC 3339. `None` until the trigger has said.
@@ -73,6 +159,14 @@ impl Server {
                 let Some(slug) = entry.file_name().to_str().map(ToOwned::to_owned) else {
                     continue;
                 };
+                // The fourth door. A directory whose name is not a slug this server will accept
+                // would be opened here and then be unreachable through `get` and unremovable
+                // through `remove`, which is one rule at three doors and a different one at the
+                // last.
+                if let Err(why) = check(&slug) {
+                    tracing::warn!(%slug, error = %why, "a directory under swarms/ is not a swarm name; not opened");
+                    continue;
+                }
                 let swarm = Swarm::open(Arc::clone(&spec), &root, &slug).await?;
                 swarms.insert(slug, Arc::new(swarm));
             }
@@ -83,6 +177,7 @@ impl Server {
             root,
             swarms: RwLock::new(swarms),
             opening: Mutex::new(BTreeMap::new()),
+            pending: Mutex::new(BTreeMap::new()),
             started_at: now(),
             next_tick_at: Mutex::new(None),
             ticks: Mutex::new(0),
@@ -116,9 +211,16 @@ impl Server {
     ///
     /// When the store fails, the error is returned.
     pub async fn open(&self, slug: &str) -> Result<Arc<Swarm>, Refused> {
+        // Before the map, before the gate, before anything is joined onto a path.
+        check(slug).map_err(|why| Refused::Command(why.to_string()))?;
+
         if let Some(open) = self.swarms.read().await.get(slug) {
             return Ok(Arc::clone(open));
         }
+
+        // Anything a previous removal could not finish. Run with no gate held, which is what keeps
+        // this from being able to deadlock against another sweep.
+        self.sweep().await;
 
         // This slug's construction lock, and nobody else's. Taken under an `std` guard that is
         // dropped on the next line, so no await happens while it is held.
@@ -137,6 +239,22 @@ impl Server {
             return Ok(Arc::clone(open));
         }
 
+        // A removal that has not finished still owns this slug's files, and its handle is still
+        // being written through. Take it back rather than building a second handle over the same
+        // log: the removal is cancelled by the open, and `sweep` will see the slug in the map and
+        // leave the files alone. Claimed under this slug's gate, which is the same gate `sweep`
+        // takes before it unlinks, so exactly one of the two wins.
+        // Bound in its own statement: the `std` guard has to be dropped before the await below,
+        // or this future stops being `Send` and every handler that calls it stops compiling.
+        let parked = self.pending.lock().expect("not poisoned").remove(slug);
+        if let Some(parked) = parked {
+            self.swarms
+                .write()
+                .await
+                .insert(slug.to_owned(), Arc::clone(&parked));
+            return Ok(parked);
+        }
+
         let swarm = Arc::new(Swarm::open(Arc::clone(&self.spec), &self.root, slug).await?);
         self.swarms
             .write()
@@ -147,95 +265,160 @@ impl Server {
 
     /// Removes a swarm: its handle, its log, and the directory it lived in.
     ///
-    /// Removable means **absent from the model or in a terminal state**. A place made by
-    /// `POST /swarms` that no `CreateSwarm` ever followed has no `swarm.manager.Swarm` record at
-    /// all, and nothing in the model can be asked about it — that is the swarm the operator could
-    /// not remove and removed by hand. Anything else is refused with the error the specification
-    /// already declares for a command that acts from a state the instance is not in.
+    /// Removable means **absent from the model or finished**. A place made by `POST /swarms` that
+    /// no `CreateSwarm` ever followed has no `swarm.manager.Swarm` record at all, and nothing in
+    /// the model can be asked about it — that is the swarm the operator could not remove and
+    /// removed by hand. A slug whose records are all in a terminal state is finished. Anything
+    /// else is refused with the error the specification already declares for a command that acts
+    /// from a state the instance is not in.
+    ///
+    /// **ANY live record refuses it, not "the" state.** A slug's log can hold several
+    /// `swarm.manager.Swarm` records — `CreateSwarm` with a fresh `tmux_session` is accepted
+    /// however many are already there — and `Swarm::summary` keeps only the last one it walks. A
+    /// slug holding a `Running` record and a `Deleted` one was removable whenever the `Deleted`
+    /// one happened to sort last by minted id.
     ///
     /// Which states are terminal is read from the specification, not written here: `manager.yaml`
     /// says `terminal: [Deleted]`, and a lifecycle that grows a second end should not need this
     /// file edited to agree with it.
     ///
-    /// Three things this has to get right, all of them documented above:
+    /// Four things this has to get right:
     ///
-    /// 1. **The per-slug `opening` gate is taken**, the same one `Server::open` takes. Removal and
+    /// 1. **The slug is a single path component**, checked before it is joined onto anything. This
+    ///    is the only route in the server that destroys, and an unchecked `{slug}` from the wire is
+    ///    an erase-any-directory primitive: `DELETE /swarms/..%2Fescaped` is one segment on the
+    ///    wire and `../escaped` in the handler. It is also what made the state check skippable —
+    ///    `./busy` and `busy` are one directory and two map keys, so an alias reached the files
+    ///    while the refusal looked at nothing.
+    /// 2. **The per-slug `opening` gate is taken**, the same one `Server::open` takes. Removal and
     ///    construction of one slug are the same critical section: without it an open that missed
     ///    the map read constructs a handle while this is unlinking and inserts it afterwards,
-    ///    leaving a live handle over a log that is gone.
-    /// 2. **The handle leaves the map and the `Arc` is dropped before the files go.** Dropping it
-    ///    closes the SQLite handle. This is the only eviction path there is — `.remove()` was never
-    ///    called on `swarms` before this method existed — so nothing else will do it later.
-    /// 3. **`eventlog.sqlite3`, `-wal` and `-shm` go together.** Removing the database and leaving
+    ///    leaving a live handle over a log that is gone. Measured: red in round 0 of
+    ///    `a_removal_racing_an_open_leaves_the_map_agreeing_with_the_disk` without it.
+    /// 3. **The handle leaves the map and every `Arc` is gone before the files go.** Dropping the
+    ///    last one closes the SQLite handle. When something else still holds one, the files do NOT
+    ///    go now — see `pending`; they go in `sweep`, when the last holder lets go.
+    /// 4. **`eventlog.sqlite3`, `-wal` and `-shm` go together.** Removing the database and leaving
     ///    the WAL behind makes the next open of this slug run recovery against a fresh empty file.
-    ///
-    /// A handle held elsewhere — the trigger walks `all()` — keeps its own `Arc` alive, so the
-    /// close happens when that reader lets go. The files are unlinked either way: on this platform
-    /// an open descriptor does not block the unlink, and the slug is out of the map, so nothing
-    /// hands that handle to a new caller.
-    pub async fn remove(&self, slug: &str) -> Result<(), Removal> {
+    pub async fn remove(&self, slug: &str) -> Result<Removed, Removal> {
+        check(slug)?;
+
+        // Anything an earlier removal could not finish, first, and with no gate held.
+        self.sweep().await;
+
         // The same gate `open` takes, and for the same reason: at most one of "construct this
         // slug" and "remove this slug" runs at a time.
-        let gate = Arc::clone(
+        let gate = self.gate(slug);
+        let _removing = gate.lock().await;
+
+        let held = self.swarms.read().await.get(slug).map(Arc::clone);
+        let directory = self.root.join("swarms").join(slug);
+        let parked = self
+            .pending
+            .lock()
+            .expect("not poisoned")
+            .contains_key(slug);
+        if held.is_none() && !parked && !directory.exists() {
+            return Err(Removal::NotHere(slug.to_owned()));
+        }
+
+        // What the model says, if the model has been told this exists at all. Every record is
+        // asked, not the one `summary()` happens to keep.
+        if let Some(swarm) = &held
+            && let Some(state) = self.live_state(swarm).await
+        {
+            return Err(Removal::StateConflict {
+                slug: slug.to_owned(),
+                state,
+            });
+        }
+
+        // Out of the map first: from here nothing new can be handed this handle.
+        self.swarms.write().await.remove(slug);
+
+        if let Some(swarm) = held {
+            // Our own clone plus whatever else is out there. Anything above one is a holder that
+            // is still writing through this handle, and unlinking under it would leave that writer
+            // being told `created` for records no reader of this slug could ever reach.
+            let outstanding = Arc::strong_count(&swarm) > 1;
+            if outstanding {
+                self.pending
+                    .lock()
+                    .expect("not poisoned")
+                    .insert(slug.to_owned(), swarm);
+                return Ok(Removed::WhenReadersLetGo);
+            }
+            drop(swarm);
+        }
+
+        unlink(&directory)?;
+        Ok(Removed::Now)
+    }
+
+    /// Finishes every removal whose holders have let go.
+    ///
+    /// Called at the entry points rather than on a timer, and always with no gate held: it takes
+    /// one slug's gate at a time and never two, so it cannot be half of a cycle.
+    async fn sweep(&self) {
+        let parked: Vec<String> = self
+            .pending
+            .lock()
+            .expect("not poisoned")
+            .keys()
+            .cloned()
+            .collect();
+
+        for slug in parked {
+            let gate = self.gate(&slug);
+            let _sweeping = gate.lock().await;
+
+            // Something opened it again while the removal was pending. The open took the handle
+            // back and the files belong to a live swarm now; the removal is off.
+            if self.swarms.read().await.contains_key(&slug) {
+                self.pending.lock().expect("not poisoned").remove(&slug);
+                continue;
+            }
+
+            let ready = {
+                let mut pending = self.pending.lock().expect("not poisoned");
+                match pending.get(&slug) {
+                    // One reference, and it is this map's. Nobody is writing through it.
+                    Some(swarm) if Arc::strong_count(swarm) == 1 => pending.remove(&slug),
+                    _ => None,
+                }
+            };
+            if ready.is_some() {
+                drop(ready);
+                let _ = unlink(&self.root.join("swarms").join(&slug));
+            }
+        }
+    }
+
+    /// This slug's construction lock, and nobody else's. Taken under an `std` guard that is
+    /// dropped before it is returned, so no await happens while it is held.
+    fn gate(&self, slug: &str) -> Arc<tokio::sync::Mutex<()>> {
+        Arc::clone(
             self.opening
                 .lock()
                 .expect("not poisoned")
                 .entry(slug.to_owned())
                 .or_default(),
-        );
-        let _removing = gate.lock().await;
+        )
+    }
 
-        let held = self.swarms.read().await.get(slug).map(Arc::clone);
-        let directory = self.root.join("swarms").join(slug);
-        if held.is_none() && !directory.exists() {
-            return Err(Removal::NotHere(slug.to_owned()));
-        }
-
-        // What the model says about it, if the model has been told it exists at all.
-        if let Some(swarm) = &held {
-            let state = swarm.summary().await.state;
-            if let Some(state) = state
-                && !self.terminal_states().contains(&state)
-            {
-                return Err(Removal::StateConflict {
-                    slug: slug.to_owned(),
-                    state,
-                });
-            }
-        }
-
-        // Out of the map, then the last `Arc` this function holds, then the files. In that order.
-        self.swarms.write().await.remove(slug);
-        drop(held);
-
-        // The log and everything SQLite keeps beside it, together. A `-wal` that outlives its
-        // database is read as a journal to recover the next time this slug is opened.
-        let database = directory.join("eventlog.sqlite3");
-        for file in [
-            database.clone(),
-            with_suffix(&database, "-wal"),
-            with_suffix(&database, "-shm"),
-        ] {
-            match std::fs::remove_file(&file) {
-                Ok(()) => {}
-                Err(why) if why.kind() == std::io::ErrorKind::NotFound => {}
-                Err(why) => {
-                    return Err(Removal::Undeletable {
-                        path: file.display().to_string(),
-                        why: why.to_string(),
-                    });
-                }
-            }
-        }
-
-        match std::fs::remove_dir_all(&directory) {
-            Ok(()) => Ok(()),
-            Err(why) if why.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(why) => Err(Removal::Undeletable {
-                path: directory.display().to_string(),
-                why: why.to_string(),
-            }),
-        }
+    /// The state of any record this swarm holds that the specification does not call an end, or
+    /// `None` when it holds none — either because there are no records or because all of them are
+    /// finished.
+    ///
+    /// Every record, because a slug can hold more than one and `summary()` keeps only the last.
+    async fn live_state(&self, swarm: &Swarm) -> Option<String> {
+        let terminal = self.terminal_states();
+        swarm
+            .instances(SWARM)
+            .await
+            .iter()
+            .filter_map(|record| record.get("state")?.as_str().map(ToOwned::to_owned))
+            .find(|state| !terminal.contains(state))
     }
 
     /// The states the specification calls ends for a swarm.
@@ -260,7 +443,18 @@ impl Server {
     }
 
     /// One open swarm.
+    ///
+    /// The slug is checked here too, and not only because this is a map lookup that cannot escape
+    /// anything: `./busy` and `busy` are one directory and two map keys, and one entry point that
+    /// accepts a name another one refuses is how a check gets walked around rather than passed.
+    /// One rule, at every door.
+    ///
+    /// A handle handed out here outlives this call, and a removal that runs in between does not
+    /// take it back. That is what `pending` is for: the files of a swarm somebody still holds are
+    /// not unlinked, so a write through an old handle is either refused or readable afterwards —
+    /// never answered `created` into a log nothing can reach.
     pub async fn get(&self, slug: &str) -> Result<Arc<Swarm>, Refused> {
+        check(slug).map_err(|why| Refused::Command(why.to_string()))?;
         self.swarms
             .read()
             .await
@@ -284,9 +478,12 @@ impl Server {
     /// Separate from `slugs()` rather than a filter inside it: what the process HOLDS and what a
     /// client is SHOWN are two different questions, and boot logs the first.
     pub async fn listed(&self) -> Vec<String> {
-        let terminal = self.terminal_states();
-        // The map's lock is dropped before the first await: a summary takes the swarm's own world
-        // lock, and holding the map across that is how two locks become an order to get wrong.
+        self.sweep().await;
+
+        let terminal = Arc::new(self.terminal_states());
+        // The map's lock is dropped before the first await: reading a swarm's records takes that
+        // swarm's own world lock, and holding the map across that is how two locks become an order
+        // to get wrong.
         let held: Vec<(String, Arc<Swarm>)> = self
             .swarms
             .read()
@@ -295,18 +492,54 @@ impl Server {
             .map(|(slug, swarm)| (slug.clone(), Arc::clone(swarm)))
             .collect();
 
-        let mut shown = Vec::new();
+        // Concurrently, and with a budget. Asking each swarm in turn took 219 ms for ten swarms
+        // under command traffic against 9 µs for the keys this list used to be, because the world
+        // lock a record is read under is the same one `issue` holds across its commit and `tick`
+        // holds across its cascade. `GET /swarms` runs on every page load; one busy swarm must not
+        // delay the whole list.
+        //
+        // A swarm that does not answer inside the budget is LISTED. Being busy is not being
+        // finished, and a list that hides what it could not read would hide a live swarm.
+        let mut asking = Vec::with_capacity(held.len());
         for (slug, swarm) in held {
-            match swarm.summary().await.state {
-                Some(state) if terminal.contains(&state) => {}
-                _ => shown.push(slug),
+            let terminal = Arc::clone(&terminal);
+            asking.push(tokio::spawn(async move {
+                let finished = tokio::time::timeout(LIST_BUDGET, async {
+                    let records = swarm.instances(SWARM).await;
+                    !records.is_empty()
+                        && records.iter().all(|record| {
+                            record
+                                .get("state")
+                                .and_then(|state| state.as_str())
+                                .is_some_and(|state| terminal.contains(&state.to_owned()))
+                        })
+                })
+                .await
+                .unwrap_or(false);
+                (slug, finished)
+            }));
+        }
+
+        let mut shown = Vec::new();
+        for asked in asking {
+            match asked.await {
+                Ok((slug, false)) => shown.push(slug),
+                Ok((_, true)) => {}
+                // A panicked task is not a reason to drop a swarm out of the list silently.
+                Err(why) => tracing::warn!(error = %why, "a swarm could not be asked for the list"),
             }
         }
+        shown.sort();
         shown
     }
 
     /// Every open swarm, for the trigger to walk.
+    ///
+    /// The trigger holds these `Arc`s for a whole tick — a coordinator turn included — which is
+    /// exactly the case `pending` exists for: a removal during a turn evicts the handle and the
+    /// files go here, at the start of the next tick, once that Vec has dropped.
     pub async fn all(&self) -> Vec<Arc<Swarm>> {
+        self.sweep().await;
         self.swarms.read().await.values().map(Arc::clone).collect()
     }
 
@@ -521,9 +754,23 @@ fn with_suffix(path: &std::path::Path, suffix: &str) -> PathBuf {
     PathBuf::from(name)
 }
 
+/// What a removal did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Removed {
+    /// Handle evicted, files unlinked, directory gone.
+    Now,
+    /// Handle evicted and the slug is no longer served, but something else still holds the handle,
+    /// so the files stay until it lets go. `sweep` finishes it at the next entry point anybody
+    /// uses. Unlinking under a live handle succeeds on this platform and is exactly the lie this
+    /// avoids: the holder's writes keep answering `created` into a log nothing can read back.
+    WhenReadersLetGo,
+}
+
 /// Why a swarm was not removed.
 #[derive(Debug)]
 pub enum Removal {
+    /// Not a name this server will put on a path or in the map.
+    BadSlug { slug: String, why: String },
     /// No handle and no directory: there is nothing here by that name.
     NotHere(String),
     /// The model holds a record, and it is not finished. The specification declares this refusal
@@ -538,6 +785,7 @@ pub enum Removal {
 impl std::fmt::Display for Removal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::BadSlug { slug, why } => write!(f, "`{slug}` is not a swarm name: {why}"),
             Self::NotHere(slug) => write!(f, "no swarm `{slug}`"),
             Self::StateConflict { slug, state } => write!(
                 f,
