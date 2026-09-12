@@ -388,23 +388,7 @@ async fn two_opens_of_one_slug_at_once_are_one_swarm() {
     let openers: Vec<_> = (0..8)
         .map(|_| {
             let server = Arc::clone(&server);
-            tokio::spawn(async move {
-                // The store sets no `busy_timeout` (`ess-runtime/src/store.rs:21`), so two opens
-                // that reach SQLite at the same instant can have one refused outright. That is a
-                // property of the store, not of the map this test is about, so a refusal is waited
-                // out rather than asserted on — and whichever open won is then read from the map,
-                // which is exactly the identity being checked.
-                for _ in 0..50 {
-                    match server.open("contested").await {
-                        Ok(swarm) => return swarm,
-                        Err(why) => {
-                            eprintln!("open refused, retrying: {why}");
-                            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-                        }
-                    }
-                }
-                panic!("`contested` never opened");
-            })
+            tokio::spawn(async move { server.open("contested").await.expect("a swarm opens") })
         })
         .collect();
 
