@@ -14,6 +14,7 @@ use tokio::sync::RwLock;
 
 use ess_runtime::Spec;
 
+use crate::budget::{Caps, Reached};
 use crate::swarm::{Refused, Summary, Swarm, now};
 
 /// The whole server.
@@ -29,6 +30,11 @@ pub struct Server {
     ticks: Mutex<u64>,
     /// Goals whose coordinator turn is running right now, as `slug/goal_id`.
     in_flight: Mutex<HashSet<String>>,
+    /// Goals the loop has stopped asking about, keyed `slug/goal_id`. Holding the reason here and
+    /// not only on the stream is what lets a page that connected afterwards still say which cap.
+    capped: Mutex<BTreeMap<String, CappedGoal>>,
+    /// What one goal may use up.
+    caps: Caps,
 }
 
 impl Server {
@@ -60,6 +66,8 @@ impl Server {
             next_tick_at: Mutex::new(None),
             ticks: Mutex::new(0),
             in_flight: Mutex::new(HashSet::new()),
+            capped: Mutex::new(BTreeMap::new()),
+            caps: Caps::configured(),
         })
     }
 
@@ -136,6 +144,39 @@ impl Server {
         self.in_flight.lock().expect("not poisoned").len()
     }
 
+    /// What one goal may use up.
+    pub fn caps(&self) -> Caps {
+        self.caps
+    }
+
+    /// Records that a goal has been capped. `false` when it already was, so the report is made
+    /// once rather than every period.
+    pub fn report_capped(&self, capped: CappedGoal) -> bool {
+        self.capped
+            .lock()
+            .expect("not poisoned")
+            .insert(format!("{}/{}", capped.swarm, capped.goal), capped)
+            .is_none()
+    }
+
+    /// Forgets a cap report, so raising a cap reports the next one afresh.
+    pub fn forget_capped(&self, slug: &str, goal_id: &str) {
+        self.capped
+            .lock()
+            .expect("not poisoned")
+            .remove(&format!("{slug}/{goal_id}"));
+    }
+
+    /// Every goal the loop has stopped asking about, with why.
+    pub fn capped_goals(&self) -> Vec<CappedGoal> {
+        self.capped
+            .lock()
+            .expect("not poisoned")
+            .values()
+            .cloned()
+            .collect()
+    }
+
     /// Every periodic binding, with the period the specification declares for it.
     pub fn periods(&self) -> Vec<(String, Duration)> {
         self.spec
@@ -177,6 +218,8 @@ impl Server {
                 .collect(),
             next_tick_at: self.next_tick_at.lock().expect("not poisoned").clone(),
             ticks: *self.ticks.lock().expect("not poisoned"),
+            caps: self.caps,
+            capped: self.capped_goals(),
             coordinator: Coordinator {
                 configured: coordinator.is_some(),
                 program: coordinator.map(|launch| launch.describe()),
@@ -264,6 +307,17 @@ impl Server {
     }
 }
 
+/// One goal the loop has stopped asking about.
+#[derive(Clone, Debug, Serialize)]
+pub struct CappedGoal {
+    pub swarm: String,
+    pub goal: String,
+    pub turns: u64,
+    pub spent_usd: Option<f64>,
+    pub reached: Reached,
+    pub why: String,
+}
+
 /// Where the runtime is.
 #[derive(Debug, Serialize)]
 pub struct Status {
@@ -274,6 +328,10 @@ pub struct Status {
     pub periodic: Vec<Periodic>,
     pub next_tick_at: Option<String>,
     pub ticks: u64,
+    /// What one goal may use up before the loop stops asking.
+    pub caps: Caps,
+    /// Every goal the loop has stopped asking about, with why.
+    pub capped: Vec<CappedGoal>,
     pub coordinator: Coordinator,
     pub swarms: Vec<SwarmStatus>,
 }

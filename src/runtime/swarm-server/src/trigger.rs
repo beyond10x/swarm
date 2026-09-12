@@ -19,8 +19,9 @@ use serde_json::{Map, Value as Json};
 
 use ess_runtime::route::Occurrence;
 
+use crate::budget::Reached;
 use crate::coordinator;
-use crate::state::Server;
+use crate::state::{CappedGoal, Server};
 use crate::swarm::{Swarm, TurnPhase, What};
 
 /// The view that says which goals are waiting for a turn.
@@ -100,6 +101,13 @@ async fn ask_the_coordinator(server: &Arc<Server>, swarm: &Arc<Swarm>) {
             .and_then(|f| f.get("iterations"))
             .and_then(Json::as_u64)
             .unwrap_or_default();
+
+        // A goal past its cap is not asked, even when a turn left it in `Pursuing`. Without this
+        // the cap would stop the tick and the coordinator would still be run once a period.
+        if capped(server, swarm, id, iterations).is_some() {
+            server.release_turn(swarm.slug(), id);
+            continue;
+        }
 
         let server = Arc::clone(server);
         let swarm = Arc::clone(swarm);
@@ -190,11 +198,39 @@ async fn fire(server: &Server, swarm: &Arc<Swarm>, binding: &str) -> Result<(), 
         let mut read = Map::new();
         read.insert("iterations".to_owned(), Json::from(so_far + 1));
 
+        // A goal past its cap is ineligible, the same way a paused swarm's goals are. Nothing in
+        // the model changes; the loop stops asking, and raising the cap resumes it here.
+        let within_budget = match capped(server, swarm, goal, so_far) {
+            None => true,
+            Some(reached) => {
+                let (spent, _) = swarm.spend_on(goal);
+                let capped = CappedGoal {
+                    swarm: swarm.slug().to_owned(),
+                    goal: goal.to_owned(),
+                    turns: so_far,
+                    spent_usd: spent.cost_usd,
+                    reached,
+                    why: reached.to_string(),
+                };
+                if server.report_capped(capped.clone()) {
+                    tracing::warn!(swarm = %swarm.slug(), goal, %reached, "the loop stopped asking");
+                    swarm.announce(What::Capped {
+                        goal: capped.goal,
+                        turns: capped.turns,
+                        spent_usd: capped.spent_usd,
+                        reached: capped.reached,
+                        why: capped.why,
+                    });
+                }
+                false
+            }
+        };
+
         let occurrence = Occurrence {
             binding: binding.to_owned(),
             context,
             read,
-            eligible: eligible(server, swarm).await,
+            eligible: within_budget && eligible(server, swarm).await,
         };
 
         match swarm.tick(occurrence).await {
@@ -204,6 +240,15 @@ async fn fire(server: &Server, swarm: &Arc<Swarm>, binding: &str) -> Result<(), 
         }
     }
     Ok(())
+}
+
+/// Whether this goal has used up what it may.
+///
+/// Turns come from the goal's own count rather than from the spend record, because a turn that
+/// crashed before reporting still happened and still cost something.
+fn capped(server: &Server, swarm: &Arc<Swarm>, goal_id: &str, turns: u64) -> Option<Reached> {
+    let (spent, _) = swarm.spend_on(goal_id);
+    server.caps().exceeded(turns, spent.cost_usd)
 }
 
 /// Whether this swarm's loop should turn at all.

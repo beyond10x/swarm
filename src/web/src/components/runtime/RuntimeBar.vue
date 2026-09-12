@@ -63,6 +63,13 @@ const spent = computed(() => {
         </span>
       </span>
       <span class="item">
+        <span class="label">cap</span>
+        <span class="value">
+          {{ status.caps.max_turns ?? '\u221e' }} turns
+          / {{ status.caps.max_spend_usd == null ? '\u221e' : `$${status.caps.max_spend_usd.toFixed(2)}` }}
+        </span>
+      </span>
+      <span class="item">
         <span class="label">coordinator</span>
         <UiBadge v-if="coordinator" tone="ok" :text="coordinator" />
         <UiBadge v-else tone="warn" text="none configured" />
@@ -75,6 +82,7 @@ const spent = computed(() => {
         <span class="label">spent</span>
         <span class="value mono">{{ spent === undefined ? '$0' : `$${spent.toFixed(3)}` }}</span>
         <UiBadge v-if="status.coordinator.in_flight" tone="info" :text="`${status.coordinator.in_flight} running`" />
+        <UiBadge v-if="status.capped.length" tone="warn" :text="`${status.capped.length} capped`" />
       </span>
     </template>
 

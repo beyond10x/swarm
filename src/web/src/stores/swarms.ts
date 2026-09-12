@@ -291,6 +291,19 @@ export const useSwarmStore = defineStore('swarms', () => {
     return new Set(Object.keys(changed).filter((id) => now - changed[id]! < GLOW_MS))
   }
 
+  /**
+   * Whether the loop has stopped asking about this goal, and why.
+   *
+   * Read from the status rather than from the change stream, so a page opened after the cap was
+   * announced still says which cap and what it had spent.
+   */
+  function capOn(slug: string, goalId: string | undefined) {
+    if (!goalId) return undefined
+    return (status.value?.capped ?? []).find(
+      (entry) => entry.swarm === slug && entry.goal === goalId,
+    )
+  }
+
   /** The last thing the coordinator was heard saying about a goal. */
   function lastTurn(slug: string, goalId: string | undefined) {
     const changes = live.value[slug]?.changes ?? []
@@ -416,7 +429,7 @@ export const useSwarmStore = defineStore('swarms', () => {
   return {
     held, loaded, visible, problem, shape, live, status, statusAt, clock, reachable, nextTickIn,
     load, refresh, getSwarm, goalOf, canAct, createSwarm, follow, unfollow, wake, pollStatus,
-    recentlyChanged, lastTurn, loadTurn, liveTurn,
+    recentlyChanged, lastTurn, loadTurn, liveTurn, capOn,
     startSwarm, pauseSwarm, resumeSwarm, stopSwarm, deleteSwarm,
   }
 })

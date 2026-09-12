@@ -126,6 +126,14 @@ export type Change = { at: string } & (
       spent: Spent;
       event: AgentEvent;
     }
+  | {
+      kind: "capped";
+      goal: string;
+      turns: number;
+      spent_usd: number | null;
+      reached: { cap: "turns"; turns: number; max: number } | { cap: "spend"; spent: number; max: number };
+      why: string;
+    }
   | { kind: "reloaded" }
 );
 
@@ -155,6 +163,24 @@ export interface SwarmStatus {
   turns_recorded: number;
 }
 
+/** What one goal may use up before the loop stops asking. */
+export interface Caps {
+  max_turns: number | null;
+  max_spend_usd: number | null;
+}
+
+/** One goal the loop has stopped asking about. */
+export interface CappedGoal {
+  swarm: string;
+  goal: string;
+  turns: number;
+  spent_usd: number | null;
+  reached:
+    | { cap: "turns"; turns: number; max: number }
+    | { cap: "spend"; spent: number; max: number };
+  why: string;
+}
+
 /** Where the runtime is. */
 export interface Status {
   system: string;
@@ -164,6 +190,9 @@ export interface Status {
   periodic: { binding: string; every_s: number }[];
   next_tick_at: string | null;
   ticks: number;
+  caps: Caps;
+  /** Every goal the loop has stopped asking about, with why. */
+  capped: CappedGoal[];
   coordinator: { configured: boolean; program: string | null; in_flight: number };
   swarms: SwarmStatus[];
 }

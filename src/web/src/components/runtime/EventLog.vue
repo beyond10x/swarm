@@ -98,6 +98,16 @@ function fromChange(change: Change, index: number): Row {
       }
     case 'reloaded':
       return { key, at: change.at, kind: 'reload', tone: 'warn', title: 'world rebuilt from the log', live: true }
+    case 'capped':
+      return {
+        key,
+        at: change.at,
+        kind: 'capped',
+        tone: 'warn',
+        title: `the loop stopped asking about goal ${id8(change.goal)}`,
+        detail: change.why,
+        live: true,
+      }
     case 'agent':
       // Kept with its turn, not in this list; the store never puts one here.
       return { key, at: change.at, kind: 'agent', tone: 'muted', title: change.event.event, live: true }

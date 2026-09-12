@@ -44,7 +44,7 @@ const thinkingFor = computed(() => {
 
 /** Which arrow carries data right now. */
 const live = computed<'tick' | 'ask' | 'verdict' | undefined>(() => {
-  if (!running.value || !props.goal || ended.value) return undefined
+  if (!running.value || !props.goal || ended.value || cap.value) return undefined
   if (turn.value?.phase === 'asking') return 'ask'
   if (goalState.value === 'Pursuing') return 'ask'
   if (turn.value?.phase === 'answered' && store.clock - Date.parse(turn.value.at) < 3000)
@@ -54,6 +54,7 @@ const live = computed<'tick' | 'ask' | 'verdict' | undefined>(() => {
 
 const waiting = computed(() => {
   if (!props.record) return 'no swarm record yet'
+  if (cap.value) return cap.value.why
   if (!running.value) return `the swarm is ${props.record.state}; the loop turns only while Running`
   if (!props.goal) return 'no goal; nothing to pursue'
   if (ended.value) return `the goal is ${goalState.value}; the loop has stopped`
@@ -62,6 +63,9 @@ const waiting = computed(() => {
 })
 
 const coordinatorConfigured = computed(() => store.status?.coordinator.configured ?? false)
+
+/** Whether the loop has stopped asking about this goal because a cap was reached. */
+const cap = computed(() => store.capOn(props.slug, props.goal?.id))
 </script>
 
 <template>
@@ -70,14 +74,20 @@ const coordinatorConfigured = computed(() => store.status?.coordinator.configure
       <div class="stage" :class="{ active: live === 'tick' }">
         <header>
           <span class="name">loop</span>
+          <UiBadge v-if="cap" tone="warn" text="capped" />
           <UiBadge
-            v-if="running && !ended && goal"
+            v-else-if="running && !ended && goal"
             tone="ok"
             :text="store.nextTickIn !== undefined ? `tick in ${store.nextTickIn}s` : 'armed'"
           />
           <UiBadge v-else tone="muted" text="idle" />
         </header>
-        <p class="detail">every {{ store.status?.periodic[0]?.every_s ?? '?' }}s · {{ store.status?.ticks ?? 0 }} ticks since start</p>
+        <p v-if="cap" class="detail fault">{{ cap.turns }} turns · {{ money(cap.spent_usd) }} spent</p>
+        <p v-else class="detail">
+          every {{ store.status?.periodic[0]?.every_s ?? '?' }}s · {{ store.status?.ticks ?? 0 }} ticks since start
+          <template v-if="store.status?.caps.max_turns"> · cap {{ store.status.caps.max_turns }} turns</template>
+          <template v-if="store.status?.caps.max_spend_usd"> / ${{ store.status.caps.max_spend_usd.toFixed(2) }}</template>
+        </p>
       </div>
 
       <div class="arrow" :class="{ live: live === 'tick' }"><span class="pulse" /></div>

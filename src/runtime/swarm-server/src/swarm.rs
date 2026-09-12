@@ -16,6 +16,7 @@ use serde::Serialize;
 use serde_json::{Map, Value as Json};
 use tokio::sync::{Mutex, broadcast};
 
+use crate::budget::Reached;
 use crate::coordinator::Spent;
 use ess_runtime::apply::Emitted;
 use ess_runtime::{
@@ -87,6 +88,14 @@ pub enum What {
         seq: u64,
         spent: Spent,
         event: Json,
+    },
+    /// A goal used up a cap, so the loop stopped asking. Nothing in the model changed.
+    Capped {
+        goal: String,
+        turns: u64,
+        spent_usd: Option<f64>,
+        reached: Reached,
+        why: String,
     },
     /// The in-memory world was thrown away and rebuilt from the log.
     Reloaded,
@@ -285,6 +294,16 @@ impl Swarm {
 
     /// What every finished turn has cost, summed, and how many there were.
     pub fn spend(&self) -> (Spent, u64) {
+        self.spend_where(|_| true)
+    }
+
+    /// The same, for one goal. What a cap is measured against.
+    pub fn spend_on(&self, goal_id: &str) -> (Spent, u64) {
+        self.spend_where(|row| row.get("goal").and_then(Json::as_str) == Some(goal_id))
+    }
+
+    /// Folds the spend record, keeping the rows a caller wants.
+    fn spend_where(&self, keep: impl Fn(&Json) -> bool) -> (Spent, u64) {
         let mut total = Spent::default();
         let mut turns = 0;
         if let Ok(text) = std::fs::read_to_string(self.dir.join("turns").join("spend.jsonl")) {
@@ -292,6 +311,9 @@ impl Swarm {
                 let Ok(row) = serde_json::from_str::<Json>(line) else {
                     continue;
                 };
+                if !keep(&row) {
+                    continue;
+                }
                 if let Some(spent) = row
                     .get("spent")
                     .and_then(|spent| serde_json::from_value::<Spent>(spent.clone()).ok())
