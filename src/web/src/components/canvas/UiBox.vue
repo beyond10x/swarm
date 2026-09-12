@@ -159,7 +159,8 @@ const bound = computed<Record<string, unknown>>(() => {
     </div>
 
     <p v-if="inert && !refusal && !feed" class="note">
-      Read-only: nothing can keep what this component emits.
+      Display only: nothing can keep what this component emits. Its contents cannot be selected,
+      searched, or read by assistive technology.
     </p>
 
     <Handle id="out" type="source" :position="Position.Right" />

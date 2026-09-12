@@ -42,6 +42,30 @@ const emitters: string[] = (() => {
     .filter(Boolean)
 })()
 
+/**
+ * The brace-balanced body of `export const <name> = {…}`.
+ *
+ * A non-greedy `\{[\s\S]*?\n\}` — which this file used to carry twice — ends at the first line
+ * that starts with `}`, so a declaration containing a nested object on its own lines is read as a
+ * strict subset and the case then compares that subset with something and finds it equal. Reading
+ * less than is there is the harmful direction: it fails nothing and hides the rest.
+ */
+function objectLiteral(text: string, name: string): string {
+  const at = text.indexOf(`export const ${name}`)
+  assert.ok(at >= 0, `index.ts exports ${name}`)
+  const open = text.indexOf('{', at)
+  assert.ok(open >= 0, `${name} is an object literal`)
+  let depth = 0
+  for (let i = open; i < text.length; i += 1) {
+    if (text[i] === '{') depth += 1
+    else if (text[i] === '}') {
+      depth -= 1
+      if (depth === 0) return text.slice(open, i + 1)
+    }
+  }
+  throw new Error(`${name} is not closed`)
+}
+
 function componentSource(name: string): string {
   return readFileSync(new URL(`../ui/${name}.vue`, import.meta.url), 'utf8')
 }
@@ -80,8 +104,7 @@ test('a box naming UiModal with open true is a panel the canvas mounts', async (
   const { uiBoxSpec } = await import('../../lib/uibox.ts')
 
   const declared = JSON.parse(
-    /export const uiPropTypes[^{]*(\{[\s\S]*?\n\})/
-      .exec(source)![1]
+    objectLiteral(source, 'uiPropTypes')
       .replace(/([{,]\s*)([A-Za-z][A-Za-z0-9]*)\s*:/g, '$1"$2":')
       .replace(/'/g, '"')
       .replace(/,(\s*[}\]])/g, '$1'),
@@ -123,5 +146,75 @@ test('a box naming UiModal with open true is a panel the canvas mounts', async (
     ),
     { kind: 'unsafe-component', named: 'UiModal' },
     'the canvas draws a refusal for it, not the component',
+  )
+})
+
+// `UiTable` emits `row-click`, and the contract table did not say so, so a table panel took clicks
+// on every row and dropped each one: nothing writes `Box.props` back and no listener is bound by
+// `<component :is>`. The decision taken is that a table panel is inert like every other emitter.
+//
+// What that costs is more than "not clickable", and the note the box shows has to say so: `inert`
+// removes the subtree from the ACCESSIBILITY TREE, from find-in-page and from text selection, so a
+// table inside it is drawn on screen and is not readable by a screen reader, not findable by
+// Ctrl-F, and not copyable. It is display-only, not read-only.
+//
+// This is a behaviour change on purpose, so it is asserted rather than inherited.
+test('a box naming UiTable is a panel the canvas renders inert, and says so', async () => {
+  const { uiBoxSpec } = await import('../../lib/uibox.ts')
+
+  const declared = JSON.parse(
+    objectLiteral(source, 'uiPropTypes')
+      .replace(/([{,]\s*)([A-Za-z][A-Za-z0-9]*)\s*:/g, '$1"$2":')
+      .replace(/'/g, '"')
+      .replace(/,(\s*[}\]])/g, '$1'),
+  )
+  const names: ReadonlySet<string> = new Set(Object.keys(declared))
+  const refused: ReadonlySet<string> = new Set(
+    /export const uiRefused[^[]*\[([^\]]*)\]/s
+      .exec(source)![1]
+      .split(',')
+      .map((entry) => entry.trim().replace(/'/g, ''))
+      .filter(Boolean),
+  )
+
+  assert.deepEqual(
+    uiBoxSpec(
+      { entity: 'swarm.blackbox.Box', fields: { kind: 'Ui', ref_id: 'UiTable', props: {} } },
+      names,
+      declared,
+      refused,
+    ),
+    { kind: 'panel', component: 'UiTable', props: {}, view: undefined },
+    'a table is drawn, not refused: it stays inside its own subtree',
+  )
+  assert.ok(emitters.includes('UiTable'), 'the contract lists UiTable as an emitter, so UiBox inerts it')
+
+  // "Renders inert, and says so", decided by VALUE. The predicate lives in
+  // `./uibox.inert.guard.ts` because `uibox.inert.mutants.test.ts` runs the SAME predicate
+  // over mutated copies of `UiBox.vue`; a copy in each file would let the mutation harness prove
+  // something about a predicate that is not the one shipping here.
+  const { assertInertGuard } = await import('./uibox.inert.guard.ts')
+  await assertInertGuard(readFileSync(new URL('./UiBox.vue', import.meta.url), 'utf8'))
+})
+
+// The guard reads `UiBox.vue`, so "the guard passes" says nothing until the guard is known to be
+// able to fail. `uibox.inert.mutants.test.ts` shows that against the real file; this shows it
+// against a box small enough to read, and without reference to anything that ships.
+test('the inert guard rejects a box that mounts a component with no inert binding', async () => {
+  const { assertInertGuard, NOTE } = await import('./uibox.inert.guard.ts')
+  const box = (inert: string) => `
+<script setup lang="ts">
+const inert = computed(() => (spec.value ? uiEmitters.has(spec.value.component) : false))
+</script>
+<template>
+  <div${inert}><component :is="component" /></div>
+  <p v-if="inert && !refusal && !feed">${NOTE}</p>
+</template>
+`
+  await assertInertGuard(box(' :inert="inert || undefined"'))
+  await assert.rejects(
+    () => assertInertGuard(box('')),
+    /carries no `inert` binding/,
+    'a guard that cannot reject is not a guard',
   )
 })

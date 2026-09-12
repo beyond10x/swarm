@@ -12,7 +12,7 @@
 // UiPanel        title: string; collapsible: boolean; open: boolean                    default, actions
 // UiBadge        tone: 'ok'|'warn'|'fault'|'info'|'muted'; text*: string               —
 // UiTag          text*: string; removable: boolean                                     emits remove
-// UiTable        columns*: {key,label,width?,align?}[]; rows*: Record<string,unknown>[]; cell-<key>, empty
+// UiTable        columns*: {key,label,width?,align?}[]; rows*: Record<string,unknown>[];  cell-<key>, empty; emits row-click(row)
 //                rowKey: string; dense: boolean
 // UiFileList     files*: {path,size?,mtime?,kind?:'file'|'dir'}[]; selected: string    emits select(path)
 // UiModal        open*: boolean; title: string; width: string                          default, footer; emits close
@@ -166,6 +166,7 @@ export const uiEmitters: ReadonlySet<string> = new Set([
   'UiNumberInput',
   'UiSelect',
   'UiTabs',
+  'UiTable',
 ])
 
 /** Components no panel may draw: `inert` cannot contain them, so nothing can. */

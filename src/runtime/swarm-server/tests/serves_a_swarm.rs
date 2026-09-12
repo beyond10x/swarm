@@ -374,3 +374,41 @@ async fn a_redelivery_that_succeeds_commits_what_the_first_attempt_could_not() {
         json!(config)
     );
 }
+
+/// Two opens of one slug at once are one swarm, not two.
+///
+/// `Server::open` used to read the map, drop the guard, await `Swarm::open` and then insert with no
+/// re-check, so a second open of the same slug replaced the first handle in the map. Whatever the
+/// replaced handle still owed — an at-least-once delivery held in memory — went with it, silently.
+/// Every caller of one slug must get the one handle.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn two_opens_of_one_slug_at_once_are_one_swarm() {
+    let (server, _data) = server().await;
+
+    let openers: Vec<_> = (0..8)
+        .map(|_| {
+            let server = Arc::clone(&server);
+            tokio::spawn(async move { server.open("contested").await.expect("a swarm opens") })
+        })
+        .collect();
+
+    let mut handles = Vec::new();
+    for opener in openers {
+        handles.push(opener.await.expect("the opener does not panic"));
+    }
+
+    for (nth, handle) in handles.iter().enumerate() {
+        assert!(
+            Arc::ptr_eq(&handles[0], handle),
+            "opener {nth} got a different handle: a losing open was inserted over a live one"
+        );
+    }
+
+    // And the one the map kept is that same handle, not a later arrival that replaced it.
+    let kept = server.get("contested").await.expect("the swarm is open");
+    assert!(
+        Arc::ptr_eq(&handles[0], &kept),
+        "the map holds a handle no opener was given"
+    );
+    assert_eq!(server.slugs().await, vec!["contested".to_owned()]);
+}
