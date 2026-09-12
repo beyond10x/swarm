@@ -225,13 +225,42 @@ test('every component the table says emits is either rendered inert or refused',
 // appear in its row's last column, and the column may name no event the component does not emit.
 // This reads the `.vue` files, as the refusal scan above does, because node cannot import them.
 
-/** The event names a component declares: `defineEmits<{ 'row-click': [row: Row] }>` -> `row-click`. */
-function emitsOf(componentSource: string): string[] {
-  const generic = /defineEmits<\{([\s\S]*?)\}>/.exec(componentSource)
-  if (!generic) return []
-  return [...generic[1].matchAll(/(?:'([^']+)'|([A-Za-z][\w:-]*))\s*:\s*\[/g)]
-    .map((m) => m[1] ?? m[2])
-    .filter(Boolean)
+// Vue accepts THREE spellings of `defineEmits`, and a guard that reads one of them reports the
+// other two as "emits nothing" — which is the defect itself, not the absence of it. So all three
+// are read, and, more importantly, the reading FAILS CLOSED: a file that calls `defineEmits` at
+// all and out of which no event name can be read is drift by that fact. A fourth spelling, or a
+// component that builds its emit list some way this file has never seen, therefore fails loudly
+// instead of being silently documented as inert-free.
+
+/** The event names a component declares, in every form `defineEmits` takes. */
+function emitsOf(name: string, componentSource: string): string[] {
+  const names = new Set<string>()
+
+  // 1. the runtime array: `defineEmits(['remove'])`
+  for (const call of componentSource.matchAll(/defineEmits\s*(?:<[^>]*>)?\s*\(\s*(\[[^\]]*\])/g)) {
+    for (const quoted of call[1].matchAll(/['"]([^'"]+)['"]/g)) names.add(quoted[1])
+  }
+
+  const generic = /defineEmits\s*<\s*\{([\s\S]*?)\}\s*>/.exec(componentSource)
+  if (generic) {
+    // 2. the tuple property form: `{ 'row-click': [row: Row] }`
+    for (const pair of generic[1].matchAll(/(?:'([^']+)'|"([^"]+)"|([A-Za-z][\w:-]*))\s*:\s*\[/g)) {
+      names.add(pair[1] ?? pair[2] ?? pair[3])
+    }
+    // 3. the call-signature form: `{ (e: 'remove'): void }`, including `(e: 'a' | 'b')`
+    for (const signature of generic[1].matchAll(/\(\s*\w+\s*:\s*([^)]*?)\)\s*:/g)) {
+      for (const quoted of signature[1].matchAll(/['"]([^'"]+)['"]/g)) names.add(quoted[1])
+    }
+  }
+
+  // Fail closed. Silence here is what let `UiTable` ship: a component that emits, read as one that
+  // does not, is indistinguishable from a correct row — so it is an error, not an empty list.
+  assert.ok(
+    names.size > 0 || !/\bdefineEmits\b/.test(componentSource),
+    `${name}.vue calls defineEmits and this guard could read no event name out of it; a spelling it ` +
+      'does not know reads as "emits nothing", which is the drift it exists to catch',
+  )
+  return [...names]
 }
 
 test('the contract table names exactly the events each component emits', () => {
@@ -239,7 +268,7 @@ test('the contract table names exactly the events each component emits', () => {
     .map((file) => ({
       name: file.name,
       declared: [...(table[file.name]?.emitted ?? [])].sort(),
-      actual: [...emitsOf(file.source)].sort(),
+      actual: [...emitsOf(file.name, file.source)].sort(),
     }))
     .filter((row) => JSON.stringify(row.declared) !== JSON.stringify(row.actual))
   assert.deepEqual(
