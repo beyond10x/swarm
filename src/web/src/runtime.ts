@@ -268,8 +268,19 @@ export function view(
 /**
  * Issues one command.
  *
- * `request` is an idempotency key. Sending the same one twice with the same input is a retry and
- * writes nothing the second time, which is what makes a dropped response safe to resend.
+ * `request` is the key this request commits under. It guards the APPEND and it does not make
+ * re-issuing the command harmless — the server scopes it to the INSTANCE'S STREAM, so sending the
+ * same one twice appends nothing only where the first attempt already spent it on that same
+ * stream. The server applies the command before it appends, against the world the first attempt
+ * left, so a retry gets the specification's answer to the SECOND application: two `ActivateConfig`
+ * calls under one key answer `activated` then `wrong-state`. A command that creates mints a fresh
+ * instance per attempt, so the key lands on a stream it was never spent on and two `DraftConfig`
+ * calls under one key leave two instances. Both measured in the server's
+ * `tests/redelivery_under_attack.rs`, under `story:request-key-is-not-idempotency`.
+ *
+ * So a caller that lost its response should not blind-resend. Read {@link canvas} or {@link log} —
+ * every record carries the `request` it was written under — and resend only if the first attempt
+ * is absent. Omitting `request` is honest: the server mints one, and the guarantee is the same.
  */
 export function issue(
   slug: string,

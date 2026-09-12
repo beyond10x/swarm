@@ -36,7 +36,29 @@ pub struct Issue {
     /// Who is issuing it. `None` means the system itself, which skips the actor check.
     #[serde(default)]
     pub actor: Option<String>,
-    /// The idempotency key. Retrying with the same one is a retry, not a second request.
+    /// The key this request commits under. It guards the APPEND, and it does not make re-issuing
+    /// the command harmless.
+    ///
+    /// `store.rs` scopes the key to the INSTANCE'S STREAM: committing it twice on one stream with
+    /// the same events appends nothing, and committing it with different events is refused. That
+    /// is the whole of what it buys. `Swarm::issue` applies the command BEFORE it appends, against
+    /// the world the first attempt left — so a client that resends after a dropped response gets
+    /// the specification's answer to the second application, not a copy of the first. Measured:
+    /// two `ActivateConfig` calls under one key answer `activated` then `wrong-state`. For a
+    /// command that CREATES, the second attempt mints a fresh instance, so the key lands on a
+    /// stream it was never spent on and nothing refuses it: two `DraftConfig` calls under one key
+    /// leave two Configs. Both are in `tests/redelivery_under_attack.rs` under
+    /// `story:request-key-is-not-idempotency`.
+    ///
+    /// So what a disconnected client gets is this and no more: it will not double-APPEND to a
+    /// stream the key was already spent on, and everything else it must establish by reading. The
+    /// canvas (`GET /swarms/{slug}`) and the log (`GET /swarms/{slug}/log`, which carries each
+    /// event's `request`) say whether the first attempt landed; a client that cannot tolerate the
+    /// second answer should read before it resends. Omitting the field is honest — the server
+    /// mints a fresh key — and is the same guarantee.
+    ///
+    /// Changing that means giving `Swarm::issue` a request-to-answer record, which is a schema in
+    /// `ess-runtime` and not a comment. Until then this doc and those two cases move together.
     #[serde(default)]
     pub request: Option<String>,
 }
