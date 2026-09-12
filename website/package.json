@@ -20,6 +20,8 @@
   "dependencies": {
     "@docusaurus/core": "3.10.2",
     "@docusaurus/faster": "3.10.2",
+    "@docusaurus/theme-mermaid": "3.10.2",
+    "@beyond10x/docs-system": "git+https://github.com/beyond10x/docs-system.git#86cd6c6efd02184c51a37e80012ffe9d3f77d40a",
     "@docusaurus/preset-classic": "3.10.2",
     "@mdx-js/react": "^3.0.0",
     "clsx": "^2.0.0",

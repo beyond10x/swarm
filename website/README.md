@@ -1,6 +1,6 @@
 # website
 
-The public site at [swarm.beyond10x.dev](https://swarm.beyond10x.dev). Docusaurus 3.10.2, React 19,
+The public site at [beyond10x.github.io/swarm](https://beyond10x.github.io/swarm/). Docusaurus 3.10.2, React 19,
 `future: {v4: true}`, Node >= 20. `docs` and `blog` are both off: this is a single page, and the page
 is `src/pages/index.js`.
 
@@ -68,5 +68,7 @@ not demonstrated; nothing confines a coordinator.
 
 ## Deploying
 
-GitHub Pages, from `build/`. `static/.nojekyll` is present. `url` is `https://swarm.beyond10x.dev`
-and `baseUrl` is `/`, which is correct for a custom domain at the apex of the site.
+GitHub Pages, from `build/`, by this repository's own `.github/workflows/deploy-website.yml`.
+`static/.nojekyll` is present. `url` is `https://beyond10x.github.io` and `baseUrl` is `/swarm/`,
+which is the address the site is actually served at. There is no custom domain: the one the
+scaffold import named had no DNS record and no delegation, and every reference to it is gone.

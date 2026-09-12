@@ -88,7 +88,7 @@ working on the code.
 Start with [`src/core/`](src/core/). It is nine files of YAML, and it is the system. Everything else
 in this repository exists to run it.
 
-More at [swarm.beyond10x.dev](https://swarm.beyond10x.dev).
+More at [beyond10x.github.io/swarm](https://beyond10x.github.io/swarm/).
 
 ---
 

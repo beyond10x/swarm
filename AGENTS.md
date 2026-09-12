@@ -32,7 +32,7 @@ interesting part.
 | `src/runtime/swarm-server/` | HTTP surface, per-swarm event streams, and the trigger that fires periodic bindings |
 | `src/runtime/swarm-cli/` | the verbs a coordinator uses from inside a turn — mail, views, and `do` |
 | `src/web/` | the Vue canvas. Reads `/spec` at load rather than hard-coding entities |
-| `website/` | the public Docusaurus site at `swarm.beyond10x.dev` |
+| `website/` | the public Docusaurus site at `beyond10x.github.io/swarm/` |
 | `data/` | runtime state — per-swarm event logs, transcripts and work directories. Not specification input; `ess-inputs.yaml` exists because the legacy layout would otherwise read instance documents as sources |
 | `.engineering/` | the planning store and wave notes |
 
@@ -63,6 +63,25 @@ cd website && npm run spec:check             # the site's published numbers are 
 `ess` and `aep` are separate tools and must be on `PATH`. The workspace pins `ess-*` crates to tag
 `0.23.0` and `eventlog-*` to `0.2.1` by git, not by path — the sibling checkouts under `../` are on
 different versions, and a path dependency would compile neither the thing we mean.
+
+## The website is a sanctioned exception
+
+Atlas stamps a paragraph into every Beyond10x repository's `AGENTS.md` saying that Website plus Docs
+System own rendering and that a repository must **not add a standalone docs deployer**; Pages at
+`/<repository>/` is meant to be a generated redirect facade only.
+
+**swarm deploys a real site at `https://beyond10x.github.io/swarm/` anyway, from
+`.github/workflows/deploy-website.yml`, and that is a decision the maintainer took on 2026-09-12
+with the contract in front of him.** It is written here so the next agent does not read the contract,
+conclude the workflow is a mistake, and delete it.
+
+What still holds: `b10x.docs.yaml` declares the four markdown files Atlas collects into
+`/docs/swarm/` on the unified site, and `website/**` is excluded from that collection. The two
+publications are separate and both are intended.
+
+`swarm.beyond10x.dev` was never real. `dig beyond10x.dev` returns no A record and no NS delegation,
+and the name appears in no other repository in the organisation; it arrived with the scaffold import
+commit `b7a7b78`. The address is `https://beyond10x.github.io/swarm/`.
 
 ## The gate
 

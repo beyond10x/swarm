@@ -1,236 +1,285 @@
-/* Swarm brand colors */
+/**
+ * Swarm's site theme.
+ *
+ * The palette, the spacing scale, the radii, the focus ring, the reduced-motion clamp and every
+ * `b10x-*` component style come from `@beyond10x/docs-system/styles/tokens.css`, injected as a
+ * client module by `docsSystemPlugin`. Nothing here restates a token: this file's whole job is to
+ * bind Docusaurus's Infima variables to the house tokens, and to style the four things that are
+ * Swarm's own — the hero stage, the lede, the entity chips and the numeric table columns.
+ *
+ * If a rule here could be deleted by reading a token instead, delete it.
+ */
+
+/* ------------------------------------------------------------------ *
+ * Infima, bound to the design system
+ * ------------------------------------------------------------------ */
+
 :root {
-  --ifm-color-primary: #4f8cff;
-  --ifm-color-primary-dark: #2f74ff;
-  --ifm-color-primary-darker: #1a68ff;
-  --ifm-color-primary-darkest: #0055e6;
-  --ifm-color-primary-light: #6fa4ff;
-  --ifm-color-primary-lighter: #82b0ff;
-  --ifm-color-primary-lightest: #b8d3ff;
-  --ifm-code-font-size: 95%;
+  --ifm-color-primary: var(--b10x-color-link);
+  --ifm-color-primary-dark: color-mix(in srgb, var(--b10x-color-link) 88%, black);
+  --ifm-color-primary-darker: color-mix(in srgb, var(--b10x-color-link) 80%, black);
+  --ifm-color-primary-darkest: color-mix(in srgb, var(--b10x-color-link) 66%, black);
+  --ifm-color-primary-light: color-mix(in srgb, var(--b10x-color-link) 88%, white);
+  --ifm-color-primary-lighter: color-mix(in srgb, var(--b10x-color-link) 78%, white);
+  --ifm-color-primary-lightest: color-mix(in srgb, var(--b10x-color-link) 60%, white);
+
+  --ifm-background-color: var(--b10x-color-canvas);
+  --ifm-background-surface-color: var(--b10x-color-surface);
+  --ifm-font-color-base: var(--b10x-color-text);
+  --ifm-heading-color: var(--b10x-color-heading);
+
+  --ifm-font-family-base: var(--b10x-font-sans);
+  --ifm-font-family-monospace: var(--b10x-font-mono);
+  --ifm-heading-font-weight: 680;
+  --ifm-line-height-base: 1.65;
+  --ifm-code-font-size: 92%;
+
+  --ifm-global-radius: var(--b10x-radius);
+  --ifm-button-border-radius: 999px;
+  --ifm-container-width-xl: var(--b10x-content-width);
+  --ifm-spacing-horizontal: var(--b10x-space-4);
+  --ifm-navbar-height: 3.75rem;
+  --ifm-navbar-background-color: color-mix(in srgb, var(--b10x-color-canvas) 88%, transparent);
+  --ifm-navbar-link-hover-color: var(--b10x-color-link);
+  --ifm-footer-background-color: var(--b10x-footer-background);
+  --ifm-footer-color: var(--b10x-footer-text);
+  --ifm-footer-link-color: var(--b10x-footer-text);
+  --ifm-footer-link-hover-color: var(--b10x-footer-accent);
+  --ifm-footer-title-color: var(--b10x-footer-accent);
+  --ifm-toc-border-color: var(--b10x-color-line);
+  --ifm-table-border-color: var(--b10x-color-line);
+  --ifm-table-head-background: var(--b10x-color-surface-muted);
+  --ifm-table-stripe-background-color: transparent;
+  --ifm-hr-border-color: var(--b10x-color-line);
+  --ifm-code-background: var(--b10x-color-surface-muted);
+  --ifm-dropdown-background-color: var(--b10x-color-surface);
+  --docusaurus-highlighted-code-line-bg: color-mix(in srgb, var(--b10x-color-cyan) 18%, transparent);
 }
 
-[data-theme='dark'] {
-  --ifm-color-primary: #7db1ff;
-  --ifm-color-primary-dark: #5a9cff;
-  --ifm-color-primary-darker: #4890ff;
-  --ifm-color-primary-darkest: #1470ff;
-  --ifm-color-primary-light: #a0c6ff;
-  --ifm-color-primary-lighter: #b2d0ff;
-  --ifm-color-primary-lightest: #e5f0ff;
-  --ifm-background-color: #0b0e14;
+/* ------------------------------------------------------------------ *
+ * Chrome
+ * ------------------------------------------------------------------ */
+
+html,
+body {
+  background: var(--b10x-color-canvas);
 }
 
-.hero-banner {
-  position: relative;
-  overflow: hidden;
-  padding: 5rem 0 4rem;
-  text-align: center;
-  isolation: isolate;
+/* Headings carry the house voice: tight tracking, a weight between semibold and bold. */
+h1,
+h2,
+h3 {
+  letter-spacing: -0.045em;
 }
 
-.hero-banner__field {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background:
-    radial-gradient(circle at 20% 30%, rgba(79, 140, 255, 0.18), transparent 40%),
-    radial-gradient(circle at 80% 70%, rgba(79, 140, 255, 0.14), transparent 45%);
+.navbar {
+  border-bottom: 1px solid var(--b10x-color-line);
+  box-shadow: none;
+  backdrop-filter: blur(8px);
 }
 
-.hero-banner__swarm {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
+.navbar__title,
+.navbar__link {
+  font-weight: 680;
 }
 
-.hero-banner__node {
-  position: absolute;
-  border-radius: 50%;
-  background: var(--ifm-color-primary);
-  box-shadow: 0 0 18px 4px rgba(79, 140, 255, 0.55);
-  animation-name: swarm-orbit;
-  animation-iteration-count: infinite;
-  animation-timing-function: ease-in-out;
-  opacity: 0.85;
+/* A bordered surface, never shadow-only. */
+.navbar-sidebar {
+  border-right: 1px solid var(--b10x-color-line);
 }
 
-.hero-banner__line {
-  position: absolute;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(79, 140, 255, 0.35), transparent);
-  animation-name: swarm-pulse;
-  animation-iteration-count: infinite;
-  animation-timing-function: ease-in-out;
-  transform-origin: left center;
+.footer {
+  border-top: 1px solid var(--b10x-color-line);
 }
 
-@keyframes swarm-orbit {
-  0% {
-    transform: translate(0, 0) scale(1);
-  }
-  25% {
-    transform: translate(var(--dx1, 30px), var(--dy1, -20px)) scale(1.08);
-  }
-  50% {
-    transform: translate(var(--dx2, -20px), var(--dy2, 25px)) scale(0.95);
-  }
-  75% {
-    transform: translate(var(--dx3, 25px), var(--dy3, 15px)) scale(1.05);
-  }
-  100% {
-    transform: translate(0, 0) scale(1);
-  }
+.footer__title {
+  font-family: var(--b10x-font-mono);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
-@keyframes swarm-pulse {
-  0%, 100% {
-    opacity: 0.1;
-  }
-  50% {
-    opacity: 0.6;
-  }
+/* Infima's `footer--dark` sets its own background variable on the element, which beats the one
+   declared on :root. Rebind it there rather than leaving the footer a colour nothing chose. */
+.footer--dark {
+  --ifm-footer-background-color: var(--b10x-footer-background);
+  --ifm-footer-color: var(--b10x-footer-text);
+  --ifm-footer-link-color: var(--b10x-footer-text);
+  --ifm-footer-title-color: var(--b10x-footer-accent);
 }
 
-.hero-banner__title {
-  font-size: 3rem;
-  margin-bottom: 0.5rem;
-  background: linear-gradient(120deg, var(--ifm-color-primary), #9fd0ff);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+/* ------------------------------------------------------------------ *
+ * The page
+ * ------------------------------------------------------------------ */
+
+.swarm-page {
+  max-width: var(--b10x-content-width);
+  padding-block: var(--b10x-space-5) var(--b10x-space-7);
 }
 
-.hero-banner__tagline {
-  font-size: 1.35rem;
-  opacity: 0.85;
-  max-width: 40rem;
-  margin: 0 auto;
+.swarm-section {
+  margin-block: var(--b10x-space-7);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .hero-banner__node,
-  .hero-banner__line {
-    animation: none;
-  }
+.swarm-section > * + * {
+  margin-top: var(--b10x-space-4);
 }
 
-.about-section {
-  padding: 1rem 0 3rem;
-}
-
-/* ---- landing page ---------------------------------------------------- */
-
-.about-section .lede {
-  font-size: 1.15rem;
+.swarm-lede {
+  max-width: 52rem;
+  font-size: 1.12rem;
   line-height: 1.7;
 }
 
-.about-section section {
-  max-width: 62rem;
+.swarm-note {
+  color: var(--b10x-color-muted);
+  font-family: var(--b10x-font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
 }
 
-.callout {
-  border-left: 3px solid var(--ifm-color-primary);
-  background: rgba(79, 140, 255, 0.08);
-  border-radius: 0 6px 6px 0;
-  padding: 1rem 1.25rem;
-  margin: 1.5rem 0;
-}
-
-.callout p:last-child {
-  margin-bottom: 0;
-}
-
-/* The derived-count grid. */
-.stat-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
-  gap: 0.75rem;
-  margin: 1.5rem 0 0.75rem;
-}
-
-.stat {
-  border: 1px solid var(--ifm-toc-border-color);
-  border-radius: 8px;
-  padding: 0.9rem 0.5rem;
-  text-align: center;
-  background: rgba(127, 127, 127, 0.04);
-}
-
-.stat__value {
-  font-size: 2rem;
-  font-weight: 700;
-  line-height: 1.1;
-  color: var(--ifm-color-primary);
-  font-variant-numeric: tabular-nums;
-}
-
-.stat__label {
-  font-size: 0.85rem;
-  opacity: 0.75;
-  letter-spacing: 0.03em;
-}
-
-.stat-grid__source {
-  font-size: 0.85rem;
-  opacity: 0.7;
-  margin-bottom: 2rem;
-}
-
-.about-section table {
+.swarm-page table {
   display: table;
   width: 100%;
   font-size: 0.92rem;
 }
 
-.about-section th.num,
-.about-section td.num {
+.swarm-page thead th {
+  font-family: var(--b10x-font-mono);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.swarm-page th.num,
+.swarm-page td.num {
   text-align: right;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.domain-table__summary {
-  font-size: 0.85rem;
-  opacity: 0.8;
+.swarm-page td {
+  vertical-align: top;
 }
 
-.chip {
-  display: inline-block;
-  margin: 0 0.2rem 0.2rem 0;
-  font-size: 0.78rem;
+/* The shared fact grid is a hairline sheet showing through 1px gaps, so a row that does not fill
+   leaves the hairline colour as a block. Nine counts divide evenly by three and by one; pick those
+   rather than letting `auto-fit` choose six and leave three holes. */
+.swarm-page .b10x-fact-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-/* The honesty table: each claim carries its own verdict. */
-.tag {
-  display: inline-block;
-  padding: 0.1rem 0.55rem;
+@media (max-width: 34rem) {
+  .swarm-page .b10x-fact-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Entity names inside a domain card: a row of chips, in the mono chrome voice. */
+.swarm-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--b10x-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.swarm-chips li {
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--b10x-color-line);
   border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  white-space: nowrap;
-  border: 1px solid currentColor;
+  background: var(--b10x-color-surface-muted);
 }
 
-.tag--yes {
-  color: #35b47a;
+.swarm-chips code {
+  border: 0;
+  background: none;
+  font-size: 0.72rem;
 }
 
-.tag--partly {
-  color: #d3972a;
+/* ------------------------------------------------------------------ *
+ * The hero stage — the loop, drawn
+ * ------------------------------------------------------------------ */
+
+.swarm-hero {
+  margin-block: var(--b10x-space-5) var(--b10x-space-7);
 }
 
-.tag--no {
-  color: #e0645f;
+.swarm-hero .b10x-page-header {
+  margin-bottom: var(--b10x-space-3);
 }
 
-.verdict-table td:nth-child(2) {
-  white-space: nowrap;
+.swarm-hero__stage {
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--b10x-color-line);
+  border-radius: var(--b10x-radius-lg);
+  background:
+    radial-gradient(
+      circle at 12% 50%,
+      color-mix(in srgb, var(--b10x-color-cyan) 10%, transparent),
+      transparent 55%
+    ),
+    radial-gradient(
+      circle at 88% 20%,
+      color-mix(in srgb, var(--b10x-color-lime) 9%, transparent),
+      transparent 50%
+    ),
+    var(--b10x-color-surface);
 }
 
-.about-section h2 {
-  margin-top: 3rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--ifm-toc-border-color);
+.swarm-hero__canvas {
+  display: block;
+  width: 100%;
+  height: clamp(17rem, 26vw, 24rem);
+}
+
+.swarm-hero__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--b10x-space-2) var(--b10x-space-5);
+  padding: var(--b10x-space-3) var(--b10x-space-4);
+  border-top: 1px solid var(--b10x-color-line);
+  background: color-mix(in srgb, var(--b10x-color-surface-muted) 70%, transparent);
+  color: var(--b10x-color-muted);
+  font: 800 0.68rem/1.2 var(--b10x-font-mono);
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.swarm-hero__key {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--b10x-space-2);
+}
+
+.swarm-hero__key::before {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: currentColor;
+  content: '';
+}
+
+.swarm-hero__key--tick::before,
+.swarm-hero__key--cascade::before {
+  background: var(--b10x-color-cyan);
+}
+
+.swarm-hero__key--cascade::before {
+  opacity: 0.55;
+}
+
+.swarm-hero__key--verdict::before {
+  background: var(--b10x-color-lime);
+}
+
+@media (max-width: 48rem) {
+  .swarm-hero__canvas {
+    height: 15rem;
+  }
 }
