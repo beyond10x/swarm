@@ -13,7 +13,7 @@
 //! that will eventually be two different cadences.
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::{Map, Value as Json};
 
@@ -21,7 +21,7 @@ use ess_runtime::route::Occurrence;
 
 use crate::coordinator;
 use crate::state::Server;
-use crate::swarm::Swarm;
+use crate::swarm::{Swarm, TurnPhase, What};
 
 /// The view that says which goals are waiting for a turn.
 ///
@@ -34,7 +34,7 @@ const AWAITING: &str = "swarm.goal.GoalsAwaitingATick";
 /// Runs until cancelled. One task for the server rather than one per swarm: the cadence belongs to
 /// the binding, not to the swarm, and N tasks ticking the same period would be N chances to drift.
 pub async fn run(server: Arc<Server>) {
-    let periodic = declared_periods(&server);
+    let periodic = server.periods();
     if periodic.is_empty() {
         tracing::info!("no periodic bindings; the trigger has nothing to drive");
         return;
@@ -53,7 +53,9 @@ pub async fn run(server: Arc<Server>) {
         .unwrap_or(Duration::from_secs(30));
 
     loop {
+        server.tick_scheduled(shortest);
         tokio::time::sleep(shortest).await;
+        server.ticked();
         for swarm in server.all().await {
             for (binding, _) in &periodic {
                 if let Err(why) = fire(&server, &swarm, binding).await {
@@ -64,7 +66,7 @@ pub async fn run(server: Arc<Server>) {
             // A turn the loop started is a turn something has to finish. This is the middle arrow
             // of `[loop] -> [coordinator] -> [goal]`, and it is run after the tick rather than
             // inside it because the tick's job ends when the goal is Pursuing.
-            ask_the_coordinator(&swarm).await;
+            ask_the_coordinator(&server, &swarm).await;
         }
     }
 }
@@ -73,7 +75,11 @@ pub async fn run(server: Arc<Server>) {
 ///
 /// Goals already in `Pursuing` are picked up too, not only ones this cycle started — a turn
 /// interrupted by a restart is still a turn nobody answered.
-async fn ask_the_coordinator(swarm: &Arc<Swarm>) {
+///
+/// Each turn runs as its own task. A coordinator that thinks for three minutes must not hold the
+/// trigger for three minutes, and `overlap: serial_per_instance` is kept by the claim on the goal
+/// rather than by running everything in one line.
+async fn ask_the_coordinator(server: &Arc<Server>, swarm: &Arc<Swarm>) {
     for instance in swarm.instances("swarm.goal.Goal").await {
         if instance.get("state").and_then(Json::as_str) != Some("Pursuing") {
             continue;
@@ -81,49 +87,86 @@ async fn ask_the_coordinator(swarm: &Arc<Swarm>) {
         let Some(id) = instance.get("id").and_then(Json::as_str) else {
             continue;
         };
+        if !server.claim_turn(swarm.slug(), id) {
+            continue;
+        }
         let fields = instance.get("fields");
         let goal = fields
             .and_then(|f| f.get("text"))
             .and_then(Json::as_str)
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .to_owned();
         let iterations = fields
             .and_then(|f| f.get("iterations"))
             .and_then(Json::as_u64)
             .unwrap_or_default();
 
-        match coordinator::take_a_turn(swarm, id, goal, iterations).await {
-            Ok(reached) => {
-                tracing::info!(swarm = %swarm.slug(), goal = %id, reached, "a turn was answered");
-            }
-            // Not configured is the ordinary state of a swarm nobody has given a coordinator, and
-            // logging it every period would bury everything else.
-            Err(coordinator::Unfinished::NoCoordinator) => {
-                tracing::debug!(swarm = %swarm.slug(), goal = %id,
-                                "waiting for a coordinator");
-            }
-            Err(why) => {
-                tracing::warn!(swarm = %swarm.slug(), goal = %id, error = %why,
-                               "the turn could not be finished");
-            }
-        }
+        let server = Arc::clone(server);
+        let swarm = Arc::clone(swarm);
+        let id = id.to_owned();
+        tokio::spawn(async move {
+            one_turn(&swarm, &id, &goal, iterations).await;
+            server.release_turn(swarm.slug(), &id);
+        });
     }
 }
 
-/// Every periodic binding, with the period the specification declares for it.
-fn declared_periods(server: &Server) -> Vec<(String, Duration)> {
-    server
-        .spec()
-        .ir()
-        .bindings()
-        .iter()
-        .filter_map(|(name, binding)| {
-            let periodic = binding.cause.periodic()?;
-            Some((
-                name.to_string(),
-                Duration::from_secs(u64::from(periodic.contract.every.seconds())),
-            ))
-        })
-        .collect()
+/// One coordinator turn, announced at both ends.
+async fn one_turn(swarm: &Arc<Swarm>, id: &str, goal: &str, iterations: u64) {
+    // Watchers hear the turn begin, so a coordinator that takes a minute is seen working
+    // rather than seen as a loop that stalled.
+    swarm.announce(What::Turn {
+        goal: id.to_owned(),
+        iterations,
+        phase: TurnPhase::Asking,
+        reached: None,
+        note: None,
+        error: None,
+        took_ms: None,
+        spent: None,
+    });
+    let began = Instant::now();
+
+    match coordinator::take_a_turn(swarm, id, goal, iterations).await {
+        Ok(answer) => {
+            tracing::info!(swarm = %swarm.slug(), goal = %id, reached = answer.verdict.reached,
+                           "a turn was answered");
+            swarm.announce(What::Turn {
+                goal: id.to_owned(),
+                iterations,
+                phase: TurnPhase::Answered,
+                reached: Some(answer.verdict.reached),
+                note: answer.verdict.note,
+                error: None,
+                took_ms: Some(began.elapsed().as_millis() as u64),
+                spent: Some(answer.spent),
+            });
+        }
+        // Not configured is the ordinary state of a swarm nobody has given a coordinator, and
+        // logging it every period would bury everything else. Watchers are told once per turn,
+        // because for them it is the one fact that explains a goal sitting in Pursuing.
+        Err(why) => {
+            match &why {
+                coordinator::Unfinished::NoCoordinator => {
+                    tracing::debug!(swarm = %swarm.slug(), goal = %id, "waiting for a coordinator");
+                }
+                _ => {
+                    tracing::warn!(swarm = %swarm.slug(), goal = %id, error = %why,
+                                   "the turn could not be finished");
+                }
+            }
+            swarm.announce(What::Turn {
+                goal: id.to_owned(),
+                iterations,
+                phase: TurnPhase::Unfinished,
+                reached: None,
+                note: None,
+                error: Some(why.to_string()),
+                took_ms: Some(began.elapsed().as_millis() as u64),
+                spent: why.spent().cloned(),
+            });
+        }
+    }
 }
 
 /// Delivers one occurrence per instance that wants one.

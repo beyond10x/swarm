@@ -54,7 +54,7 @@ function onKeydown(e: KeyboardEvent, i: number) {
 </template>
 
 <style scoped>
-.ui-tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--color-border); overflow-x: auto; }
+.ui-tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--color-border); overflow-x: auto; overflow-y: hidden; }
 .tab {
   padding: var(--space-2) var(--space-3); margin-bottom: -1px;
   border: 0; border-bottom: 2px solid transparent; border-radius: var(--radius-1) var(--radius-1) 0 0;

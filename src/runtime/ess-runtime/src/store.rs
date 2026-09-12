@@ -29,6 +29,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use serde::Serialize;
 use serde_json::{Map, Value as Json};
 
 use ess_compiler::EssIr;
@@ -204,6 +205,42 @@ impl Store {
         Ok(())
     }
 
+    /// The most recent `limit` events across every stream, oldest first.
+    ///
+    /// The whole feed is read and the tail kept, because the log has no "read backwards" and a
+    /// swarm's log is small enough that reading it is cheaper than being wrong about a cursor.
+    /// Returned in commit order, which is the order things happened in.
+    pub async fn history(&self, limit: usize) -> Result<Vec<Recorded>, StoreError> {
+        let mut all = Vec::new();
+        let mut after = 0;
+        loop {
+            let page = self.events.read_feed(&self.tenant, after, PAGE).await?;
+            let more = page.has_more;
+            after = page.next_position;
+            all.extend(page.events.iter().map(Recorded::from));
+            if !more {
+                break;
+            }
+        }
+        let keep = all.len().saturating_sub(limit);
+        Ok(all.split_off(keep))
+    }
+
+    /// How many events the log holds.
+    pub async fn count(&self) -> Result<u64, StoreError> {
+        let mut total = 0u64;
+        let mut after = 0;
+        loop {
+            let page = self.events.read_feed(&self.tenant, after, PAGE).await?;
+            total += page.events.len() as u64;
+            after = page.next_position;
+            if !page.has_more {
+                break;
+            }
+        }
+        Ok(total)
+    }
+
     /// Rebuilds one instance by replaying its stream.
     pub async fn rebuild(
         &self,
@@ -259,6 +296,50 @@ impl Store {
             }
         }
         Ok(world)
+    }
+}
+
+/// One event as history holds it, flattened for a reader.
+///
+/// The log's own record carries more (redaction, schema version, causation); this is what a person
+/// watching a swarm wants to see, and nothing that would need the log's types to read.
+#[derive(Clone, Debug, Serialize)]
+pub struct Recorded {
+    /// Position in the swarm's feed.
+    pub seq: u64,
+    /// When it was recorded, RFC 3339.
+    pub at: String,
+    /// The entity, and the instance.
+    pub entity: String,
+    pub id: String,
+    /// Position in the instance's stream, from 1.
+    pub version: u64,
+    pub name: String,
+    pub actor: String,
+    pub request: String,
+    pub fields: Json,
+}
+
+impl From<&RecordedEvent> for Recorded {
+    fn from(event: &RecordedEvent) -> Self {
+        Self {
+            seq: event.global_seq,
+            at: event
+                .recorded_at
+                .format(&time::format_description::well_known::Rfc3339)
+                .unwrap_or_default(),
+            entity: event.stream_type.clone(),
+            id: event.stream_id.clone(),
+            version: event.version,
+            name: event.name.clone(),
+            actor: event.actor.clone(),
+            request: event.request_id.clone(),
+            fields: if event.is_redacted() {
+                Json::Null
+            } else {
+                event.data.clone()
+            },
+        }
     }
 }
 

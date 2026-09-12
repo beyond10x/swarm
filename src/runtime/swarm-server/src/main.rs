@@ -18,7 +18,7 @@ const SPEC: &str = "src/core";
 /// Where the swarms live.
 const DATA: &str = "data";
 /// The port to listen on, unless `SWARM_PORT` says otherwise.
-const PORT: u16 = 7777;
+const PORT: u16 = 5000;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

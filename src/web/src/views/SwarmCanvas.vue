@@ -10,7 +10,7 @@
 // is drawn joined to the swarm it belongs to without anybody saying so twice. A
 // `swarm.blackbox.Connection` is the other: a wire one box drew to another, which is how a swarm
 // grants itself reach.
-import { computed, markRaw } from 'vue'
+import { computed, markRaw, ref, watch, type Ref } from 'vue'
 import { VueFlow, type Edge, type Node, type NodeTypesObject } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
@@ -24,7 +24,13 @@ import '@vue-flow/controls/dist/style.css'
 import '@vue-flow/minimap/dist/style.css'
 import '@/components/canvas/canvas-theme.css'
 
-const props = defineProps<{ canvas: Canvas; shape?: Shape; flowId?: string }>()
+const props = defineProps<{
+  canvas: Canvas
+  shape?: Shape
+  flowId?: string
+  /** Instances that changed a moment ago, drawn lit so a change is seen rather than found. */
+  recent?: Set<string>
+}>()
 
 const NODE_W = 220
 const NODE_H = 130
@@ -54,31 +60,66 @@ const instances = computed<Instance[]>(() =>
 /** Connections are edges, not nodes: they are the wire between two boxes. */
 const connections = computed<Instance[]>(() => props.canvas[CONNECTION] ?? [])
 
-const nodes = computed<Node[]>(() => {
-  const laid = layoutDag(
-    instances.value.map((instance) => ({
-      id: instance.id,
-      width: NODE_W,
-      height: NODE_H,
-    })),
-    edges.value.flatMap((edge) =>
-      typeof edge.source === 'string' && typeof edge.target === 'string'
-        ? [{ from: edge.source, to: edge.target }]
-        : [],
-    ),
-    'LR',
-  )
+/**
+ * The nodes, held rather than computed.
+ *
+ * A computed list would be rebuilt on every change the stream carries, and each rebuild would be a
+ * new set of node objects — which is a canvas that forgets where a person dragged a node and drops
+ * whatever was selected, several times a minute. So the list is kept, `v-model`ed to Vue Flow so
+ * drag and selection land in it, and reconciled: an instance already drawn has its data replaced in
+ * place, a new one is laid out and added, a gone one is removed. Positions survive everything but
+ * removal.
+ */
+// Cast rather than `ref<Node[]>`: Vue Flow's `Node` is generic enough that TypeScript gives up
+// unwrapping it (TS2589), and the cast is the documented way round.
+const nodes = ref([]) as Ref<Node[]>
 
-  return instances.value.map((instance, index) => ({
-    id: instance.id,
-    type: 'instance',
-    position: laid.get(instance.id) ?? { x: 0, y: index * (NODE_H + 32) },
-    data: {
+function reconcile(): void {
+  const wanted = instances.value
+  const ids = new Set(wanted.map((instance) => instance.id))
+  const held = new Map(nodes.value.map((node) => [node.id, node]))
+
+  const fresh = wanted.filter((instance) => !held.has(instance.id))
+  // Only newcomers are laid out, and among the others so they land near what they relate to.
+  const laid = fresh.length
+    ? layoutDag(
+        wanted.map((instance) => ({ id: instance.id, width: NODE_W, height: NODE_H })),
+        edges.value.flatMap((edge) =>
+          typeof edge.source === 'string' && typeof edge.target === 'string'
+            ? [{ from: edge.source, to: edge.target }]
+            : [],
+        ),
+        'LR',
+      )
+    : undefined
+
+  const next: Node[] = []
+  wanted.forEach((instance, index) => {
+    const data: InstanceNodeData = {
       instance,
       terminal: terminal.value.get(instance.entity),
-    } satisfies InstanceNodeData,
-  }))
-})
+      changed: props.recent?.has(instance.id) ?? false,
+    }
+    const existing = held.get(instance.id)
+    if (existing) {
+      existing.data = data
+      next.push(existing)
+    } else {
+      next.push({
+        id: instance.id,
+        type: 'instance',
+        position: laid?.get(instance.id) ?? { x: 0, y: index * (NODE_H + 32) },
+        data,
+      })
+    }
+  })
+  // Same length and same members means nothing to replace, and replacing anyway would be the
+  // rebuild this function exists to avoid.
+  if (next.length !== nodes.value.length || next.some((node, at) => node !== nodes.value[at])) {
+    nodes.value = next
+  }
+  void ids
+}
 
 /** Every instance by id, so a relation's target can be found. */
 const byId = computed(() => new Map(instances.value.map((instance) => [instance.id, instance])))
@@ -131,13 +172,15 @@ const wired = computed<Edge[]>(() =>
 )
 
 const edges = computed<Edge[]>(() => [...related.value, ...wired.value])
+
+watch([instances, edges, () => props.recent], reconcile, { immediate: true, deep: false })
 </script>
 
 <template>
-  <div class="canvas">
+  <div class="canvas b10x-canvas">
     <VueFlow
       :id="props.flowId ?? 'swarm'"
-      :nodes="nodes"
+      v-model:nodes="nodes"
       :edges="edges"
       :node-types="nodeTypes"
       fit-view-on-init
@@ -146,7 +189,14 @@ const edges = computed<Edge[]>(() => [...related.value, ...wired.value])
     >
       <Background pattern-color="#2a3240" :gap="20" />
       <Controls />
-      <MiniMap pannable zoomable />
+      <MiniMap
+        pannable
+        zoomable
+        mask-color="rgba(15, 17, 21, 0.72)"
+        node-color="#2b303b"
+        node-stroke-color="#9aa3b2"
+        :node-stroke-width="2"
+      />
     </VueFlow>
 
     <p v-if="!instances.length" class="empty">

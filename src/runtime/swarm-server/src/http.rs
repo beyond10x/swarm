@@ -13,7 +13,7 @@
 use std::sync::Arc;
 
 use axum::Router;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::sse::{Event, Sse};
 use axum::response::{IntoResponse, Response};
@@ -77,7 +77,11 @@ pub fn routes(server: Arc<Server>) -> Router {
         .route("/swarms/{slug}/views/{view}", get(read_view))
         .route("/swarms/{slug}/commands/{command}", post(issue_command))
         .route("/swarms/{slug}/reload", post(reload_swarm))
+        .route("/swarms/{slug}/log", get(read_log))
+        .route("/swarms/{slug}/turns", get(list_turns))
+        .route("/swarms/{slug}/turns/{name}", get(read_turn))
         .route("/spec", get(read_spec))
+        .route("/status", get(read_status))
         .with_state(server)
 }
 
@@ -173,6 +177,52 @@ async fn reload_swarm(
     let swarm = server.get(&slug).await?;
     swarm.reload().await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// The most recent events in one swarm's log, oldest first.
+///
+/// This is the record itself, not the stream: a reader that connects late sees what happened
+/// before it arrived, and a reader that doubts the stream can check it against this.
+async fn read_log(
+    State(server): State<Arc<Server>>,
+    Path(slug): Path<String>,
+    Query(page): Query<LogPage>,
+) -> Result<impl IntoResponse, Refused> {
+    let swarm = server.get(&slug).await?;
+    Ok(axum::Json(swarm.history(page.limit.min(1000)).await?))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LogPage {
+    #[serde(default = "default_limit")]
+    pub limit: usize,
+}
+
+fn default_limit() -> usize {
+    200
+}
+
+/// Every recorded coordinator run, newest first.
+async fn list_turns(
+    State(server): State<Arc<Server>>,
+    Path(slug): Path<String>,
+) -> Result<impl IntoResponse, Refused> {
+    let swarm = server.get(&slug).await?;
+    Ok(axum::Json(swarm.turns()))
+}
+
+/// One recorded coordinator run, every event.
+async fn read_turn(
+    State(server): State<Arc<Server>>,
+    Path((slug, name)): Path<(String, String)>,
+) -> Result<impl IntoResponse, Refused> {
+    let swarm = server.get(&slug).await?;
+    Ok(axum::Json(swarm.turn(&name)?))
+}
+
+/// Where the runtime is: uptime, the trigger, the coordinator, and every swarm in one row.
+async fn read_status(State(server): State<Arc<Server>>) -> impl IntoResponse {
+    axum::Json(server.status().await)
 }
 
 /// What the specification says this system is.

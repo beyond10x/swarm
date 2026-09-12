@@ -7,16 +7,23 @@
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  UiButton, UiEmptyState, UiKeyValue, UiSpinner, UiStateBadge, UiTable, UiTabs, UiToolbar,
+  UiButton, UiEmptyState, UiSpinner, UiStateBadge, UiTable, UiTabs, UiToolbar,
 } from '@/components/ui'
 import { useSwarmStore, field, type SwarmAction } from '@/stores/swarms'
 import SwarmCanvas from '@/views/SwarmCanvas.vue'
+import LoopPanel from '@/components/runtime/LoopPanel.vue'
+import EventLog from '@/components/runtime/EventLog.vue'
+import TranscriptPanel from '@/components/runtime/TranscriptPanel.vue'
 
 const props = defineProps<{ id: string }>()
 const store = useSwarmStore()
 const router = useRouter()
 
-onMounted(() => void store.load())
+onMounted(async () => {
+  await store.load()
+  // This page is the one that watches: the stream is opened here and closed on leaving.
+  store.follow(props.id)
+})
 onBeforeUnmount(() => store.unfollow())
 
 const swarm = computed(() => store.getSwarm(props.id))
@@ -27,34 +34,8 @@ const displayName = computed(
   () => (field(record.value, 'display_name') as string | undefined) ?? props.id,
 )
 
-/**
- * What the swarm is waiting on, in one sentence.
- *
- * A loop that is between turns looks exactly like a loop that is broken, so this says which it is.
- * Every case here is a real resting place in the goal's lifecycle rather than a guess.
- */
-const waitingOn = computed(() => {
-  const state = record.value?.state
-  if (!record.value) return 'This swarm has no record yet.'
-  if (state !== 'Running')
-    return `The swarm is ${state}. The loop only turns while it is Running — press start.`
-  if (!goal.value) return 'No goal yet. A swarm with nothing to pursue has nothing to turn.'
-
-  switch (goal.value.state) {
-    case 'Open':
-      return 'Waiting for the first tick. The loop turns every 30 seconds.'
-    case 'Pursuing':
-      return 'A turn is under way: the coordinator is deciding whether the goal is met. Without one configured, it waits here.'
-    case 'Evaluating':
-      return 'The last turn reported "not yet". The next tick picks it up again.'
-    case 'Reached':
-      return 'The goal is met and the loop has stopped.'
-    case 'Abandoned':
-      return 'The goal was given up on.'
-    default:
-      return ''
-  }
-})
+/** Instances that changed a moment ago; the canvas lights them. */
+const recent = computed(() => store.recentlyChanged(props.id))
 
 /** Every entity that holds at least one instance, in the order the specification declares them. */
 const populated = computed(() =>
@@ -69,8 +50,11 @@ const populated = computed(() =>
 )
 
 const tab = ref('canvas')
+const turnsHeld = computed(() => store.live[props.id]?.turns.length ?? 0)
+const running = computed(() => store.liveTurn(props.id) !== undefined)
 const tabs = computed(() => [
   { value: 'canvas', label: 'Canvas' },
+  { value: 'coordinator', label: running.value ? '● Coordinator' : turnsHeld.value ? `Coordinator (${turnsHeld.value})` : 'Coordinator' },
   ...populated.value.map((group) => ({
     value: group.entity,
     label: `${group.label} (${group.count})`,
@@ -149,29 +133,25 @@ async function act(action: SwarmAction): Promise<void> {
 
       <p v-if="store.problem" class="problem" role="alert">{{ store.problem }}</p>
 
-      <!-- What the swarm is for, and how far the loop has got. -->
-      <UiKeyValue
-        v-if="goal"
-        class="goal"
-        :items="[
-          { key: 'Goal', value: String(field(goal, 'text') ?? '—') },
-          { key: 'State', value: goal.state },
-          { key: 'Turns', value: String(field(goal, 'iterations') ?? 'none yet') },
-        ]"
-      />
+      <!-- The loop, live: where the tick is, what the coordinator said, where the goal stands. -->
+      <LoopPanel :slug="props.id" :record="record" :goal="goal" />
 
-      <p class="waiting">{{ waitingOn }}</p>
-
-      <UiTabs v-model="tab" :tabs="tabs" />
-
-      <div class="panel">
-        <SwarmCanvas
-          v-if="tab === 'canvas'"
-          :canvas="swarm.canvas"
-          :shape="store.shape"
-          :flow-id="props.id"
-        />
-        <UiTable v-else-if="shown" :columns="columns" :rows="rows" />
+      <div class="body">
+        <div class="main">
+          <UiTabs v-model="tab" :tabs="tabs" />
+          <div class="panel">
+            <SwarmCanvas
+              v-if="tab === 'canvas'"
+              :canvas="swarm.canvas"
+              :shape="store.shape"
+              :flow-id="props.id"
+              :recent="recent"
+            />
+            <TranscriptPanel v-else-if="tab === 'coordinator'" :slug="props.id" />
+            <UiTable v-else-if="shown" :columns="columns" :rows="rows" />
+          </div>
+        </div>
+        <EventLog :slug="props.id" class="log" />
       </div>
     </template>
   </section>
@@ -180,11 +160,35 @@ async function act(action: SwarmAction): Promise<void> {
 <style scoped>
 .swarm {
   display: grid;
-  grid-template-rows: auto auto auto auto auto 1fr;
+  grid-template-rows: auto auto 1fr;
   gap: 0.75rem;
   height: 100%;
+  min-height: 0;
   padding: 1rem;
-  align-content: start;
+}
+
+.body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 24rem;
+  gap: 0.75rem;
+  min-height: 0;
+}
+
+.main {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 0.75rem;
+  min-height: 0;
+}
+
+.log {
+  min-height: 24rem;
+}
+
+@media (max-width: 70rem) {
+  .body {
+    grid-template-columns: 1fr;
+  }
 }
 
 h1 {
@@ -192,24 +196,12 @@ h1 {
   margin: 0;
 }
 
-.goal {
-  max-width: 60rem;
-}
-
 .panel {
   min-height: 24rem;
+  height: 100%;
   border: 1px solid var(--border, #2a3240);
   border-radius: 0.5rem;
   overflow: hidden;
-}
-
-.waiting {
-  margin: 0;
-  padding: 0.5rem 0.75rem;
-  border-left: 2px solid var(--color-accent, #4f8cff);
-  background: color-mix(in srgb, var(--color-accent, #4f8cff) 8%, transparent);
-  border-radius: 0 0.25rem 0.25rem 0;
-  font-size: 0.875rem;
 }
 
 .problem {

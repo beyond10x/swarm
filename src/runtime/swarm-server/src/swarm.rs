@@ -8,33 +8,144 @@
 //! only place the log is written, and the only place the pump runs. A second path into the world
 //! would be a second answer to what happened.
 
-use std::path::Path;
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::Serialize;
 use serde_json::{Map, Value as Json};
 use tokio::sync::{Mutex, broadcast};
 
+use crate::coordinator::Spent;
 use ess_runtime::apply::Emitted;
-use ess_runtime::{Spec, Store, World, apply, pump, route::Occurrence, route::tick, view};
+use ess_runtime::{
+    Recorded, Spec, Store, World, apply, pump, route::Occurrence, route::tick, view,
+};
 
 /// How many events a slow reader may fall behind before it is dropped and told to resync.
 const BACKLOG: usize = 256;
 
 /// Something that happened, as the UI hears about it.
+///
+/// Stamped with when the server saw it, so a reader can show "3s ago" without a clock of its own,
+/// and so two readers that connected at different times agree on the order.
+#[derive(Clone, Debug, Serialize)]
+pub struct Change {
+    /// When, RFC 3339.
+    pub at: String,
+    #[serde(flatten)]
+    pub what: What,
+}
+
+/// What kind of thing happened.
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum Change {
+pub enum What {
     /// A command was applied and these events were appended.
     Applied {
         command: String,
         outcome: String,
+        actor: Option<String>,
         events: Vec<Record>,
+        /// The instance as it now stands, when the outcome acted on one.
+        instance: Option<Json>,
     },
     /// A binding carried an event to another command.
-    Routed { binding: String, command: String },
-    /// The loop turned.
-    Ticked { binding: String, command: String },
+    Routed {
+        binding: String,
+        command: String,
+        outcome: String,
+        instance: Option<Json>,
+    },
+    /// The loop turned for one goal.
+    Ticked {
+        binding: String,
+        command: String,
+        goal: String,
+        iterations: u64,
+        instance: Option<Json>,
+    },
+    /// The coordinator was asked, or answered, or could not.
+    Turn {
+        goal: String,
+        iterations: u64,
+        phase: TurnPhase,
+        reached: Option<bool>,
+        note: Option<String>,
+        error: Option<String>,
+        took_ms: Option<u64>,
+        /// What the turn cost, once anything is known.
+        spent: Option<Spent>,
+    },
+    /// One event of the coordinator's run, as it happened.
+    ///
+    /// `event` is a `metaharness.event/1` record passed through whole: a text, a tool call, a
+    /// usage figure. `spent` is the running total up to and including it.
+    Agent {
+        goal: String,
+        iterations: u64,
+        seq: u64,
+        spent: Spent,
+        event: Json,
+    },
+    /// The in-memory world was thrown away and rebuilt from the log.
+    Reloaded,
+}
+
+/// Where a coordinator's turn is.
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TurnPhase {
+    Asking,
+    Answered,
+    Unfinished,
+}
+
+/// Now, as the wire carries it.
+pub fn now() -> String {
+    time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_default()
+}
+
+/// Where one swarm is, in one row.
+#[derive(Debug, Serialize)]
+pub struct Summary {
+    pub slug: String,
+    pub display_name: Option<String>,
+    /// The `swarm.manager.Swarm` state, or `None` before `CreateSwarm`.
+    pub state: Option<String>,
+    pub goal: Option<GoalSummary>,
+    /// Instances held, by entity.
+    pub instances: BTreeMap<String, usize>,
+    /// Readers on the stream right now.
+    pub watchers: usize,
+    /// What every finished coordinator turn has cost, summed.
+    pub spent: Spent,
+    /// How many turns that sum covers.
+    pub turns_recorded: u64,
+}
+
+/// One recorded coordinator run.
+#[derive(Debug, Serialize)]
+pub struct TurnRecord {
+    pub name: String,
+    pub iterations: u64,
+    /// The first eight characters of the goal's identity.
+    pub goal: String,
+    pub bytes: u64,
+    /// The verdict, when the turn finished with one.
+    pub reached: Option<bool>,
+    pub note: Option<String>,
+    pub ended_at: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GoalSummary {
+    pub id: String,
+    pub state: String,
+    pub text: String,
+    pub iterations: u64,
 }
 
 /// One appended event, flattened for a reader.
@@ -102,6 +213,8 @@ pub struct Swarm {
     world: Mutex<World>,
     changes: broadcast::Sender<Change>,
     slug: String,
+    /// `data/swarms/<slug>`: the log, the work directory, the turns.
+    dir: PathBuf,
 }
 
 impl Swarm {
@@ -125,6 +238,7 @@ impl Swarm {
             world: Mutex::new(world),
             changes,
             slug: slug.to_owned(),
+            dir: root.join("swarms").join(slug),
         })
     }
 
@@ -133,9 +247,222 @@ impl Swarm {
         &self.slug
     }
 
+    /// Where this swarm's files live.
+    pub fn dir(&self) -> &Path {
+        &self.dir
+    }
+
+    /// Appends one finished turn's figures to `turns/spend.jsonl`.
+    ///
+    /// A small file beside the transcripts, so a total can be read without reading every run.
+    pub fn record_spend(
+        &self,
+        goal_id: &str,
+        iterations: u64,
+        spent: &Spent,
+        reached: bool,
+        note: Option<&str>,
+    ) {
+        let dir = self.dir.join("turns");
+        let _ = std::fs::create_dir_all(&dir);
+        let line = serde_json::json!({
+            "at": now(),
+            "goal": goal_id,
+            "iterations": iterations,
+            "reached": reached,
+            "note": note,
+            "spent": spent,
+        });
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(dir.join("spend.jsonl"))
+        {
+            use std::io::Write;
+            let _ = writeln!(file, "{line}");
+        }
+    }
+
+    /// What every finished turn has cost, summed, and how many there were.
+    pub fn spend(&self) -> (Spent, u64) {
+        let mut total = Spent::default();
+        let mut turns = 0;
+        if let Ok(text) = std::fs::read_to_string(self.dir.join("turns").join("spend.jsonl")) {
+            for line in text.lines() {
+                let Ok(row) = serde_json::from_str::<Json>(line) else {
+                    continue;
+                };
+                if let Some(spent) = row
+                    .get("spent")
+                    .and_then(|spent| serde_json::from_value::<Spent>(spent.clone()).ok())
+                {
+                    total.add(&spent);
+                    turns += 1;
+                }
+            }
+        }
+        (total, turns)
+    }
+
+    /// Every recorded turn, newest first: the file name, the turn number, the goal, the verdict.
+    pub fn turns(&self) -> Vec<TurnRecord> {
+        // Verdicts live in spend.jsonl, not in the transcript: the model's words are the run's
+        // record and the verdict is what the runtime made of them.
+        let mut verdicts: BTreeMap<(u64, String), (bool, Option<String>, String)> = BTreeMap::new();
+        if let Ok(text) = std::fs::read_to_string(self.dir.join("turns").join("spend.jsonl")) {
+            for line in text.lines() {
+                let Ok(row) = serde_json::from_str::<Json>(line) else {
+                    continue;
+                };
+                let (Some(turn), Some(goal)) = (
+                    row.get("iterations").and_then(Json::as_u64),
+                    row.get("goal").and_then(Json::as_str),
+                ) else {
+                    continue;
+                };
+                verdicts.insert(
+                    (turn, goal.chars().take(8).collect()),
+                    (
+                        row.get("reached").and_then(Json::as_bool).unwrap_or(false),
+                        row.get("note")
+                            .and_then(Json::as_str)
+                            .map(ToOwned::to_owned),
+                        row.get("at")
+                            .and_then(Json::as_str)
+                            .unwrap_or_default()
+                            .to_owned(),
+                    ),
+                );
+            }
+        }
+        let mut found = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(self.dir.join("turns")) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                let Some(stem) = name.strip_suffix(".jsonl") else {
+                    continue;
+                };
+                let Some((turn, goal)) = stem.split_once('-') else {
+                    continue;
+                };
+                let goal = goal.to_owned();
+                let Ok(iterations) = turn.parse::<u64>() else {
+                    continue;
+                };
+                let bytes = entry.metadata().map(|meta| meta.len()).unwrap_or_default();
+                let verdict = verdicts.get(&(iterations, goal.clone()));
+                found.push(TurnRecord {
+                    name,
+                    iterations,
+                    reached: verdict.map(|(reached, _, _)| *reached),
+                    note: verdict.and_then(|(_, note, _)| note.clone()),
+                    ended_at: verdict.map(|(_, _, at)| at.clone()),
+                    goal,
+                    bytes,
+                });
+            }
+        }
+        found.sort_by(|a, b| b.iterations.cmp(&a.iterations).then(b.name.cmp(&a.name)));
+        found
+    }
+
+    /// One recorded turn, every event.
+    pub fn turn(&self, name: &str) -> Result<Vec<Json>, Refused> {
+        // A name is a file in ONE directory; anything that could reach another is refused.
+        if name.contains('/') || name.contains("..") || !name.ends_with(".jsonl") {
+            return Err(Refused::View(format!("no turn `{name}`")));
+        }
+        let text = std::fs::read_to_string(self.dir.join("turns").join(name))
+            .map_err(|_| Refused::View(format!("no turn `{name}`")))?;
+        Ok(text
+            .lines()
+            .filter_map(|line| serde_json::from_str(line).ok())
+            .collect())
+    }
+
     /// A reader of everything that happens from now on.
     pub fn watch(&self) -> broadcast::Receiver<Change> {
         self.changes.subscribe()
+    }
+
+    /// Tells every watcher something happened. Nobody listening is not an error.
+    pub fn announce(&self, what: What) {
+        let _ = self.changes.send(Change { at: now(), what });
+    }
+
+    /// The most recent events in the log, oldest first.
+    pub async fn history(&self, limit: usize) -> Result<Vec<Recorded>, Refused> {
+        self.store
+            .history(limit)
+            .await
+            .map_err(|why| Refused::Store(why.to_string()))
+    }
+
+    /// How many events the log holds.
+    pub async fn count(&self) -> Result<u64, Refused> {
+        self.store
+            .count()
+            .await
+            .map_err(|why| Refused::Store(why.to_string()))
+    }
+
+    /// How many watchers are connected.
+    pub fn watchers(&self) -> usize {
+        self.changes.receiver_count()
+    }
+
+    /// A one-line account of where the swarm is: its record, its goal, and what it holds.
+    pub async fn summary(&self) -> Summary {
+        let world = self.world.lock().await;
+        let mut instances = BTreeMap::new();
+        let mut state = None;
+        let mut display_name = None;
+        let mut goal = None;
+        for instance in world.values() {
+            *instances.entry(instance.entity.clone()).or_insert(0usize) += 1;
+            match instance.entity.as_str() {
+                "swarm.manager.Swarm" => {
+                    state = Some(instance.state.clone());
+                    display_name = instance
+                        .fields
+                        .get("display_name")
+                        .and_then(|field| field.known())
+                        .and_then(Json::as_str)
+                        .map(ToOwned::to_owned);
+                }
+                "swarm.goal.Goal" => {
+                    goal = Some(GoalSummary {
+                        id: instance.id.clone(),
+                        state: instance.state.clone(),
+                        text: instance
+                            .fields
+                            .get("text")
+                            .and_then(|field| field.known())
+                            .and_then(Json::as_str)
+                            .unwrap_or_default()
+                            .to_owned(),
+                        iterations: instance
+                            .fields
+                            .get("iterations")
+                            .and_then(|field| field.known())
+                            .and_then(Json::as_u64)
+                            .unwrap_or_default(),
+                    });
+                }
+                _ => {}
+            }
+        }
+        let (spent, turns_recorded) = self.spend();
+        Summary {
+            slug: self.slug.clone(),
+            display_name,
+            state,
+            goal,
+            instances,
+            watchers: self.watchers(),
+            spent,
+            turns_recorded,
+        }
     }
 
     /// Applies one command, appends what it produced, and runs the bindings it set off.
@@ -172,10 +499,15 @@ impl Swarm {
         }
 
         let mut appended: Vec<Record> = done.events.iter().map(Record::from).collect();
-        let _ = self.changes.send(Change::Applied {
+        self.announce(What::Applied {
             command: command.to_owned(),
             outcome: done.outcome.clone(),
+            actor: actor.map(ToOwned::to_owned),
             events: appended.clone(),
+            instance: done
+                .instance
+                .as_ref()
+                .and_then(|instance| serde_json::to_value(instance).ok()),
         });
 
         // Whatever the bindings carry onward is part of the same request.
@@ -194,9 +526,14 @@ impl Swarm {
                     .await
                     .map_err(|why| Refused::Store(why.to_string()))?;
                 appended.extend(applied.events.iter().map(Record::from));
-                let _ = self.changes.send(Change::Routed {
+                self.announce(What::Routed {
                     binding: routed.binding.clone(),
                     command: routed.command.clone(),
+                    outcome: applied.outcome.clone(),
+                    instance: applied
+                        .instance
+                        .as_ref()
+                        .and_then(|instance| serde_json::to_value(instance).ok()),
                 });
             }
         }
@@ -214,6 +551,17 @@ impl Swarm {
     /// does not turn its loop, and that is a quiet non-event rather than a refusal.
     pub async fn tick(&self, occurrence: Occurrence) -> Result<bool, Refused> {
         let mut world = self.world.lock().await;
+        let goal = occurrence
+            .context
+            .get("goal_id")
+            .and_then(Json::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        let iterations = occurrence
+            .read
+            .get("iterations")
+            .and_then(Json::as_u64)
+            .unwrap_or_default();
 
         let Some(turned) = tick(self.spec.ir(), &mut world, &occurrence, &mut mint_each())
             .map_err(|why| Refused::Routing(why.to_string()))?
@@ -226,9 +574,15 @@ impl Swarm {
                 .commit(applied, None, &format!("tick:{}", mint()))
                 .await
                 .map_err(|why| Refused::Store(why.to_string()))?;
-            let _ = self.changes.send(Change::Ticked {
+            self.announce(What::Ticked {
                 binding: turned.binding.clone(),
                 command: turned.command.clone(),
+                goal,
+                iterations,
+                instance: applied
+                    .instance
+                    .as_ref()
+                    .and_then(|instance| serde_json::to_value(instance).ok()),
             });
         }
         Ok(true)
@@ -263,6 +617,7 @@ impl Swarm {
             .await
             .map_err(|why| Refused::Store(why.to_string()))?;
         *self.world.lock().await = rebuilt;
+        self.announce(What::Reloaded);
         Ok(())
     }
 }

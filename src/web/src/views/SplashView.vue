@@ -58,6 +58,12 @@ function built(swarm: Held): number {
   return Object.values(swarm.canvas).reduce((total, held) => total + held.length, 0)
 }
 
+/** The runtime's row for this swarm, polled every couple of seconds. */
+function live(swarm: Held) {
+  return store.status?.swarms.find((row) => row.slug === swarm.slug)
+}
+
+
 function displayName(swarm: Held): string {
   return (field(swarm.record, 'display_name') as string | undefined) ?? swarm.slug
 }
@@ -86,7 +92,11 @@ function displayName(swarm: Held): string {
           <template #footer>
             <span class="foot">
               <UiStateBadge :state="s.record?.state ?? 'Uncreated'" />
+              <UiStateBadge v-if="live(s)?.goal" :state="live(s)!.goal!.state" />
+              <span v-if="live(s)?.goal" class="stat">{{ live(s)!.goal!.iterations }} turns</span>
               <span class="stat">{{ built(s) }} on the canvas</span>
+              <span class="stat">{{ live(s)?.events ?? 0 }} events</span>
+              <span v-if="live(s)?.spent.cost_usd != null" class="stat mono">${{ live(s)!.spent.cost_usd!.toFixed(3) }}</span>
             </span>
           </template>
         </UiTile>
@@ -146,11 +156,17 @@ function displayName(swarm: Held): string {
   display: flex;
   align-items: center;
   gap: 0.625rem;
+  flex-wrap: wrap;
 }
 
 .stat {
   font-size: 0.8125rem;
   opacity: 0.7;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  opacity: 1;
 }
 
 .problem {

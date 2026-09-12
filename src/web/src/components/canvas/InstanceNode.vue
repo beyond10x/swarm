@@ -18,6 +18,8 @@ export interface InstanceNodeData {
   instance: Instance
   /** Terminal states, read from the specification, so an ended instance can be drawn as ended. */
   terminal?: string[]
+  /** Whether it changed a moment ago. Lit while true. */
+  changed?: boolean
 }
 
 defineOptions({ inheritAttrs: false })
@@ -53,7 +55,7 @@ const short = computed(() => instance.value.id.split('-')[0])
 </script>
 
 <template>
-  <div class="instance-node" :class="{ selected: props.selected, ended }">
+  <div class="instance-node" :class="{ selected: props.selected, ended, changed: props.data.changed }">
     <Handle id="in" type="target" :position="Position.Left" />
 
     <header class="head">
@@ -64,6 +66,7 @@ const short = computed(() => instance.value.id.split('-')[0])
     <div class="identity" :title="instance.id">
       <span class="field">{{ instance.identity_field }}</span>
       <span class="value">{{ short }}</span>
+      <span class="rev" title="revision">r{{ instance.revision }}</span>
     </div>
 
     <dl v-if="written.length" class="fields">
@@ -97,6 +100,23 @@ const short = computed(() => instance.value.id.split('-')[0])
 .instance-node.selected {
   border-color: var(--accent, #4f8cff);
   box-shadow: 0 0 0 1px var(--accent, #4f8cff);
+}
+
+/* Just changed: lit for a moment, so a revision that came in over the stream is seen. */
+.instance-node.changed {
+  border-color: var(--accent, #4f8cff);
+  animation: glow 1.8s ease-out forwards;
+}
+
+@keyframes glow {
+  from { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #4f8cff) 55%, transparent), 0 0 24px var(--accent, #4f8cff); }
+  to { box-shadow: 0 0 0 0 transparent, 0 0 0 transparent; }
+}
+
+.instance-node .rev {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 0.6875rem;
+  opacity: 0.5;
 }
 
 /* A terminal instance is done: it is still on the canvas, and it is no longer live. */

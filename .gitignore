@@ -19,6 +19,9 @@ src/core/generated/
 data/swarms/*/eventlog.sqlite3
 data/swarms/*/eventlog.sqlite3-wal
 data/swarms/*/eventlog.sqlite3-shm
+# Coordinator transcripts and the directory a swarm's agent works in.
+data/swarms/*/turns/
+data/swarms/*/work/
 data/generated/
 
 # Misc
