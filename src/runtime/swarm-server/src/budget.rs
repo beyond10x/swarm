@@ -10,7 +10,11 @@
 //! swarm `dsfsdf`, goal `77fc1fcc`, and the difference is one turn. Its `turns/spend.jsonl` holds
 //! 44 rows, iterations 35 to 78, `2026-09-12T00:55:37Z` to `01:29:33Z`, summing to $11.345391; the
 //! first 43 of them sum to $11.098908, so $11.10 is the same file read at turn 77. There is no
-//! other overrun on disk: every other swarm's record is one row.
+//! other overrun on disk: read at `2026-09-12T12:10Z`, the other five records are `main` 4 rows,
+//! `e2e-1789212621` 2, and `cost-check`, `mail-turn-1789197656` and `test` 1 each — none past turn
+//! 4 and none past $0.44. An earlier revision of this paragraph said every one of them was a single
+//! row, which was false of two and is the sort of round number worth re-counting before writing.
+//! `data/` is live, so these grow; the conclusion does not depend on them staying still.
 //!
 //! So the cap did not fire late and was not lifted. It was **never consulted**, because it did not
 //! exist in the binary that ran: this module and both of `capped`'s call sites arrived together in
@@ -37,8 +41,10 @@
 //!   SWARM_MAX_SPEND_USD   default 5.00    dollars on one goal
 //! ```
 //!
-//! Either may be set to `0` or `off` to lift it. Lifting both restores the old behaviour, which is
-//! a loop that stops when the goal is reached or when a person pauses it.
+//! Either may be set to `0`, `off` or `none` to lift it, and to nothing else: a value that is
+//! merely wrong — `-1`, `banana` — keeps the default and says so in a warning. Lifting both
+//! restores the old behaviour, which is a loop that stops when the goal is reached or when a person
+//! pauses it.
 
 use serde::Serialize;
 
@@ -68,8 +74,9 @@ impl Default for Caps {
 impl Caps {
     /// Reads the caps from the environment, falling back to the defaults.
     ///
-    /// A value that does not parse is a mistake worth refusing loudly rather than silently
-    /// treating as "no cap", so it keeps the default and says so.
+    /// A value that does not parse, or that is below zero, is a mistake worth refusing loudly
+    /// rather than silently treating as "no cap", so it keeps the default and says so. `read`
+    /// carries the reason that sentence is worth more than one line.
     pub fn configured() -> Self {
         Self {
             max_turns: read("SWARM_MAX_TURNS", TURNS),
@@ -118,7 +125,18 @@ impl std::fmt::Display for Reached {
     }
 }
 
-/// One cap read from the environment. `0` or `off` lifts it.
+/// One cap read from the environment. `0`, `off` or `none` lifts it, and nothing else does.
+///
+/// Lifting a cap is `== T::default()` and not `<= T::default()`, because the two differ on exactly
+/// the values a typo produces. `SWARM_MAX_SPEND_USD=-1` parses as `f64`, is below zero, and under
+/// the old comparison removed the spend ceiling outright — while the same typo in `SWARM_MAX_TURNS`
+/// does the documented thing, because `u64` refuses to parse it and the default is kept. One
+/// character, on one of two caps, silently uncapping the money: that asymmetry is the whole reason
+/// this reads the way it does.
+///
+/// So a negative value joins an unparseable one in the branch this module's own doc promised —
+/// refused loudly, default kept. A cap is a bound, and a reader that treats a mistake as "no bound"
+/// is answering a question nobody asked it.
 fn read<T>(name: &str, fallback: T) -> Option<T>
 where
     T: std::str::FromStr + PartialOrd + Default + Copy,
@@ -130,17 +148,20 @@ where
     if raw.eq_ignore_ascii_case("off") || raw.eq_ignore_ascii_case("none") {
         return None;
     }
+    let refuse = |why: &'static str| {
+        tracing::warn!(
+            cap = name,
+            value = raw,
+            why,
+            "unusable cap; keeping the default"
+        );
+        Some(fallback)
+    };
     match raw.parse::<T>() {
-        Ok(value) if value <= T::default() => None,
+        Ok(value) if value == T::default() => None,
+        Ok(value) if value < T::default() => refuse("a cap below zero is a mistake, not a lift"),
         Ok(value) => Some(value),
-        Err(_) => {
-            tracing::warn!(
-                cap = name,
-                value = raw,
-                "unreadable cap; keeping the default"
-            );
-            Some(fallback)
-        }
+        Err(_) => refuse("it does not parse"),
     }
 }
 

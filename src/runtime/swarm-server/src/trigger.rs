@@ -134,7 +134,13 @@ async fn ask_the_coordinator(server: &Arc<Server>, swarm: &Arc<Swarm>) {
 
         // A goal past its cap is not asked, even when a turn left it in `Pursuing`. Without this
         // the cap would stop the tick and the coordinator would still be run once a period.
-        if capped(server.caps(), swarm, id, iterations).is_some() {
+        //
+        // `iterations - 1`, and the subtraction is the whole point: `fire` has already applied the
+        // `Pursue` for the turn about to be taken, so the goal's own field counts that turn, while
+        // `fire` measured the ones BEFORE it. Two guards over one bound, disagreeing by one, stop
+        // the loop a turn early — `SWARM_MAX_TURNS=3` ran twice. Both now measure turns already
+        // taken, which is what a cap of three means.
+        if capped(server.caps(), swarm, id, iterations.saturating_sub(1)).is_some() {
             server.release_turn(swarm.slug(), id);
             continue;
         }
@@ -180,31 +186,18 @@ async fn one_turn(swarm: &Arc<Swarm>, actor: &str, id: &str, goal: &str, iterati
                 spent: Some(answer.spent),
             });
         }
-        // Not configured is the ordinary state of a swarm nobody has given a coordinator, and
-        // logging it every period would bury everything else. Watchers are told once per turn,
-        // because for them it is the one fact that explains a goal sitting in Pursuing.
+        // "Nobody has given this swarm a coordinator" stopped being a failure when resolution
+        // gained a default; what is left is a config that named one this host cannot launch, and
+        // that is loud on purpose. Watchers are told either way, because for them it is the one
+        // fact that explains a goal sitting in Pursuing.
         Err(why) => {
-            match &why {
-                coordinator::Unfinished::NoCoordinator => {
-                    tracing::debug!(swarm = %swarm.slug(), goal = %id, "waiting for a coordinator");
-                }
-                _ => {
-                    tracing::warn!(swarm = %swarm.slug(), goal = %id, error = %why,
-                                   "the turn could not be finished");
-                }
-            }
+            tracing::warn!(swarm = %swarm.slug(), goal = %id, error = %why,
+                           "the turn could not be finished");
             // A turn that failed still ran and still cost money. Recording it is what makes the
             // caps able to see a coordinator that never answers; without this, the goal stays at
             // the same turn number for ever and both caps read zero while the money goes out.
             if let Some(spent) = why.spent() {
-                swarm.record_spend_by(
-                    Some(actor),
-                    id,
-                    iterations,
-                    spent,
-                    None,
-                    Some(&why.to_string()),
-                );
+                swarm.record_spend(actor, id, iterations, spent, None, Some(&why.to_string()));
             }
             swarm.announce(What::Turn {
                 goal: id.to_owned(),
@@ -325,101 +318,212 @@ async fn eligible(server: &Server, swarm: &Arc<Swarm>) -> bool {
 #[cfg(test)]
 mod bounds {
     use super::*;
-    use crate::coordinator::Spent;
+    use crate::swarm::Swarm;
+    use ess_runtime::Spec;
+    use serde_json::json;
 
-    /// A goal with a cap of three stops at three turns — driven, not read.
+    /// A coordinator program satisfying the stdin→stdout contract, which never says `reached`.
     ///
-    /// This turns the same loop the trigger turns: ask [`capped`] first, and only if it says
-    /// nothing run a turn and record what it spent, exactly as `fire` and `ask_the_coordinator`
-    /// do. `dsfsdf` ran 78 turns against a declared 20 and the code alone cannot say whether that
-    /// is still possible, so the bound is measured here rather than reasoned about.
-    #[tokio::test]
-    async fn a_goal_with_a_cap_of_three_stops_at_three_turns() {
-        let data = tempdir::TempDir::new("swarm-cap").expect("a scratch directory");
+    /// `examples/coordinator-manual.sh` is the same contract. A goal it can never finish is the
+    /// shape that cost $11.35: the loop turns until something refuses, and the cap is the only
+    /// thing that can.
+    fn never_reached(at: &std::path::Path) -> String {
+        std::fs::write(
+            at,
+            "#!/bin/sh\ncat > /dev/null\nprintf '{\"reached\": false, \"note\": \"not yet\"}\\n'\n",
+        )
+        .expect("the coordinator is written");
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(at, std::fs::Permissions::from_mode(0o755))
+            .expect("the coordinator is runnable");
+        at.display().to_string()
+    }
+
+    /// A started swarm with one goal, served by a real [`Server`].
+    async fn a_swarm_with_a_goal(
+        data: &tempdir::TempDir,
+        slug: &str,
+    ) -> (Arc<Server>, Arc<Swarm>, String) {
         let kernel = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../../src/core")
             .canonicalize()
             .expect("the kernel specification is beside this crate");
-        let spec = Arc::new(ess_runtime::Spec::load(kernel).expect("the kernel resolves"));
-        let swarm = Arc::new(
-            crate::swarm::Swarm::open(spec, data.path(), "cap")
+        let spec = Spec::load(kernel).expect("the kernel resolves");
+        let server = Arc::new(
+            Server::start(spec, data.path().to_path_buf())
                 .await
-                .expect("a swarm opens"),
+                .expect("the server starts"),
         );
+        let swarm = server.open(slug).await.expect("a swarm opens");
 
-        // SWARM_MAX_TURNS=3, with the spend cap lifted so the turn cap is what is being measured.
-        let caps = Caps {
-            max_turns: Some(3),
-            max_spend_usd: None,
+        let issue = async |command: &str, input: Json| {
+            swarm
+                .issue(
+                    None,
+                    command,
+                    input.as_object().expect("an object").clone(),
+                    command,
+                )
+                .await
+                .expect("the command applies")
         };
-        let goal = "77fc1fcc-a89c-4fb9-b041-89ecfc75922f";
+        issue(
+            "swarm.manager.CreateSwarm",
+            json!({"display_name": slug, "tmux_session": slug, "home": "/tmp/x",
+                   "created_at": "2026-09-12T10:00:00Z"}),
+        )
+        .await;
+        let id = swarm.instances("swarm.manager.Swarm").await[0]["id"]
+            .as_str()
+            .expect("an identity")
+            .to_owned();
+        issue(
+            "swarm.manager.StartSwarm",
+            json!({"swarm_id": id, "started_at": "2026-09-12T10:01:00Z"}),
+        )
+        .await;
+        issue(
+            "swarm.goal.SetGoal",
+            json!({"swarm_id": id, "text": "2342342"}),
+        )
+        .await;
+        let goal = swarm.instances("swarm.goal.Goal").await[0]["id"]
+            .as_str()
+            .expect("an identity")
+            .to_owned();
+        (server, swarm, goal)
+    }
 
-        let mut turns = 0;
-        let mut iterations = 0;
-        // Far more passes than the cap allows: a bound that holds ends this early.
-        for _ in 0..40 {
-            if capped(caps, &swarm, goal, iterations).is_some() {
-                break;
-            }
-            iterations += 1;
-            turns += 1;
-            let mut spent = Spent::default();
-            spent.cost_usd = Some(0.25);
-            swarm.record_spend_by(
-                Some(COORDINATOR),
-                goal,
-                iterations,
-                &spent,
-                Some(false),
-                None,
-            );
+    /// One period of the real loop, exactly as [`run`] drives it: fire, then ask, then wait for
+    /// the turns `ask_the_coordinator` spawned to finish.
+    async fn one_period(server: &Arc<Server>, swarm: &Arc<Swarm>) {
+        for (binding, _) in &server.periods() {
+            fire(server, swarm, binding).await.expect("fired");
+        }
+        ask_the_coordinator(server, swarm).await;
+        while server.turns_in_flight() > 0 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+
+    /// The acceptance, driven: `SWARM_MAX_TURNS=3` stops a goal at three turns.
+    ///
+    /// Everything here is the real path. The cap is read from the environment by
+    /// `Caps::configured` inside `Server::start`, which is the only code that reads that variable
+    /// and which had no test caller at all until this one — that absence is exactly how
+    /// `SWARM_MAX_SPEND_USD=-1` stayed invisible. The refusal is the guard at [`fire`] and the one
+    /// at [`ask_the_coordinator`], reached through those functions rather than re-implemented
+    /// beside them: delete either and this goes red, which was not true of the case it replaces.
+    #[tokio::test]
+    async fn a_goal_with_a_cap_of_three_stops_at_three_turns() {
+        let _guard = crate::ENVIRONMENT.lock().await;
+        let data = tempdir::TempDir::new("swarm-cap").expect("a scratch directory");
+        let program = never_reached(&data.path().join("coordinator.sh"));
+        // SAFETY: every case in this crate that reads the environment holds `ENVIRONMENT` first.
+        unsafe {
+            std::env::set_var("SWARM_MAX_TURNS", "3");
+            std::env::set_var("SWARM_MAX_SPEND_USD", "off");
+            std::env::set_var("SWARM_COORDINATOR", &program);
         }
 
-        assert_eq!(turns, 3, "a declared cap of three turns stops at three");
+        let (server, swarm, goal) = a_swarm_with_a_goal(&data, "cap").await;
+
+        // Twelve periods against a cap of three. A bound that holds ends this after three.
+        for _ in 0..12 {
+            one_period(&server, &swarm).await;
+        }
+
+        let (_, attempts) = swarm.spend_on(&goal);
+        assert_eq!(attempts, 3, "a declared cap of three turns stops at three");
         assert_eq!(
-            swarm.spend_on(goal).1,
-            3,
-            "and three is what the record says was spent"
+            swarm.instances("swarm.goal.Goal").await[0]["fields"]["iterations"],
+            json!(3),
+            "and the goal itself went no further"
+        );
+        assert!(
+            server.capped_goals().iter().any(|c| c.goal == goal),
+            "the goal is reported capped, so a reader can see why the loop stopped"
         );
     }
 
-    /// The shape that made `dsfsdf` cost $11.35: a coordinator that never writes a verdict.
+    /// The `dsfsdf` shape: a coordinator that never writes a verdict, stopped at three attempts.
     ///
-    /// The goal's own `iterations` never advances, so a cap measured on it reads the same number
-    /// for ever. Measured on attempts it trips, which is why [`capped`] folds the larger of the
-    /// two. Driven here so the reason survives a refactor that forgets it.
+    /// The goal never leaves turn 1, because nothing it does advances its own count. A cap
+    /// measured on `iterations` would read 1 for ever while the money went out; measured on
+    /// attempts it trips. Driven through the real guard, with a program that exits non-zero.
     #[tokio::test]
-    async fn a_coordinator_that_never_answers_is_still_stopped_at_three() {
+    async fn a_coordinator_that_never_answers_is_stopped_at_three_attempts() {
+        let _guard = crate::ENVIRONMENT.lock().await;
         let data = tempdir::TempDir::new("swarm-cap-unanswered").expect("a scratch directory");
-        let kernel = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../src/core")
-            .canonicalize()
-            .expect("the kernel specification is beside this crate");
-        let spec = Arc::new(ess_runtime::Spec::load(kernel).expect("the kernel resolves"));
-        let swarm = Arc::new(
-            crate::swarm::Swarm::open(spec, data.path(), "cap-unanswered")
-                .await
-                .expect("a swarm opens"),
-        );
-
-        let caps = Caps {
-            max_turns: Some(3),
-            max_spend_usd: None,
-        };
-        let goal = "77fc1fcc-a89c-4fb9-b041-89ecfc75922f";
-
-        let mut attempts = 0;
-        for _ in 0..40 {
-            // The goal is stuck at turn 1: nothing it does advances its own count.
-            if capped(caps, &swarm, goal, 1).is_some() {
-                break;
-            }
-            attempts += 1;
-            let mut spent = Spent::default();
-            spent.cost_usd = Some(0.25);
-            swarm.record_spend_by(Some(COORDINATOR), goal, 1, &spent, None, Some("cut off"));
+        let program = data.path().join("coordinator.sh");
+        std::fs::write(&program, "#!/bin/sh\ncat > /dev/null\nexit 3\n").expect("written");
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755))
+            .expect("runnable");
+        // SAFETY: every case in this crate that reads the environment holds `ENVIRONMENT` first.
+        unsafe {
+            std::env::set_var("SWARM_MAX_TURNS", "3");
+            std::env::set_var("SWARM_MAX_SPEND_USD", "off");
+            std::env::set_var("SWARM_COORDINATOR", &program);
         }
 
+        let (server, swarm, goal) = a_swarm_with_a_goal(&data, "unanswered").await;
+        for _ in 0..12 {
+            one_period(&server, &swarm).await;
+        }
+
+        let (_, attempts) = swarm.spend_on(&goal);
         assert_eq!(attempts, 3, "attempts are what the cap is measured on");
+        assert!(
+            swarm.instances("swarm.goal.Goal").await[0]["fields"]["iterations"]
+                .as_u64()
+                .is_some_and(|turns| turns <= 1),
+            "while the goal's own count never advanced"
+        );
+    }
+
+    /// Every cap `Caps::configured` reads refuses a negative value rather than lifting itself.
+    ///
+    /// The class, not the instance. `SWARM_MAX_SPEND_USD=-1` was the one found; it lifted the cap
+    /// because `read` compared `<= T::default()`, while `SWARM_MAX_TURNS=-1` did the documented
+    /// thing only because `u64` cannot parse it. Both names are listed here, and a third cap added
+    /// to `Caps` without being added to this list is the next instance of the same defect — which
+    /// is why the assertion below reads the whole struct rather than one field.
+    #[tokio::test]
+    async fn no_cap_is_lifted_by_a_value_that_is_merely_wrong() {
+        let _guard = crate::ENVIRONMENT.lock().await;
+        for bad in ["-1", "-0.01", "nonsense"] {
+            // SAFETY: every case in this crate that reads the environment holds `ENVIRONMENT`.
+            unsafe {
+                std::env::set_var("SWARM_MAX_TURNS", bad);
+                std::env::set_var("SWARM_MAX_SPEND_USD", bad);
+            }
+            let caps = crate::budget::Caps::configured();
+            assert_eq!(
+                caps.max_turns,
+                Caps::default().max_turns,
+                "SWARM_MAX_TURNS={bad} keeps the default"
+            );
+            assert_eq!(
+                caps.max_spend_usd,
+                Caps::default().max_spend_usd,
+                "SWARM_MAX_SPEND_USD={bad} keeps the default"
+            );
+        }
+
+        // And the two values that are documented to lift a cap still lift it.
+        for lift in ["0", "off", "none"] {
+            // SAFETY: as above.
+            unsafe {
+                std::env::set_var("SWARM_MAX_TURNS", lift);
+                std::env::set_var("SWARM_MAX_SPEND_USD", lift);
+            }
+            let caps = Caps::configured();
+            assert_eq!(caps.max_turns, None, "SWARM_MAX_TURNS={lift} lifts it");
+            assert_eq!(
+                caps.max_spend_usd, None,
+                "SWARM_MAX_SPEND_USD={lift} lifts it"
+            );
+        }
     }
 }

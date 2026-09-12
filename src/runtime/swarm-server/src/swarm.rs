@@ -400,7 +400,7 @@ impl Swarm {
         &self.dir
     }
 
-    /// Appends one finished turn's figures to `turns/spend.jsonl`.
+    /// Appends one attempt's figures to `turns/spend.jsonl`, naming the agent that spent them.
     ///
     /// A small file beside the transcripts, so a total can be read without reading every run.
     /// Appends one ATTEMPT's figures, whether or not it produced a verdict.
@@ -409,32 +409,19 @@ impl Swarm {
     /// 2026-09-12 only answered turns were recorded — so a coordinator that never wrote a verdict
     /// spent without limit while both caps read zero.
     ///
-    /// Writes no agent. Prefer [`Swarm::record_spend_by`]: a row that does not say who spent it is
-    /// one no per-agent ceiling can ever be written against. One caller is left on this door —
-    /// `coordinator.rs:609`, the answered-turn path — and it is not this wave's to move.
-    pub fn record_spend(
-        &self,
-        goal_id: &str,
-        iterations: u64,
-        spent: &Spent,
-        reached: Option<bool>,
-        note: Option<&str>,
-    ) {
-        self.record_spend_by(None, goal_id, iterations, spent, reached, note)
-    }
-
-    /// The same, naming the agent that spent it.
+    /// `agent` is required, and there is deliberately no second door that omits it. There was one
+    /// for a few hours — `record_spend_by` beside an unattributed `record_spend` — and the
+    /// answered-turn path stayed on the unattributed one, so every SUCCESSFUL turn wrote
+    /// `"agent": null` while a test asserting the opposite passed over rows it had written itself.
+    /// A hand-kept rule that every caller should attribute is the defect; a signature that cannot
+    /// express the alternative is the fix.
     ///
     /// `goal` alone cannot bound anything once more than one agent works one goal: every row lands
     /// in the same bucket, so the figures say what the goal cost and can never say what an agent
-    /// cost. A ceiling can only be written against a figure that names who ran up.
-    ///
-    /// `agent` is `Option` because rows written before 2026-09-12 carry no such field and a fold
-    /// must not pretend otherwise — an unattributed row is counted in the goal's total and in
-    /// nobody's share.
-    pub fn record_spend_by(
+    /// cost. A ceiling can only be written against a figure that names who ran it up.
+    pub fn record_spend(
         &self,
-        agent: Option<&str>,
+        agent: &str,
         goal_id: &str,
         iterations: u64,
         spent: &Spent,
@@ -1542,9 +1529,9 @@ mod attribution {
             spent.cost_usd = Some(usd);
             spent
         };
-        swarm.record_spend_by(Some("coordinator"), goal, 1, &cost(1.00), Some(false), None);
-        swarm.record_spend_by(Some("worker-a"), goal, 2, &cost(2.00), Some(false), None);
-        swarm.record_spend_by(Some("worker-a"), goal, 3, &cost(4.00), Some(false), None);
+        swarm.record_spend("coordinator", goal, 1, &cost(1.00), Some(false), None);
+        swarm.record_spend("worker-a", goal, 2, &cost(2.00), Some(false), None);
+        swarm.record_spend("worker-a", goal, 3, &cost(4.00), Some(false), None);
 
         // Every row names who spent it. A row that does not is one the fold below silently loses.
         let text = std::fs::read_to_string(swarm.dir().join("turns").join("spend.jsonl"))

@@ -17,9 +17,23 @@
 //! counts are summed from the `usage` events and the cost is read from `session.ended`; neither is
 //! computed here.
 //!
-//! `SWARM_COORDINATOR` chooses: `metaharness` for the real thing, a program path for one that
-//! satisfies the older stdin→stdout contract (`examples/coordinator-manual.sh` prints a verdict and
-//! nothing else), unset for no coordinator at all — so a restart never spends money on its own.
+//! Which coordinator runs is resolved in three steps, in this order — see [`resolve`]:
+//!
+//! ```text
+//!   1. the swarm's activated `Config`   swarm.config.HarnessLaunch
+//!   2. SWARM_COORDINATOR                a program path, or the word `metaharness`
+//!   3. Launch::Metaharness              the default
+//! ```
+//!
+//! The default is `metaharness` and the reason is containment. It builds `metaharness run claude
+//! --hermetic --tool-surface native --decisions observe --max-turns 30 --max-budget-usd 1.00`;
+//! [`Launch::Program`] runs arbitrary argv with none of that, which makes
+//! `examples/coordinator-manual.sh` the right example and the wrong default.
+//!
+//! Until 2026-09-12 only step 2 existed, and the cost of that was not the missing steps but the
+//! silence: a swarm whose `Config` named a coordinator was told there was none, in the same words
+//! as a swarm that had never been given one. Those two are different facts and
+//! [`Unfinished::Unusable`] now says which.
 //!
 //! What this must never do is decide the verdict itself. A runtime that answered "reached" on a
 //! coordinator's behalf — on a timeout, on a crash, on a budget — would be reporting work nobody
@@ -173,8 +187,12 @@ pub struct Answer {
 /// Why a turn could not be finished.
 #[derive(Debug)]
 pub enum Unfinished {
-    /// No coordinator is configured. The goal waits, which is the honest state.
-    NoCoordinator,
+    /// The swarm's `Config` names a coordinator this host cannot launch.
+    ///
+    /// Distinct from having none configured, which is no longer a state: resolution ends at
+    /// [`Launch::Metaharness`]. Being quietly given the default when your config said something
+    /// else is the failure this variant exists to make loud.
+    Unusable { why: String },
     /// The program could not be started or did not finish.
     Unrunnable { why: String, spent: Spent },
     /// It ran, and what it said was not a verdict.
@@ -191,7 +209,7 @@ impl Unfinished {
     /// What the turn cost before it failed, when anything was spent.
     pub fn spent(&self) -> Option<&Spent> {
         match self {
-            Self::NoCoordinator => None,
+            Self::Unusable { .. } => None,
             Self::Unrunnable { spent, .. }
             | Self::Unreadable { spent, .. }
             | Self::Unreportable { spent, .. } => Some(spent),
@@ -202,8 +220,10 @@ impl Unfinished {
 impl std::fmt::Display for Unfinished {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NoCoordinator => f.write_str(
-                "no coordinator is configured, so nothing can say whether the goal is met",
+            Self::Unusable { why } => write!(
+                f,
+                "the swarm's config names a coordinator that cannot be launched ({why}), and the \
+                 default was NOT used in its place"
             ),
             Self::Unrunnable { why, .. } => write!(f, "the coordinator could not be run: {why}"),
             Self::Unreadable { output, why, .. } => {
@@ -241,13 +261,94 @@ impl Launch {
     }
 }
 
-/// Which coordinator a swarm runs.
+/// Where a resolved launch came from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Source {
+    /// The swarm's activated `swarm.config.Config`.
+    Config,
+    /// `SWARM_COORDINATOR`.
+    Environment,
+    /// Nothing said, so the contained default.
+    Default,
+}
+
+impl std::fmt::Display for Source {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Config => "the swarm's activated config",
+            Self::Environment => "SWARM_COORDINATOR",
+            Self::Default => "the default",
+        })
+    }
+}
+
+/// A launch, and which of the three sources it came from.
+#[derive(Clone, Debug)]
+pub struct Resolution {
+    pub launch: Launch,
+    pub source: Source,
+}
+
+impl Resolution {
+    /// One line a status reader can show: what will run, and on whose say-so.
+    pub fn describe(&self) -> String {
+        format!("{} (from {})", self.launch.describe(), self.source)
+    }
+}
+
+/// Which coordinator this swarm runs: its config, then the environment, then the default.
 ///
-/// Read from the environment for now rather than from the swarm's `Config` record. That is a
-/// shortcut and it is worth naming: `swarm.config.HarnessLaunch` already declares `binary`,
-/// `model`, `args`, `tool_surface` and `allow_program`, and this should read them once a swarm
-/// reliably has an activated config. Until then one setting keeps a demonstration honest rather
-/// than inventing a config nobody drafted.
+/// A swarm is needed because the first source is a record in its world, and that is the whole
+/// reason this is not the free function it used to be. It reads, and decides nothing else.
+///
+/// The error is the reason a config could not be used, which [`take_a_turn`] wraps in
+/// [`Unfinished::Unusable`]. It is a `String` and not an `Unfinished` because the other variants of
+/// that enum each carry a `Spent`, and resolution happens before anything has been spent.
+pub async fn resolve(swarm: &Swarm) -> Result<Resolution, String> {
+    match from_config(swarm).await {
+        Ok(Some(launch)) => {
+            return Ok(Resolution {
+                launch,
+                source: Source::Config,
+            });
+        }
+        Ok(None) => {}
+        Err(why) => return Err(why),
+    }
+    Ok(configured().map_or(
+        Resolution {
+            launch: Launch::Metaharness,
+            source: Source::Default,
+        },
+        |launch| Resolution {
+            launch,
+            source: Source::Environment,
+        },
+    ))
+}
+
+/// What resolution says when there is no swarm to ask — the environment, then the default.
+///
+/// For a status reader that reports one figure for the whole server. `state.rs:263` still calls
+/// [`configured`] and so still reports `configured: false` for a server that will in fact run
+/// metaharness; moving it here is a one-line change in a file this wave does not own.
+pub fn fallback() -> Resolution {
+    configured().map_or(
+        Resolution {
+            launch: Launch::Metaharness,
+            source: Source::Default,
+        },
+        |launch| Resolution {
+            launch,
+            source: Source::Environment,
+        },
+    )
+}
+
+/// The launch `SWARM_COORDINATOR` names, if it names one.
+///
+/// Step 2 of [`resolve`], and the only step that existed before 2026-09-12.
 pub fn configured() -> Option<Launch> {
     let raw = std::env::var("SWARM_COORDINATOR").ok()?;
     if raw.trim() == "metaharness" {
@@ -255,6 +356,54 @@ pub fn configured() -> Option<Launch> {
     }
     let parts: Vec<String> = raw.split_whitespace().map(ToOwned::to_owned).collect();
     (!parts.is_empty()).then_some(Launch::Program(parts))
+}
+
+/// The launch the swarm's activated `Config` names, if it names one.
+///
+/// `Ok(None)` is "this config says nothing about a coordinator", which falls through to the next
+/// source. `Err` is "it says something this host cannot do", which must NOT fall through — a
+/// config silently replaced by the default is the bug this whole path exists to end.
+async fn from_config(swarm: &Swarm) -> Result<Option<Launch>, String> {
+    let active = swarm
+        .instances("swarm.config.Config")
+        .await
+        .into_iter()
+        .find(|config| config.get("state").and_then(Json::as_str) == Some("Active"));
+    let Some(launch) = active
+        .as_ref()
+        .and_then(|config| config.get("fields"))
+        .and_then(|fields| fields.get("launch"))
+    else {
+        return Ok(None);
+    };
+
+    let text = |name: &str| {
+        launch
+            .get(name)
+            .and_then(Json::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+    };
+
+    // A named binary is the operator's explicit choice, and it wins over the harness kind: it is
+    // the only way a config can ask for something metaharness does not run.
+    if let Some(binary) = text("binary") {
+        let mut argv = vec![binary];
+        if let Some(args) = launch.get("args").and_then(Json::as_array) {
+            argv.extend(args.iter().filter_map(Json::as_str).map(ToOwned::to_owned));
+        }
+        return Ok(Some(Launch::Program(argv)));
+    }
+
+    match text("harness").as_deref() {
+        // `metaharness run claude` is what this host launches, and Claude is what it launches.
+        Some("Claude") => Ok(Some(Launch::Metaharness)),
+        Some(other) => Err(format!(
+            "harness {other} has no launcher here; only Claude does, through metaharness"
+        )),
+        None => Ok(None),
+    }
 }
 
 /// The settings the `swarm` CLI reads, written into the work directory before every turn.
@@ -447,7 +596,12 @@ pub async fn take_a_turn(
     goal: &str,
     iterations: u64,
 ) -> Result<Answer, Unfinished> {
-    let launch = configured().ok_or(Unfinished::NoCoordinator)?;
+    let resolved = resolve(swarm)
+        .await
+        .map_err(|why| Unfinished::Unusable { why })?;
+    tracing::info!(swarm = %swarm.slug(), goal = %goal_id, source = %resolved.source,
+                   launch = %resolved.launch.describe(), "the coordinator was resolved");
+    let launch = resolved.launch;
     let mut spent = Spent::default();
 
     let work = swarm.dir().join("work");
@@ -607,7 +761,10 @@ pub async fn take_a_turn(
                        cost = ?spent.cost_usd, "the coordinator reported");
     }
 
+    // The answered turn is recorded by the same attributed door as the unfinished one
+    // (`trigger.rs`). It was not, for a few hours, and every successful turn wrote `"agent": null`.
     swarm.record_spend(
+        actor,
         goal_id,
         iterations,
         &spent,
@@ -677,5 +834,196 @@ mod tests {
         assert_eq!(spent.cost_usd, None);
         spent.absorb(&serde_json::json!({"event": "session.ended", "total_cost_usd": 0.145, "duration_ms": 3000}));
         assert_eq!(spent.cost_usd, Some(0.145));
+    }
+}
+
+#[cfg(test)]
+mod resolution {
+    use super::*;
+    use ess_runtime::Spec;
+
+    async fn a_swarm(data: &tempdir::TempDir, slug: &str) -> (Arc<Swarm>, String) {
+        let kernel = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../src/core")
+            .canonicalize()
+            .expect("the kernel specification is beside this crate");
+        let spec = Arc::new(Spec::load(kernel).expect("the kernel resolves"));
+        let swarm = Arc::new(
+            Swarm::open(spec, data.path(), slug)
+                .await
+                .expect("a swarm opens"),
+        );
+        issue(
+            &swarm,
+            "swarm.manager.CreateSwarm",
+            json!({"display_name": slug, "tmux_session": slug, "home": "/tmp/x",
+                   "created_at": "2026-09-12T10:00:00Z"}),
+        )
+        .await;
+        let swarm_id = swarm.instances("swarm.manager.Swarm").await[0]["id"]
+            .as_str()
+            .expect("an identity")
+            .to_owned();
+        (swarm, swarm_id)
+    }
+
+    async fn issue(swarm: &Arc<Swarm>, command: &str, input: Json) {
+        swarm
+            .issue(
+                None,
+                command,
+                input.as_object().expect("an object").clone(),
+                command,
+            )
+            .await
+            .expect("the command applies");
+    }
+
+    /// Drafts a config with this launch and activates it.
+    async fn activate(swarm: &Arc<Swarm>, swarm_id: &str, launch: Json) {
+        issue(
+            swarm,
+            "swarm.config.DraftConfig",
+            json!({"swarm_id": swarm_id, "paths": {}, "launch": launch,
+                   "schedules": {}, "budgets": {}, "board": {}}),
+        )
+        .await;
+        let config_id = swarm.instances("swarm.config.Config").await[0]["id"]
+            .as_str()
+            .expect("an identity")
+            .to_owned();
+        issue(
+            swarm,
+            "swarm.config.ActivateConfig",
+            json!({"config_id": config_id, "swarm_id": swarm_id}),
+        )
+        .await;
+    }
+
+    /// The operator's bug: a swarm whose config names a coordinator was told there was none.
+    ///
+    /// The config wins over the environment, which is set here to something else entirely so that
+    /// a resolution which ignored the config would be visible rather than coincidentally right.
+    #[tokio::test]
+    async fn the_swarms_config_names_the_coordinator_that_runs() {
+        let _guard = crate::ENVIRONMENT.lock().await;
+        // SAFETY: every case in this crate that reads the environment holds `ENVIRONMENT` first.
+        unsafe { std::env::set_var("SWARM_COORDINATOR", "/not/this/one") };
+        let data = tempdir::TempDir::new("swarm-resolve-config").expect("a scratch directory");
+        let (swarm, swarm_id) = a_swarm(&data, "from-config").await;
+        activate(
+            &swarm,
+            &swarm_id,
+            json!({"harness": "Claude", "binary": "/usr/local/bin/answerer",
+                   "model": "", "args": ["--verdict"], "skip_permissions": false,
+                   "tool_surface": "Native", "allow_program": []}),
+        )
+        .await;
+
+        let resolved = resolve(&swarm).await.expect("the config resolves");
+        assert_eq!(resolved.source, Source::Config);
+        assert!(
+            matches!(&resolved.launch, Launch::Program(argv)
+                     if argv == &["/usr/local/bin/answerer", "--verdict"]),
+            "the config's own launch line, args and all: {:?}",
+            resolved.launch
+        );
+    }
+
+    /// A config that names Claude asks for the contained launcher, not for a program.
+    #[tokio::test]
+    async fn a_config_naming_claude_resolves_to_metaharness() {
+        let _guard = crate::ENVIRONMENT.lock().await;
+        // SAFETY: as above.
+        unsafe { std::env::remove_var("SWARM_COORDINATOR") };
+        let data = tempdir::TempDir::new("swarm-resolve-claude").expect("a scratch directory");
+        let (swarm, swarm_id) = a_swarm(&data, "claude").await;
+        activate(
+            &swarm,
+            &swarm_id,
+            json!({"harness": "Claude", "binary": "", "model": "", "args": [],
+                   "skip_permissions": false, "tool_surface": "Native", "allow_program": []}),
+        )
+        .await;
+
+        let resolved = resolve(&swarm).await.expect("the config resolves");
+        assert_eq!(resolved.source, Source::Config);
+        assert!(matches!(resolved.launch, Launch::Metaharness));
+    }
+
+    /// With nothing configured anywhere, the answer is metaharness — and it says so.
+    ///
+    /// Not `Program`: `Launch::Program` runs arbitrary argv with none of `--hermetic`,
+    /// `--tool-surface native`, `--decisions observe`, `--max-turns 30` or `--max-budget-usd 1.00`.
+    /// The default is the contained one, which is the whole reason there is a default at all.
+    #[tokio::test]
+    async fn with_no_config_and_no_variable_the_default_is_metaharness_and_says_so() {
+        let _guard = crate::ENVIRONMENT.lock().await;
+        // SAFETY: as above.
+        unsafe { std::env::remove_var("SWARM_COORDINATOR") };
+        let data = tempdir::TempDir::new("swarm-resolve-default").expect("a scratch directory");
+        let (swarm, _) = a_swarm(&data, "default").await;
+
+        let resolved = resolve(&swarm).await.expect("the default always resolves");
+        assert_eq!(resolved.source, Source::Default);
+        assert!(matches!(resolved.launch, Launch::Metaharness));
+        assert!(
+            resolved.describe().contains("from the default"),
+            "a reader is told which of the three sources answered: {}",
+            resolved.describe()
+        );
+        // And the same, for a status reader that has no swarm to ask.
+        assert_eq!(fallback().source, Source::Default);
+    }
+
+    /// `SWARM_COORDINATOR` still answers when no config does, and says that it did.
+    #[tokio::test]
+    async fn the_environment_answers_when_no_config_does() {
+        let _guard = crate::ENVIRONMENT.lock().await;
+        // SAFETY: as above.
+        unsafe { std::env::set_var("SWARM_COORDINATOR", "/usr/local/bin/from-the-environment") };
+        let data = tempdir::TempDir::new("swarm-resolve-env").expect("a scratch directory");
+        let (swarm, _) = a_swarm(&data, "from-env").await;
+
+        let resolved = resolve(&swarm).await.expect("the environment resolves");
+        assert_eq!(resolved.source, Source::Environment);
+        assert!(matches!(&resolved.launch, Launch::Program(argv)
+                         if argv == &["/usr/local/bin/from-the-environment"]));
+    }
+
+    /// The distinction the old refusal conflated: your config named one, and it was ignored.
+    ///
+    /// A config naming Codex must not be quietly given metaharness-with-Claude. Falling through to
+    /// the default here would run a different model than the operator asked for and report success,
+    /// which is worse than refusing.
+    #[tokio::test]
+    async fn a_config_this_host_cannot_launch_is_refused_rather_than_replaced() {
+        let _guard = crate::ENVIRONMENT.lock().await;
+        // SAFETY: as above.
+        unsafe { std::env::remove_var("SWARM_COORDINATOR") };
+        let data = tempdir::TempDir::new("swarm-resolve-codex").expect("a scratch directory");
+        let (swarm, swarm_id) = a_swarm(&data, "codex").await;
+        activate(
+            &swarm,
+            &swarm_id,
+            json!({"harness": "Codex", "binary": "", "model": "", "args": [],
+                   "skip_permissions": false, "tool_surface": "Native", "allow_program": []}),
+        )
+        .await;
+
+        let why = match resolve(&swarm).await {
+            Err(why) => why,
+            Ok(other) => panic!(
+                "a config this host cannot launch is refused, not replaced: {:?} from {}",
+                other.launch, other.source
+            ),
+        };
+        assert!(why.contains("Codex"), "and the refusal names it: {why}");
+        assert!(
+            Unfinished::Unusable { why }
+                .to_string()
+                .contains("the default was NOT used"),
+            "the two cases the old refusal conflated are told apart in words"
+        );
     }
 }
