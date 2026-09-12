@@ -17,7 +17,7 @@ scope:
   path: src/runtime/swarm-server/src/state.rs
 - confidence: inferred
   path: src/runtime/swarm-server/tests/open_is_one_swarm_under_contention.rs
-revision: 3
+revision: 4
 ---
 ## What
 
@@ -58,3 +58,19 @@ Any change to how a swarm is opened once its slug is accepted.
 - **Files:** `src/runtime/swarm-server/tests/open_is_one_swarm_under_contention.rs` — inferred, the adversary's two cases live there and are red today
 - **Confidence:** high — every path was opened and every claim measured by a test that ran
 - **Would collide with:** any unit touching `state.rs`, `http.rs` or `ess-runtime`'s `store.rs`
+
+## Notes
+
+The two cases that measured this are kept, verbatim, at
+`.engineering/waves/2026-09-12b-evidence/slug-validation-cases.rs`. Unit B lifted them out of its
+package suite rather than weakening them: they cannot stay red inside `swarm-server`'s default
+suite without `#[ignore]`, and the only alternative — a `[[test]] test = false` target in
+`Cargo.toml` — was not a file that unit owned. No assertion in them was relaxed. They need the
+`kernel()` and `server()` helpers from `tests/open_is_one_swarm_under_contention.rs` and
+`use std::sync::Arc;` to compile.
+
+Both were red at `8cabdd7`:
+
+- `open("../escaped")` returned `Ok(../escaped)` and created `<root>/escaped`, outside `<root>/swarms`.
+- `alias` and `./alias` gave two handles over one directory; after `CreateSwarm` on the first, the
+  second saw 0 instances against 1.
