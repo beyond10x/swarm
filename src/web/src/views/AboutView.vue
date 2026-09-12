@@ -316,9 +316,29 @@ const specRows = computed(() => [
           dense
         />
         <p>
-          Bindings in force right now:
-          <code v-for="entry in status?.periodic ?? []" :key="entry.binding">{{ entry.binding }}</code>
-          <span v-if="!status?.periodic.length">—</span>
+          Both are in use. <code>swarm.agent.AssignmentPosted</code> is named by two bindings, so
+          one assignment writes a record and notes itself on the agent. A broadcast is the other:
+          the runtime reads the open mailboxes and posts one message to each, the copies sharing a
+          single id — which is what makes "who has not acked" a question with an answer.
+        </p>
+        <h3>Mailboxes</h3>
+        <p>
+          An agent is written to at an address that is a pair, <code>agent/mailbox</code>, and
+          <code>main</code> is the one the runtime opens for a coordinator when a swarm starts. Any
+          other, an agent opens for itself.
+        </p>
+        <p>
+          A message is <code>Unread</code>, then <code>Read</code>, then <code>Acked</code>, and
+          those are lifecycle states rather than timestamps a query filters on — an unwritten
+          <code>Optional</code> field reads as unknown to a three-valued evaluator, so an inbox
+          built on <code>read_at == null</code> would quietly hide every message in it.
+        </p>
+        <p>
+          A post wakes nobody. Mail is put in front of an agent at the start of its next turn, which
+          at the declared cadence is never more than one period away, and an interrupt would be a
+          second way into a loop that has one. Nothing marks a message read on the recipient's
+          behalf, and only the recipient may acknowledge one: an ack that the reader did not perform
+          is the single lie a mailbox exists to prevent.
         </p>
       </section>
     </div>
@@ -380,6 +400,12 @@ h1 {
 .block {
   display: grid;
   gap: var(--space-3);
+}
+
+h3 {
+  margin: var(--space-2) 0 0;
+  font-size: 14px;
+  color: var(--color-text);
 }
 
 h2 {
