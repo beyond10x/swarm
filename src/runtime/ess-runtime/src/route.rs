@@ -125,7 +125,7 @@ pub fn pump(
 
             let input = map_from_event(ir, &name.to_string(), binding, &event)?;
             let routed = invoke(ir, world, &name.to_string(), binding, input, ids);
-            enqueue(&routed, binding, &mut queue);
+            enqueue(&routed, binding, &event, ir, &mut queue);
             caused.push(routed);
         }
     }
@@ -197,17 +197,22 @@ fn invoke(
 }
 
 /// Queues what a caused command emitted, subject to the binding's delivery and failure policy.
-fn enqueue(routed: &Routed, binding: &ResolvedBinding, queue: &mut VecDeque<Emitted>) {
+///
+/// `cause` is the event the binding reacted to, and an escalation carries what it can from it.
+fn enqueue(
+    routed: &Routed,
+    binding: &ResolvedBinding,
+    cause: &Emitted,
+    ir: &EssIr,
+    queue: &mut VecDeque<Emitted>,
+) {
     match &routed.result {
         Ok(applied) => queue.extend(applied.events.iter().cloned()),
         Err(_) => match binding.on_failure() {
             // The declared escalation event is a fact, published like any other, so whatever reacts
             // to it gets its turn. This is how a lost delivery becomes visible instead of silent.
             ess_compiler::ir::ResolvedFailure::Escalate { emits } => {
-                queue.push_back(Emitted {
-                    name: emits.name().to_string(),
-                    fields: Map::new(),
-                });
+                queue.push_back(escalation_for(ir, emits.name().to_string(), cause));
             }
             // Retrying is the caller's business: this pump has no clock and no attempt budget, and
             // a tight in-process retry loop would be a busy-wait rather than a policy.
@@ -271,6 +276,33 @@ fn map_from_event(
         input.insert(mapping.target.clone(), value);
     }
     Ok(input)
+}
+
+/// The escalation event, carrying every field it declares that the causing event also carries.
+///
+/// Until 2026-09-12 this was emitted with no fields at all, which made it useless twice over: a
+/// binding on it failed `Unmappable` on the first input it mapped, and a reader saw that something
+/// had been lost without being told what. `swarm.agent.AssignmentUndelivered` declares `agent_id`
+/// and the event that caused it carries one, so copying by name is the whole of the rule.
+///
+/// A field the escalation declares and the cause does not carry is left ABSENT rather than filled
+/// with a default. An escalation is a report that something did not happen, and inventing a value
+/// for it would make the report say more than the runtime knows.
+pub fn escalation_for(ir: &EssIr, name: String, cause: &Emitted) -> Emitted {
+    let declared = ir
+        .events()
+        .iter()
+        .find(|(event, _)| event.to_string() == name)
+        .map(|(_, event)| event);
+
+    let mut fields = Map::new();
+    for field in declared.into_iter().flat_map(|event| event.fields.iter()) {
+        let named = field.name.as_str();
+        if let Some(value) = cause.fields.get(named) {
+            fields.insert(named.to_owned(), value.clone());
+        }
+    }
+    Emitted { name, fields }
 }
 
 /// Whether the command declares this input as `Optional`.

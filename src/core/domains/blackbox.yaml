@@ -388,6 +388,19 @@ errors:
   # Raised by the implementation of `Connect` when the output port's schema, the input port's
   # schema and the given `schema_id` are not one schema. Not an outcome: the two ports live on two
   # other rows, and a `when:` reads input fields only (ESS-COMMAND-003).
+  # Raised by the implementation of `DraftSchema`: a `when` reads the input and compares a field to
+  # a literal, never one input field to another (ESS-TYPE-002), so "the id agrees with the name and
+  # version" is a check and not a guard.
+  - name: swarm.blackbox.SchemaIdMismatch
+    summary: The schema id is not `<name>/<version>`, so nothing was drafted.
+    fields:
+      - name: schema_id
+        type: String
+      - name: name
+        type: String
+      - name: version
+        type: Integer
+
   - name: swarm.blackbox.SchemaMismatch
     summary: The output and the input do not carry the same schema, so nothing was connected.
     fields:
@@ -401,11 +414,24 @@ commands:
   # The implementation assigns `schema_id` from name and version, parses `json_schema` as JSON
   # Schema and refuses text that is not, and refuses a (swarm, name, version) already drafted —
   # all lookups, none an outcome (ESS-COMMAND-003).
+  # The identity is SUPPLIED, not minted, and that is the whole of this command's subtlety.
+  #
+  # `schema_id` is the readable pair `<name>/<version>` — `swarm.mailbox.MessagePosted/1` — because
+  # that is the string a port cites and the implementation resolves against `PublishedSchemas`. It
+  # was `{generated: true}` until 2026-09-12, which made the runtime mint a Uuid for it: a port
+  # citing `MessagePosted/1` then matched no schema that could ever exist, and `Connect` could never
+  # succeed for a schema this command drafted.
+  #
+  # That it agrees with `name` and `version` is the implementation's to check, not a guard's: a
+  # `when` reads the input and can compare a field to a literal, never one field to another
+  # (ESS-TYPE-002). The refusal is declared as `SchemaIdMismatch`.
   - name: swarm.blackbox.DraftSchema
     naming:
       wire: draft-schema
       display: Draft a schema
     input:
+      - name: schema_id
+        type: String
       - name: swarm_id
         type: Uuid
       - name: name
@@ -432,8 +458,7 @@ commands:
             json_schema: input.json_schema
             owner_agent: input.owner_agent
             summary: input.summary
-            schema_id:
-              generated: true
+            schema_id: input.schema_id
         sets:
           swarm_id: input.swarm_id
           name: input.name

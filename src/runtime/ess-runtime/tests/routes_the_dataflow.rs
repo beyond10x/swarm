@@ -306,3 +306,44 @@ fn one_event_reaches_every_binding_that_names_it() {
     assert_eq!(assignments.len(), 1, "one assignment record");
     assert_eq!(assignments[0].state, "Assigned");
 }
+
+/// An escalation says what was lost, not merely that something was.
+///
+/// `on_failure: escalate` publishes the declared event so a lost delivery is visible rather than
+/// silent. Until 2026-09-12 it was published with no fields at all, which made it useless twice:
+/// a binding on it failed `Unmappable` on the first input it mapped, and a reader was told
+/// something had gone wrong without being told what.
+#[test]
+fn an_escalation_carries_what_the_causing_event_carried() {
+    let spec = Spec::load(kernel()).expect("the kernel resolves");
+
+    // `swarm.agent.AssignmentUndelivered` declares `agent_id`, and the event that would cause it
+    // carries one. Nothing else in the kernel declares a field it could not have.
+    let (_, declared) = spec
+        .ir()
+        .events()
+        .iter()
+        .find(|(name, _)| name.to_string() == "swarm.agent.AssignmentUndelivered")
+        .expect("the escalation event is declared");
+    let fields: Vec<&str> = declared
+        .fields
+        .iter()
+        .map(|field| field.name.as_str())
+        .collect();
+    assert_eq!(fields, vec!["agent_id"]);
+
+    // The pump's own rule, exercised through a routing failure is not reachable from the kernel's
+    // own bindings without breaking one, so the copying rule is checked directly.
+    let cause = ess_runtime::apply::Emitted {
+        name: "swarm.agent.AssignmentPosted".to_owned(),
+        fields: obj(json!({ "agent_id": "reviewer", "outcome": "green", "signoff": "Timo" })),
+    };
+    let carried = ess_runtime::route::escalation_for(
+        spec.ir(),
+        "swarm.agent.AssignmentUndelivered".to_owned(),
+        &cause,
+    );
+    assert_eq!(carried.fields.get("agent_id"), Some(&json!("reviewer")));
+    // Only what the escalation declares: the cause carried three fields and this declares one.
+    assert_eq!(carried.fields.len(), 1);
+}
