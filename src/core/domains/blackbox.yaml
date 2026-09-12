@@ -221,6 +221,20 @@ entities:
       # referent's type depends on the kind, and ess/1 has one target per relation.
       - name: ref_id
         type: Optional<String>
+      # What a Ui box is drawn with: a component's props, by name, as `components/ui/index.ts`
+      # documents them. Timo: "we also will have a bunch of pre-build ui-components
+      # (component-lib)" — a box that names one has to carry what to pass it, and `ref_id` already
+      # carries WHICH component (see above), not WITH WHAT.
+      #
+      # Map<String, String> and not a struct because the component library's 21 components take 21
+      # different prop shapes and ess/1 has no union over them; a value that is not a scalar (a
+      # table's `columns`) is written as JSON text and decoded by the reader. Optional because a
+      # Service or Store box has no props at all, and "nothing has written this" is the true answer
+      # for one, not an empty map that claims a Ui box with no props.
+      #
+      # UNMAPPED: no command changes props after `DraftBox`; model.ts has no counterpart at all.
+      - name: props
+        type: Optional<Map<String, String>>
       # When kind is Agent: the agent this box stands for, by slug (model.ts `Agent.agentId`).
       # UNMAPPED: model.ts `Box` has `flowId` for a Flow and nothing for an Agent; this field is
       # the symmetric counterpart, added so an Agent box is not a box with no referent.
@@ -546,6 +560,11 @@ commands:
         type: List<swarm.blackbox.Port>
       - name: ref_id
         type: Optional<String>
+      # What a Ui box is drawn with; see `Box.props`. Given with `ref_id` when the kind is Ui, and
+      # not at all otherwise — a `when:` compares one input to a literal and cannot pair two, so
+      # like the `ref_id` rule above this is prose the implementation checks.
+      - name: props
+        type: Optional<Map<String, String>>
       - name: agent_id
         type: Optional<String>
       - name: position
@@ -566,6 +585,7 @@ commands:
             inputs: input.inputs
             outputs: input.outputs
             ref_id: input.ref_id
+            props: input.props
             agent_id: input.agent_id
             position: input.position
             box_id:
@@ -579,6 +599,7 @@ commands:
           inputs: input.inputs
           outputs: input.outputs
           ref_id: input.ref_id
+          props: input.props
           agent_id: input.agent_id
           position: input.position
         summary: The box is on the canvas in Draft, at version 1, with its ports as given.
@@ -926,6 +947,8 @@ events:
         type: List<swarm.blackbox.Port>
       - name: ref_id
         type: Optional<String>
+      - name: props
+        type: Optional<Map<String, String>>
       - name: agent_id
         type: Optional<String>
       - name: position
@@ -1079,6 +1102,11 @@ views:
         type: List<swarm.blackbox.Port>
       - name: ref_id
         type: Optional<String>
+      # Listed because this view IS the canvas, and a canvas that cannot see a Ui box's props
+      # cannot draw it — the reader would have to fetch the box again to render what it already
+      # asked for.
+      - name: props
+        type: Optional<Map<String, String>>
       - name: agent_id
         type: Optional<String>
       - name: position

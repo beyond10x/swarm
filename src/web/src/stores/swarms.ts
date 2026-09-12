@@ -110,6 +110,47 @@ export const useSwarmStore = defineStore('swarms', () => {
     return held.value.find((swarm) => swarm.slug === slug)
   }
 
+  /**
+   * Rows of the views something on the canvas is drawn from, by slug then view name.
+   *
+   * A `Box{kind: Ui}` may name a view to be fed from, and a view is computed by the server against
+   * its own world — it is not on the canvas payload and cannot be derived from it. Only views
+   * somebody asked for are read: a swarm declares many and a panel watches one.
+   */
+  const views = ref<Record<string, Record<string, Record<string, unknown>[]>>>({})
+  /** Which views are being drawn, per swarm, so a change re-reads exactly those. */
+  const viewed = new Map<string, Set<string>>()
+
+  /** Asks for one view's rows, now and after every change. Idempotent. */
+  function followView(slug: string, name: string): void {
+    let wanted = viewed.get(slug)
+    if (!wanted) viewed.set(slug, (wanted = new Set()))
+    if (wanted.has(name)) return
+    wanted.add(name)
+    void readView(slug, name)
+  }
+
+  /** One view's rows as last read, empty until the first read lands. */
+  function viewRows(slug: string, name: string): Record<string, unknown>[] {
+    return views.value[slug]?.[name] ?? []
+  }
+
+  async function readView(slug: string, name: string): Promise<void> {
+    try {
+      const rows = await runtime.view(slug, name)
+      const held = (views.value[slug] ??= {})
+      held[name] = rows
+    } catch {
+      // A view the server refuses is a view the panel keeps its last rows for: a box may name one
+      // that does not exist, and blanking the panel would hide that it ever had rows.
+    }
+  }
+
+  /** Re-reads every view being drawn for one swarm. */
+  function refreshViews(slug: string): void {
+    for (const name of viewed.get(slug) ?? []) void readView(slug, name)
+  }
+
   /** Reads one swarm's canvas from the server, replacing whatever was held. */
   async function refresh(slug: string): Promise<void> {
     const canvas = await runtime.canvas(slug)
@@ -121,6 +162,9 @@ export const useSwarmStore = defineStore('swarms', () => {
     } else {
       held.value.push({ slug, canvas, record })
     }
+    // Whatever is drawn from a view is redrawn with the canvas: one change may have written rows
+    // the canvas payload says nothing about.
+    refreshViews(slug)
   }
 
   function liveOf(slug: string): Live {
@@ -430,6 +474,7 @@ export const useSwarmStore = defineStore('swarms', () => {
     held, loaded, visible, problem, shape, live, status, statusAt, clock, reachable, nextTickIn,
     load, refresh, getSwarm, goalOf, canAct, createSwarm, follow, unfollow, wake, pollStatus,
     recentlyChanged, lastTurn, loadTurn, liveTurn, capOn,
+    views, followView, viewRows,
     startSwarm, pauseSwarm, resumeSwarm, stopSwarm, deleteSwarm,
   }
 })

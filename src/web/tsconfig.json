@@ -14,5 +14,9 @@
     "paths": { "@/*": ["src/*"] },
     "types": ["vite/client"]
   },
-  "include": ["src/**/*.ts", "src/**/*.vue", "src/**/*.d.ts"]
+  "include": ["src/**/*.ts", "src/**/*.vue", "src/**/*.d.ts"],
+  // Tests run on node's own runner, which type-strips rather than compiles: they import with a
+  // `.ts` specifier and use `node:` modules, neither of which belongs to the app's build. Adding
+  // @types/node to typecheck them would put node's globals in reach of browser code.
+  "exclude": ["src/**/*.test.ts"]
 }
