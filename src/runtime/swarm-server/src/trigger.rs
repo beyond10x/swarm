@@ -19,7 +19,7 @@ use serde_json::{Map, Value as Json};
 
 use ess_runtime::route::Occurrence;
 
-use crate::budget::Reached;
+use crate::budget::{Caps, Reached};
 use crate::coordinator;
 use crate::state::{CappedGoal, Server};
 use crate::swarm::{Swarm, TurnPhase, What};
@@ -134,7 +134,7 @@ async fn ask_the_coordinator(server: &Arc<Server>, swarm: &Arc<Swarm>) {
 
         // A goal past its cap is not asked, even when a turn left it in `Pursuing`. Without this
         // the cap would stop the tick and the coordinator would still be run once a period.
-        if capped(server, swarm, id, iterations).is_some() {
+        if capped(server.caps(), swarm, id, iterations).is_some() {
             server.release_turn(swarm.slug(), id);
             continue;
         }
@@ -197,7 +197,14 @@ async fn one_turn(swarm: &Arc<Swarm>, actor: &str, id: &str, goal: &str, iterati
             // caps able to see a coordinator that never answers; without this, the goal stays at
             // the same turn number for ever and both caps read zero while the money goes out.
             if let Some(spent) = why.spent() {
-                swarm.record_spend(id, iterations, spent, None, Some(&why.to_string()));
+                swarm.record_spend_by(
+                    Some(actor),
+                    id,
+                    iterations,
+                    spent,
+                    None,
+                    Some(&why.to_string()),
+                );
             }
             swarm.announce(What::Turn {
                 goal: id.to_owned(),
@@ -236,7 +243,7 @@ async fn fire(server: &Server, swarm: &Arc<Swarm>, binding: &str) -> Result<(), 
 
         // A goal past its cap is ineligible, the same way a paused swarm's goals are. Nothing in
         // the model changes; the loop stops asking, and raising the cap resumes it here.
-        let within_budget = match capped(server, swarm, goal, so_far) {
+        let within_budget = match capped(server.caps(), swarm, goal, so_far) {
             None => true,
             Some(reached) => {
                 let (spent, _) = swarm.spend_on(goal);
@@ -287,11 +294,9 @@ async fn fire(server: &Server, swarm: &Arc<Swarm>, binding: &str) -> Result<(), 
 ///
 /// The larger of the two is used, because a swarm whose records were archived should not have its
 /// cap reset by the absence.
-fn capped(server: &Server, swarm: &Arc<Swarm>, goal_id: &str, iterations: u64) -> Option<Reached> {
+fn capped(caps: Caps, swarm: &Arc<Swarm>, goal_id: &str, iterations: u64) -> Option<Reached> {
     let (spent, attempts) = swarm.spend_on(goal_id);
-    server
-        .caps()
-        .exceeded(iterations.max(attempts), spent.cost_usd)
+    caps.exceeded(iterations.max(attempts), spent.cost_usd)
 }
 
 /// Whether this swarm's loop should turn at all.
@@ -315,4 +320,106 @@ async fn eligible(server: &Server, swarm: &Arc<Swarm>) -> bool {
     // A swarm with no Swarm record has not been created yet — its log is an empty directory, and a
     // loop turning in it would be acting on a swarm nobody made.
     running
+}
+
+#[cfg(test)]
+mod bounds {
+    use super::*;
+    use crate::coordinator::Spent;
+
+    /// A goal with a cap of three stops at three turns — driven, not read.
+    ///
+    /// This turns the same loop the trigger turns: ask [`capped`] first, and only if it says
+    /// nothing run a turn and record what it spent, exactly as `fire` and `ask_the_coordinator`
+    /// do. `dsfsdf` ran 78 turns against a declared 20 and the code alone cannot say whether that
+    /// is still possible, so the bound is measured here rather than reasoned about.
+    #[tokio::test]
+    async fn a_goal_with_a_cap_of_three_stops_at_three_turns() {
+        let data = tempdir::TempDir::new("swarm-cap").expect("a scratch directory");
+        let kernel = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../src/core")
+            .canonicalize()
+            .expect("the kernel specification is beside this crate");
+        let spec = Arc::new(ess_runtime::Spec::load(kernel).expect("the kernel resolves"));
+        let swarm = Arc::new(
+            crate::swarm::Swarm::open(spec, data.path(), "cap")
+                .await
+                .expect("a swarm opens"),
+        );
+
+        // SWARM_MAX_TURNS=3, with the spend cap lifted so the turn cap is what is being measured.
+        let caps = Caps {
+            max_turns: Some(3),
+            max_spend_usd: None,
+        };
+        let goal = "77fc1fcc-a89c-4fb9-b041-89ecfc75922f";
+
+        let mut turns = 0;
+        let mut iterations = 0;
+        // Far more passes than the cap allows: a bound that holds ends this early.
+        for _ in 0..40 {
+            if capped(caps, &swarm, goal, iterations).is_some() {
+                break;
+            }
+            iterations += 1;
+            turns += 1;
+            let mut spent = Spent::default();
+            spent.cost_usd = Some(0.25);
+            swarm.record_spend_by(
+                Some(COORDINATOR),
+                goal,
+                iterations,
+                &spent,
+                Some(false),
+                None,
+            );
+        }
+
+        assert_eq!(turns, 3, "a declared cap of three turns stops at three");
+        assert_eq!(
+            swarm.spend_on(goal).1,
+            3,
+            "and three is what the record says was spent"
+        );
+    }
+
+    /// The shape that made `dsfsdf` cost $11.35: a coordinator that never writes a verdict.
+    ///
+    /// The goal's own `iterations` never advances, so a cap measured on it reads the same number
+    /// for ever. Measured on attempts it trips, which is why [`capped`] folds the larger of the
+    /// two. Driven here so the reason survives a refactor that forgets it.
+    #[tokio::test]
+    async fn a_coordinator_that_never_answers_is_still_stopped_at_three() {
+        let data = tempdir::TempDir::new("swarm-cap-unanswered").expect("a scratch directory");
+        let kernel = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../src/core")
+            .canonicalize()
+            .expect("the kernel specification is beside this crate");
+        let spec = Arc::new(ess_runtime::Spec::load(kernel).expect("the kernel resolves"));
+        let swarm = Arc::new(
+            crate::swarm::Swarm::open(spec, data.path(), "cap-unanswered")
+                .await
+                .expect("a swarm opens"),
+        );
+
+        let caps = Caps {
+            max_turns: Some(3),
+            max_spend_usd: None,
+        };
+        let goal = "77fc1fcc-a89c-4fb9-b041-89ecfc75922f";
+
+        let mut attempts = 0;
+        for _ in 0..40 {
+            // The goal is stuck at turn 1: nothing it does advances its own count.
+            if capped(caps, &swarm, goal, 1).is_some() {
+                break;
+            }
+            attempts += 1;
+            let mut spent = Spent::default();
+            spent.cost_usd = Some(0.25);
+            swarm.record_spend_by(Some(COORDINATOR), goal, 1, &spent, None, Some("cut off"));
+        }
+
+        assert_eq!(attempts, 3, "attempts are what the cap is measured on");
+    }
 }

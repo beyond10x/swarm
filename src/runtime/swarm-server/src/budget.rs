@@ -5,6 +5,23 @@
 //! somebody notices. On 2026-09-12 a swarm whose goal was the placeholder `2342342` ran 78 turns
 //! and spent $11.10 that way. Nothing in the system said so and nothing stopped it.
 //!
+//! **That happened once, not twice, and the record should say so.** The overrun was read as a
+//! second instance because the figures differ — $11.10 here and $11.35 elsewhere — but both are the
+//! swarm `dsfsdf`, goal `77fc1fcc`, and the difference is one turn. Its `turns/spend.jsonl` holds
+//! 44 rows, iterations 35 to 78, `2026-09-12T00:55:37Z` to `01:29:33Z`, summing to $11.345391; the
+//! first 43 of them sum to $11.098908, so $11.10 is the same file read at turn 77. There is no
+//! other overrun on disk: every other swarm's record is one row.
+//!
+//! So the cap did not fire late and was not lifted. It was **never consulted**, because it did not
+//! exist in the binary that ran: this module and both of `capped`'s call sites arrived together in
+//! `993731e`, committed `2026-09-12T09:15:35+02:00` — `07:15:35Z`, five hours and 46 minutes after
+//! that swarm's last turn. The first 34 turns left no spend row at all for the same reason; the
+//! file begins at turn 35 because that is when a binary that records one started.
+//!
+//! Driven rather than argued: `trigger::bounds` turns the same loop with `SWARM_MAX_TURNS=3` and
+//! stops at three, both for a goal that answers and for one that never does. The overrun could not
+//! be reproduced against this code, which is the finding and not a gap in it.
+//!
 //! A cap is a HOST decision, not a model one, and that is why it lives here rather than in the
 //! specification. The periodic binding's contract already says `eligibility: host_boolean` — the
 //! host decides whether an occurrence runs at all, which is where a paused swarm is excluded. A
