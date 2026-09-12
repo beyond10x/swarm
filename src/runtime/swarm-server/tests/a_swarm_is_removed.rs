@@ -487,3 +487,48 @@ async fn a_slug_holding_a_live_record_is_listed_however_its_records_sort() {
         "a slug holding a Running record was hidden from the list by a Deleted one beside it",
     );
 }
+
+/// A handle can only live where `Server::handle_of` looks.
+///
+/// The defect pass 2 found was one map too few: `remove` branched on `swarms`, a parked slug lives
+/// in `pending`, so for a parked slug the state refusal never ran and the unlink ran anyway. The
+/// fix is one lookup that both maps go through — and the fix for the CLASS is that a third place
+/// cannot be added without this case saying so.
+///
+/// Read out of the source rather than asserted in prose: every field of `Server` that holds an
+/// `Arc<Swarm>` has to be named in `handle_of`'s body. A `Mutex<BTreeMap<String, Arc<Swarm>>>`
+/// added beside `swarms` and `pending` and forgotten here fails on the day it is added.
+#[test]
+fn a_handle_can_only_live_where_this_lookup_looks() {
+    let source =
+        std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/state.rs"))
+            .expect("the server's state is beside this crate");
+
+    let at = source
+        .find("pub struct Server {")
+        .expect("`Server` is declared");
+    let fields = &source[at..at + source[at..].find("\n}\n").expect("a struct ends")];
+    let holders: Vec<&str> = fields
+        .lines()
+        .filter(|line| line.contains("Arc<Swarm>"))
+        .filter_map(|line| line.trim().split(':').next())
+        .collect();
+    assert!(
+        holders.len() >= 2,
+        "only {holders:?} hold handles; the struct's shape has changed and this case is no longer \
+         reading it",
+    );
+
+    let at = source
+        .find("async fn handle_of(")
+        .expect("`handle_of` is the one lookup");
+    let body = &source[at..at + source[at..].find("\n    }\n").expect("a method ends")];
+    for holder in holders {
+        assert!(
+            body.contains(holder),
+            "`Server::{holder}` holds handles and `handle_of` does not look in it: every decision \
+             `remove` takes is taken against that one lookup, so a handle kept somewhere it does \
+             not look is a handle no refusal and no deferral can see",
+        );
+    }
+}

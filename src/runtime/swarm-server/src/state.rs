@@ -58,6 +58,22 @@ pub fn check(slug: &str) -> Result<(), Removal> {
     }
 }
 
+/// Whether one `swarm.manager.Swarm` record is finished: its state can be read, and the
+/// specification calls that state an end.
+///
+/// One question, asked by the removal and by the listing alike. They used to spell it separately
+/// and disagreed about a record whose `state` was missing or was not a string — the removal
+/// dropped it and counted the slug removable, the listing kept it and counted the slug live. No
+/// record has that shape today, which is exactly why it was worth settling before one does: an
+/// unreadable state is not evidence of being finished, and the reading that refuses a removal is
+/// the one that cannot erase a log by accident.
+fn finished(record: &serde_json::Value, terminal: &[String]) -> bool {
+    record
+        .get("state")
+        .and_then(|state| state.as_str())
+        .is_some_and(|state| terminal.iter().any(|end| end == state))
+}
+
 /// The log, everything SQLite keeps beside it, and then the directory — in that order.
 ///
 /// The three files together: removing the database and leaving the `-wal` behind makes the next
@@ -311,19 +327,20 @@ impl Server {
         let gate = self.gate(slug);
         let _removing = gate.lock().await;
 
-        let held = self.swarms.read().await.get(slug).map(Arc::clone);
+        // EVERY decision below is taken against this one lookup, and `handle_of` is the only way
+        // this method finds a handle. Branching on `swarms` alone is what made a retried removal
+        // unlink under a live holder: a parked slug is not in `swarms`, so the state check never
+        // ran and the park branch was never reached, and `202 Accepted` — an invitation to retry —
+        // was the ordinary way to get there.
+        let held = self.handle_of(slug).await;
         let directory = self.root.join("swarms").join(slug);
-        let parked = self
-            .pending
-            .lock()
-            .expect("not poisoned")
-            .contains_key(slug);
-        if held.is_none() && !parked && !directory.exists() {
+        if held.is_none() && !directory.exists() {
             return Err(Removal::NotHere(slug.to_owned()));
         }
 
         // What the model says, if the model has been told this exists at all. Every record is
-        // asked, not the one `summary()` happens to keep.
+        // asked, not the one `summary()` happens to keep — and a record written through a PARKED
+        // handle is a record, so this runs for a parked slug exactly as it does for a served one.
         if let Some(swarm) = &held
             && let Some(state) = self.live_state(swarm).await
         {
@@ -333,8 +350,10 @@ impl Server {
             });
         }
 
-        // Out of the map first: from here nothing new can be handed this handle.
+        // Out of both maps: from here nothing new can be handed this handle, and the reference
+        // count below means the same thing whichever map it came from — our clone, plus holders.
         self.swarms.write().await.remove(slug);
+        self.pending.lock().expect("not poisoned").remove(slug);
 
         if let Some(swarm) = held {
             // Our own clone plus whatever else is out there. Anything above one is a holder that
@@ -353,6 +372,32 @@ impl Server {
 
         unlink(&directory)?;
         Ok(Removed::Now)
+    }
+
+    /// One slug's handle, from wherever this server is keeping it.
+    ///
+    /// **There are two places a handle lives and this function is the only thing that knows it.**
+    /// `swarms` holds the ones being served; `pending` holds the ones a removal has evicted and
+    /// could not unlink yet, and a handle in `pending` is no less live — it is there *because*
+    /// something is still writing through it.
+    ///
+    /// A decision taken against one map while the handle sits in the other is not a near-miss, it
+    /// is the whole defect: the second `remove` of a parked slug found `None`, skipped the state
+    /// refusal, skipped the park, and unlinked under the holder.
+    ///
+    /// **If a third place for a handle is ever added to `Server`, it is added here.** That is not
+    /// left to a reader's diligence: `a_handle_can_only_live_where_this_lookup_looks` reads the
+    /// fields of `Server` out of this file and fails if one holds `Arc<Swarm>` and is not named in
+    /// this function's body.
+    async fn handle_of(&self, slug: &str) -> Option<Arc<Swarm>> {
+        if let Some(served) = self.swarms.read().await.get(slug) {
+            return Some(Arc::clone(served));
+        }
+        self.pending
+            .lock()
+            .expect("not poisoned")
+            .get(slug)
+            .map(Arc::clone)
     }
 
     /// Finishes every removal whose holders have let go.
@@ -417,8 +462,16 @@ impl Server {
             .instances(SWARM)
             .await
             .iter()
-            .filter_map(|record| record.get("state")?.as_str().map(ToOwned::to_owned))
-            .find(|state| !terminal.contains(state))
+            .find(|record| !finished(record, &terminal))
+            .map(|record| {
+                record
+                    .get("state")
+                    .and_then(|state| state.as_str())
+                    // A record that refuses a removal without being able to say which state it is
+                    // in is still a record that refuses it.
+                    .unwrap_or("unreadable")
+                    .to_owned()
+            })
     }
 
     /// The states the specification calls ends for a swarm.
@@ -504,19 +557,13 @@ impl Server {
         for (slug, swarm) in held {
             let terminal = Arc::clone(&terminal);
             asking.push(tokio::spawn(async move {
-                let finished = tokio::time::timeout(LIST_BUDGET, async {
+                let done = tokio::time::timeout(LIST_BUDGET, async {
                     let records = swarm.instances(SWARM).await;
-                    !records.is_empty()
-                        && records.iter().all(|record| {
-                            record
-                                .get("state")
-                                .and_then(|state| state.as_str())
-                                .is_some_and(|state| terminal.contains(&state.to_owned()))
-                        })
+                    !records.is_empty() && records.iter().all(|record| finished(record, &terminal))
                 })
                 .await
                 .unwrap_or(false);
-                (slug, finished)
+                (slug, done)
             }));
         }
 
@@ -889,4 +936,72 @@ pub struct CommandShape {
 pub struct InputShape {
     pub name: String,
     pub optional: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The residue pass 2 left: `live_state` dropped a record whose `state` could not be read and
+    /// counted the slug removable, while `listed()` twelve lines away treated the same record as
+    /// live. Nobody can produce that record shape today — every state the runtime writes is a
+    /// string the lifecycle declares — so this is not a bug, it is two rules for one field, which
+    /// is how it becomes one.
+    ///
+    /// The rule, written once: **a record is finished only if its state can be read AND the
+    /// specification calls that state an end.** Unreadable is not evidence of being finished, and
+    /// the safe reading is the one that refuses a removal rather than the one that erases a log.
+    #[test]
+    fn a_record_whose_state_cannot_be_read_counts_as_live() {
+        let terminal = vec!["Deleted".to_owned()];
+
+        assert!(finished(
+            &serde_json::json!({"state": "Deleted"}),
+            &terminal
+        ));
+        assert!(!finished(
+            &serde_json::json!({"state": "Running"}),
+            &terminal
+        ));
+        assert!(
+            !finished(&serde_json::json!({"state": null}), &terminal),
+            "a null state is not a terminal state",
+        );
+        assert!(
+            !finished(&serde_json::json!({}), &terminal),
+            "a record with no state at all is not a finished record",
+        );
+        assert!(
+            !finished(&serde_json::json!({"state": 7}), &terminal),
+            "a state that is not a string is not a terminal state",
+        );
+    }
+
+    /// And both readers ask that one question, rather than each spelling its own.
+    #[test]
+    fn the_removal_and_the_listing_read_the_state_field_the_same_way() {
+        let source = include_str!("state.rs");
+        for (name, body) in [
+            ("live_state", body_of(source, "async fn live_state")),
+            ("listed", body_of(source, "pub async fn listed")),
+        ] {
+            assert!(
+                body.contains("finished("),
+                "`{name}` reads the state field its own way instead of asking `finished`, which \
+                 is how one field ends up with two rules",
+            );
+        }
+    }
+
+    /// The text of a function, from its signature to the next one at the same indent.
+    fn body_of<'a>(source: &'a str, signature: &str) -> &'a str {
+        let at = source
+            .find(signature)
+            .unwrap_or_else(|| panic!("`{signature}` is no longer in this file"));
+        let rest = &source[at..];
+        let end = rest[1..]
+            .find("\n    }\n")
+            .unwrap_or_else(|| panic!("`{signature}` does not end where a method ends"));
+        &rest[..end]
+    }
 }
