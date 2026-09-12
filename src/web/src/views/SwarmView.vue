@@ -14,6 +14,7 @@ import SwarmCanvas from '@/views/SwarmCanvas.vue'
 import LoopPanel from '@/components/runtime/LoopPanel.vue'
 import EventLog from '@/components/runtime/EventLog.vue'
 import TranscriptPanel from '@/components/runtime/TranscriptPanel.vue'
+import MailPanel from '@/components/runtime/MailPanel.vue'
 
 const props = defineProps<{ id: string }>()
 const store = useSwarmStore()
@@ -51,10 +52,19 @@ const populated = computed(() =>
 
 const tab = ref('canvas')
 const turnsHeld = computed(() => store.live[props.id]?.turns.length ?? 0)
+
+/** Unread mail in this swarm, for the tab's badge. */
+const unread = computed(
+  () =>
+    (swarm.value?.canvas['swarm.mailbox.Message'] ?? []).filter(
+      (message) => message.state === 'Unread',
+    ).length,
+)
 const running = computed(() => store.liveTurn(props.id) !== undefined)
 const tabs = computed(() => [
   { value: 'canvas', label: 'Canvas' },
   { value: 'coordinator', label: running.value ? '● Coordinator' : turnsHeld.value ? `Coordinator (${turnsHeld.value})` : 'Coordinator' },
+  { value: 'mail', label: unread.value ? `Mail (${unread.value} unread)` : 'Mail' },
   ...populated.value.map((group) => ({
     value: group.entity,
     label: `${group.label} (${group.count})`,
@@ -148,6 +158,7 @@ async function act(action: SwarmAction): Promise<void> {
               :recent="recent"
             />
             <TranscriptPanel v-else-if="tab === 'coordinator'" :slug="props.id" />
+            <MailPanel v-else-if="tab === 'mail'" :slug="props.id" />
             <UiTable v-else-if="shown" :columns="columns" :rows="rows" />
           </div>
         </div>

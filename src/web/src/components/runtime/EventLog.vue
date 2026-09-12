@@ -31,13 +31,21 @@ const short = (name: string): string => name.split('.').pop() ?? name
 const id8 = (id: string): string => id.split('-')[0] ?? id
 
 function fromRecorded(event: Recorded): Row {
+  // Mail says who wrote to whom. `Message 3f2a v1 · by SwarmAgent` is the same fact in a shape
+  // nobody can read.
+  const mail =
+    event.name === 'swarm.mailbox.MessagePosted' && event.fields
+      ? `${event.fields.sender_id} → ${event.fields.recipient_id}: ${event.fields.subject}`
+      : undefined
   return {
     key: `log:${event.seq}`,
     at: event.at,
-    kind: 'event',
-    tone: 'muted',
-    title: short(event.name),
-    detail: `${short(event.entity)} ${id8(event.id)} v${event.version} · by ${event.actor}`,
+    kind: mail ? 'mail' : 'event',
+    tone: mail ? 'info' : 'muted',
+    title: mail ?? short(event.name),
+    detail: mail
+      ? undefined
+      : `${short(event.entity)} ${id8(event.id)} v${event.version} · by ${event.actor}`,
     fields: event.fields,
     live: false,
   }
@@ -47,6 +55,22 @@ function fromChange(change: Change, index: number): Row {
   const key = `live:${index}`
   switch (change.kind) {
     case 'applied': {
+      const posted = change.events.find(
+        (event) => event.name === 'swarm.mailbox.MessagePosted',
+      )
+      if (posted) {
+        const of = (name: string): string => String(posted.fields[name] ?? '')
+        return {
+          key,
+          at: change.at,
+          kind: 'mail',
+          tone: 'info',
+          title: `${of('sender_id')} → ${of('recipient_id')}: ${of('subject')}`,
+          detail: of('body').slice(0, 120),
+          fields: posted.fields,
+          live: true,
+        }
+      }
       const refused = change.outcome.includes('wrong') || change.events.length === 0
       return {
         key,

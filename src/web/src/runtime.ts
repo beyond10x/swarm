@@ -335,6 +335,34 @@ export function turn(slug: string, name: string): Promise<AgentEvent[]> {
   );
 }
 
+/** What posting produced. */
+export interface Posted {
+  broadcast_id: string | null;
+  messages: string[];
+}
+
+/**
+ * Posts a message. With `to`, one mailbox; without, every open one.
+ *
+ * The runtime resolves the address, because a mailbox is addressed by the pair `(agent, name)` and
+ * only something that can look one up can turn that into the id the command takes.
+ */
+export function sendMail(
+  slug: string,
+  mail: {
+    to?: string;
+    sender: string;
+    subject: string;
+    body: string;
+    reply_to?: string;
+  },
+): Promise<Posted> {
+  return request<Posted>(`/swarms/${encodeURIComponent(slug)}/mail`, {
+    method: "POST",
+    body: JSON.stringify(mail),
+  });
+}
+
 /** Where the runtime is right now. */
 export function status(): Promise<Status> {
   return request<Status>("/status");
