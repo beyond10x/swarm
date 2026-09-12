@@ -203,11 +203,23 @@ fn a_host_that_supplies_nothing_is_refused_rather_than_defaulted() {
 }
 
 #[test]
-fn every_binding_this_kernel_declares_is_one_the_pump_serves() {
+fn the_pump_says_which_deliveries_it_leaves_to_its_caller() {
     let spec = Spec::load(kernel()).expect("the kernel resolves");
 
-    // at_least_once with retry asks for redelivery, which needs a store and a clock. The pump has
-    // neither, so a caller should know which bindings it under-serves rather than discover it.
+    // These three declare `at_least_once` with `retry`, and THIS PUMP still does not redeliver
+    // them: it has no queue and no clock, and `route.rs` says so in as many words. Who is
+    // under-served by that is now a question about the caller, not about the list.
+    //
+    // `swarm-server` serves all three as of 2026-09-12 — `Swarm::issue` keeps the failure and
+    // `Swarm::redeliver` re-attempts it under a bound and a delay — and this list is what it reads
+    // to know which failures are worth keeping. Every other caller of `pump()` is still under-served
+    // by exactly this set: `swarm-cli` and any host that routes an event without draining a queue
+    // will drop a failed delivery of these three and nothing will say so.
+    //
+    // The list cannot answer the acceptance's first branch and stay honest. `needs_redelivery` is a
+    // pure function of the IR; it cannot observe that some host now redelivers, so returning empty
+    // would mean the kernel had stopped asking for at-least-once rather than that somebody had
+    // started providing it.
     let owed = ess_runtime::route::needs_redelivery(spec.ir());
     assert_eq!(
         owed,
@@ -216,7 +228,7 @@ fn every_binding_this_kernel_declares_is_one_the_pump_serves() {
             "note-the-assignment".to_owned(),
             "record-the-assignment".to_owned(),
         ],
-        "the set of bindings needing redelivery has changed"
+        "the set of bindings whose redelivery the pump leaves to its caller has changed"
     );
 }
 

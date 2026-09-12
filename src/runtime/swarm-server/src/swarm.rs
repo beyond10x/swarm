@@ -11,6 +11,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use serde_json::{Map, Value as Json};
@@ -20,11 +21,29 @@ use crate::budget::Reached;
 use crate::coordinator::Spent;
 use ess_runtime::apply::Emitted;
 use ess_runtime::{
-    Recorded, Spec, Store, World, apply, pump, route::Occurrence, route::tick, view,
+    Recorded, Spec, Store, World, apply, pump, route::Occurrence, route::Routed,
+    route::needs_redelivery, route::tick, view,
 };
 
 /// How many events a slow reader may fall behind before it is dropped and told to resync.
 const BACKLOG: usize = 256;
+
+/// How many times a failed `at_least_once` delivery is attempted in total, the first included.
+///
+/// Neither number is the specification's. ESS declares `delivery` and `on_failure` and says nothing
+/// about how many attempts or how far apart, so the bound is the host's and is written here rather
+/// than inferred: an unbounded retry of a delivery that fails for a permanent reason — a command
+/// whose subject was never created — is a queue that grows for as long as the process runs.
+///
+/// Three, because the failure this serves is a stale read losing a race with a write, and a
+/// delivery still failing on its third attempt is failing for a reason another attempt will not
+/// change. [`RETRY_DELAY`] is `PT30S` — the same period `components.yaml` gives `turn-the-loop`,
+/// because the trigger's loop is what drains this queue and a shorter delay would only be rounded
+/// up to the trigger's own cadence while a longer one would be a second cadence to keep in step.
+pub const MAX_ATTEMPTS: u32 = 3;
+
+/// How long a failed delivery waits before it is attempted again. See [`MAX_ATTEMPTS`].
+pub const RETRY_DELAY: Duration = Duration::from_secs(30);
 
 /// Something that happened, as the UI hears about it.
 ///
@@ -95,6 +114,16 @@ pub enum What {
         turns: u64,
         spent_usd: Option<f64>,
         reached: Reached,
+        why: String,
+    },
+    /// A binding that asked to be retried was given up on after [`MAX_ATTEMPTS`].
+    ///
+    /// The one thing a watcher must be told: the delivery the specification promised did not
+    /// happen. Silence here is the defect this variant was added to end.
+    Undelivered {
+        binding: String,
+        command: String,
+        attempts: u32,
         why: String,
     },
     /// The in-memory world was thrown away and rebuilt from the log.
@@ -237,6 +266,49 @@ impl std::fmt::Display for Refused {
     }
 }
 
+/// A delivery a binding asked for, that failed, and that is owed another attempt.
+///
+/// **Where this lives is a decision the story left open, and it is here rather than in the
+/// eventlog.** `store.rs` holds what the specification declares: an event is appended because an
+/// outcome emitted it, and `bin/check-sets-are-emitted.py` refuses a spec whose outcome writes a
+/// field no event carries. There is no ESS event for "a delivery was attempted and failed" — the
+/// nearest thing, `swarm.agent.AssignmentUndelivered`, is an escalation the model declares for one
+/// binding — so putting attempts in the log would mean the runtime inventing a record the
+/// specification does not declare. That is the rule this repository exists to keep: a fact the
+/// model does not name is not written to the model'"'"'s log. An attempt is a fact about this
+/// process'"'"'s effort to deliver, not about the swarm, and it is held per-server accordingly.
+///
+/// **A pending delivery is in memory, so it does not survive the process, and "at least once"
+/// therefore holds only for as long as the server does.** This is a real limit, not a rounding:
+/// a crash between the failed attempt and the last retry loses the delivery with no trace but a
+/// log line. Closing it needs the queue to be durable BEFORE the first attempt is made — a table
+/// beside the eventlog in `data/swarms/<slug>/`, written under the same request key used for the
+/// commit, drained at `Swarm::open`. That is a store schema and a boot path, which is a larger
+/// change than this one and belongs to whoever decides the log gets a second table.
+#[derive(Clone, Debug, Serialize)]
+pub struct Delivery {
+    /// The binding whose delivery failed.
+    pub binding: String,
+    /// The command it was carrying the event to.
+    pub command: String,
+    /// How many attempts this delivery has had, the first one included.
+    pub attempts: u32,
+    /// Why the last attempt failed.
+    pub why: String,
+    /// The input the binding'"'"'s mapping built. Not on the wire; a reader wants the count and the
+    /// reason, and the payload is the pump'"'"'s business.
+    #[serde(skip)]
+    input: Map<String, Json>,
+    /// The idempotency key the successful attempt will commit under. The same one every attempt,
+    /// because at most one attempt can append: a key spent with the same events is a no-op and a
+    /// key spent with different ones is refused, so a duplicate delivery cannot double-write.
+    #[serde(skip)]
+    request: String,
+    /// When the next attempt may be made.
+    #[serde(skip)]
+    due: Instant,
+}
+
 /// One swarm, running.
 pub struct Swarm {
     spec: Arc<Spec>,
@@ -246,6 +318,14 @@ pub struct Swarm {
     slug: String,
     /// `data/swarms/<slug>`: the log, the work directory, the turns.
     dir: PathBuf,
+    /// Failed deliveries of bindings that declared `at_least_once` with `retry`, awaiting another
+    /// attempt. See [`Delivery`] for why this is here and not in the log.
+    owed: Mutex<Vec<Delivery>>,
+    /// The bindings this swarm keeps failures for, read off the specification once at open.
+    ///
+    /// `Routed` carries the binding'"'"'s name and not its policy, so the host cross-references the
+    /// pump'"'"'s own answer rather than re-deciding what `at_least_once` means.
+    redelivers: Vec<String>,
 }
 
 impl Swarm {
@@ -263,6 +343,8 @@ impl Swarm {
             .map_err(|why| Refused::Store(why.to_string()))?;
         let (changes, _) = broadcast::channel(BACKLOG);
 
+        let redelivers = needs_redelivery(spec.ir());
+
         Ok(Self {
             spec,
             store,
@@ -270,6 +352,8 @@ impl Swarm {
             changes,
             slug: slug.to_owned(),
             dir: root.join("swarms").join(slug),
+            owed: Mutex::new(Vec::new()),
+            redelivers,
         })
     }
 
@@ -583,21 +667,29 @@ impl Swarm {
         .map_err(|why| Refused::Routing(why.to_string()))?;
 
         for routed in &caused {
-            if let Ok(applied) = &routed.result {
-                self.store
-                    .commit(applied, None, &format!("{request}:{}", routed.binding))
-                    .await
-                    .map_err(|why| Refused::Store(why.to_string()))?;
-                appended.extend(applied.events.iter().map(Record::from));
-                self.announce(What::Routed {
-                    binding: routed.binding.clone(),
-                    command: routed.command.clone(),
-                    outcome: applied.outcome.clone(),
-                    instance: applied
-                        .instance
-                        .as_ref()
-                        .and_then(|instance| serde_json::to_value(instance).ok()),
-                });
+            match &routed.result {
+                Ok(applied) => {
+                    self.store
+                        .commit(applied, None, &self.delivery_key(request, &routed.binding))
+                        .await
+                        .map_err(|why| Refused::Store(why.to_string()))?;
+                    appended.extend(applied.events.iter().map(Record::from));
+                    self.announce(What::Routed {
+                        binding: routed.binding.clone(),
+                        command: routed.command.clone(),
+                        outcome: applied.outcome.clone(),
+                        instance: applied
+                            .instance
+                            .as_ref()
+                            .and_then(|instance| serde_json::to_value(instance).ok()),
+                    });
+                }
+                // The failure the pump hands out. Until 2026-09-12 this arm did not exist, so every
+                // failed delivery of the three bindings that declare `at_least_once`/`retry` was
+                // discarded here — the promise the specification makes and nothing kept. A binding
+                // that declares any other policy is the pump's business and not this one's:
+                // `Escalate` has already published its event and `Drop` means what it says.
+                Err(why) => self.owe(routed, &why.to_string(), request).await,
             }
         }
 
@@ -606,6 +698,127 @@ impl Swarm {
             error: done.error,
             events: appended,
         })
+    }
+
+    /// The idempotency key one binding's delivery commits under, whichever attempt lands.
+    fn delivery_key(&self, request: &str, binding: &str) -> String {
+        format!("{request}:{binding}")
+    }
+
+    /// Keeps a failed delivery that its binding asked to have retried.
+    ///
+    /// A binding that did not ask is not kept. The list comes from `route::needs_redelivery`, so
+    /// "which bindings asked" is answered by the specification through the pump rather than by a
+    /// second reading of the model here.
+    async fn owe(&self, routed: &Routed, why: &str, request: &str) {
+        if !self.redelivers.iter().any(|name| name == &routed.binding) {
+            tracing::debug!(swarm = %self.slug, binding = %routed.binding, error = %why,
+                            "a delivery failed and its binding asked for no retry");
+            return;
+        }
+
+        tracing::warn!(swarm = %self.slug, binding = %routed.binding, command = %routed.command,
+                       error = %why, "a delivery failed and is owed another attempt");
+        self.owed.lock().await.push(Delivery {
+            binding: routed.binding.clone(),
+            command: routed.command.clone(),
+            // The attempt that just failed. A caller reading `attempts` wants how many times the
+            // delivery has been tried, not how many times this queue has tried it.
+            attempts: 1,
+            why: why.to_owned(),
+            input: routed.input.clone(),
+            request: self.delivery_key(request, &routed.binding),
+            due: Instant::now() + RETRY_DELAY,
+        });
+    }
+
+    /// Every delivery still owed, and how many attempts each has had.
+    pub async fn deliveries(&self) -> Vec<Delivery> {
+        self.owed.lock().await.clone()
+    }
+
+    /// Attempts every delivery that is due at `now`, and returns how many were attempted.
+    ///
+    /// `now` is passed in rather than read here for the reason every other timestamp in this system
+    /// is passed in: the caller owns the clock. The trigger hands it `Instant::now()`; a test hands
+    /// it a later instant and does not wait thirty seconds to find out whether the bound holds.
+    ///
+    /// A delivery that succeeds commits under the key its first attempt would have used, so a
+    /// duplicate cannot double-write: the log refuses a spent key carrying different events and
+    /// ignores one carrying the same. That is what makes this at-least-once rather than
+    /// at-least-once-and-sometimes-twice-in-the-log.
+    pub async fn redeliver(&self, now: Instant) -> usize {
+        let mut world = self.world.lock().await;
+        let mut owed = self.owed.lock().await;
+
+        let (due, mut keep): (Vec<Delivery>, Vec<Delivery>) =
+            owed.drain(..).partition(|delivery| delivery.due <= now);
+        let attempted = due.len();
+
+        for mut delivery in due {
+            delivery.attempts += 1;
+            let minted = mint();
+            // No actor, for the reason the pump has none: a binding is the system acting on itself.
+            let result = apply(
+                self.spec.ir(),
+                &world,
+                None,
+                &delivery.command,
+                &delivery.input,
+                Some(&minted),
+            );
+
+            match result {
+                Ok(applied) => {
+                    if let Err(why) = self.store.commit(&applied, None, &delivery.request).await {
+                        // The command applied and the log would not take it. Keeping the delivery
+                        // is the only answer that does not lose the write, and the world is left
+                        // untouched so that what is in memory still matches what is on disk.
+                        delivery.why = why.to_string();
+                        delivery.due = now + RETRY_DELAY;
+                        if delivery.attempts < MAX_ATTEMPTS {
+                            keep.push(delivery);
+                        }
+                        continue;
+                    }
+                    if let Some(instance) = applied.instance.clone() {
+                        world.insert((instance.entity.clone(), instance.id.clone()), instance);
+                    }
+                    tracing::info!(swarm = %self.slug, binding = %delivery.binding,
+                                   attempts = delivery.attempts, "a delivery was made at last");
+                    self.announce(What::Routed {
+                        binding: delivery.binding.clone(),
+                        command: delivery.command.clone(),
+                        outcome: applied.outcome.clone(),
+                        instance: applied
+                            .instance
+                            .as_ref()
+                            .and_then(|instance| serde_json::to_value(instance).ok()),
+                    });
+                }
+                Err(why) => {
+                    delivery.why = why.to_string();
+                    delivery.due = now + RETRY_DELAY;
+                    if delivery.attempts >= MAX_ATTEMPTS {
+                        tracing::error!(swarm = %self.slug, binding = %delivery.binding,
+                                        command = %delivery.command, attempts = delivery.attempts,
+                                        error = %delivery.why,
+                                        "a delivery was given up on");
+                        self.announce(What::Undelivered {
+                            binding: delivery.binding.clone(),
+                            command: delivery.command.clone(),
+                            attempts: delivery.attempts,
+                            why: delivery.why.clone(),
+                        });
+                        continue;
+                    }
+                    keep.push(delivery);
+                }
+            }
+        }
+
+        *owed = keep;
+        attempted
     }
 
     /// Runs one occurrence of a periodic binding.

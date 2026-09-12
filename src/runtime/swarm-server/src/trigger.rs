@@ -62,6 +62,15 @@ pub async fn run(server: Arc<Server>) {
         tokio::time::sleep(shortest).await;
         server.ticked();
         for swarm in server.all().await {
+            // The clock this queue needed. A failed `at_least_once` delivery is re-attempted from
+            // here rather than from a timer of its own: the trigger is already the one loop that
+            // walks every swarm on a period, and a second one would be a second cadence to keep in
+            // step with the first. `RETRY_DELAY` is the trigger's own shortest period for the same
+            // reason, so nothing is drained earlier than it asked to be.
+            let attempted = swarm.redeliver(Instant::now()).await;
+            if attempted > 0 {
+                tracing::info!(swarm = %swarm.slug(), attempted, "re-attempted owed deliveries");
+            }
             for (binding, _) in &periodic {
                 if let Err(why) = fire(&server, &swarm, binding).await {
                     tracing::warn!(swarm = %swarm.slug(), binding = %binding, error = %why,

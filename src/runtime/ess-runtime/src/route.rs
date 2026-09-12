@@ -57,6 +57,13 @@ pub struct Routed {
     pub binding: String,
     /// The command invoked.
     pub command: String,
+    /// The input the mapping built, kept so a caller can invoke the command again.
+    ///
+    /// Re-deriving it would mean keeping the causing event and re-running the mapping, and a host
+    /// that did so would be a second implementation of `map_from_event` — which is where the two
+    /// would eventually disagree about what the binding meant. `at_least_once` is the whole reason
+    /// this is carried: without it a failed delivery cannot be retried by anyone but this pump.
+    pub input: Map<String, Json>,
     /// What it did, or why it could not be done.
     pub result: Result<Applied, ApplyError>,
 }
@@ -192,6 +199,7 @@ fn invoke(
     Routed {
         binding: binding_name.to_owned(),
         command,
+        input,
         result,
     }
 }
@@ -371,8 +379,13 @@ fn walk(fields: &Map<String, Json>, plan: &ess_domain::accessor::AccessorPlan) -
 
 /// Whether every binding's delivery promise is one this pump keeps.
 ///
-/// `at_least_once` asks for redelivery, which needs a store and a clock — so a caller that has
+/// `at_least_once` asks for redelivery, which needs a queue and a clock — so a caller that has
 /// neither should know which bindings it is under-serving rather than find out in production.
+///
+/// It stays a statement about THIS PUMP after `swarm-server` grew a redelivery queue of its own
+/// (2026-09-12). The answer is a pure function of the IR and cannot observe that some host now
+/// serves these bindings; a caller that serves them reads this list to know which failures are
+/// worth keeping, and a caller that does not reads it to know what it is dropping.
 pub fn needs_redelivery(ir: &EssIr) -> Vec<String> {
     ir.bindings()
         .iter()
