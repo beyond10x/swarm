@@ -6,12 +6,12 @@ the kernel: only what a swarm cannot build for itself.
 
 | check | command | result |
 |---|---|---|
-| validates | `ess specify validate --path src/core` | `swarm v1 — 8 file(s), valid`, exit 0 |
+| validates | `ess specify validate --path src/core` | `swarm v1 — 9 file(s), valid`, exit 0 |
 | compiles | `ess specify compile --path src/core --format json` | exit 0 |
 | every written field is replayable | `src/core/bin/check-sets-are-emitted.py` | 0 violations |
 
-Size: 5 domains · 8 entities · 22 types · 48 commands · 83 outcomes · 51 events · 22 views ·
-12 errors · 10 actors · 3 components · 2 bindings · 3 workloads (`ess specify compile`, counted).
+Size: 6 domains · 10 entities · 24 types · 53 commands · 56 events · 27 views · 16 errors ·
+12 actors · 4 components · 2 bindings · 4 workloads (`ess specify compile`, counted).
 
 ## What is in the kernel, and why nothing else is
 
@@ -25,6 +25,7 @@ what they need and like."*
 | the swarm record, and its lifecycle | `domains/manager.yaml` |
 | how an agent is launched — harness, binary, model, budgets | `domains/config.yaml` `HarnessLaunch` |
 | the agent itself, and the coordinator that spawns the rest | `domains/agent.yaml` |
+| how one agent says something to another | `domains/mailbox.yaml` — `Mailbox`, `Message` |
 | what anything may reach, and how things connect | `domains/blackbox.yaml` — `Box`, `Port`, `Schema`, `Connection` |
 
 Everything else is a **Box** the swarm draws and a **Connection** it wires. A tool is a box. An MCP
@@ -36,6 +37,13 @@ An earlier draft (2026-09-11) was reverse-engineered from a live 16-agent run an
 domains: `board`, `schedule`, `orchestrator`, `work`, `fault`, `decision` and `flow` alongside these
 four. Each described something that run had built for itself. A swarm that starts with them has not
 started bare, so they were removed. They are recoverable from the import commit.
+
+`board` came back on 2026-09-12 as `mailbox`, and the note it was deleted under — "an inbox needs a
+correspondent and there is one agent" — is what makes the case: it is true of a newborn swarm and
+false of the swarm it becomes ten minutes later. A coordinator that can spawn agents and cannot
+address them has built a roster it cannot use. The recovered file's arguments were kept; one was
+corrected, because expressing "unread" as `read_at == null` is a filter this runtime's three-valued
+evaluator reads as `Unknown` and drops, which would hide every unread message from its own inbox.
 
 ## The loop is declared, not hand-built
 
@@ -85,10 +93,10 @@ inputs and emitted like any other field. The runtime reads the clock at the edge
 ## Layout
 
 ```
-system.yaml            the header: 5 domains
+system.yaml            the header: 6 domains
 ess-inputs.yaml        the exact input list — the legacy layout otherwise reads EVERY *.yaml here
 domains/*.yaml         one domain each
-components.yaml        3 subsystems, the bindings between them, and the loop's tick
+components.yaml        4 subsystems, the bindings between them, and the loop's tick
 topology.yaml          replica floors and ceilings per swarm
 bin/check-sets-are-emitted.py   the two rules above, over the compiled IR
 docs/ess-authoring-rules.md     what ess accepts and refuses, as probed here

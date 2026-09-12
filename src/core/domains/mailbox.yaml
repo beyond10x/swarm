@@ -1,0 +1,616 @@
+# swarm.mailbox — how one agent says something to another.
+#
+# Timo, 2026-09-11, naming what the kernel owes a swarm: *"we do provide inbox + eventbus like
+# connections + presentation layer for the human to observe. from there on they build what they need
+# and like."* The connections are `swarm.blackbox`. This is the inbox, and it is in the kernel for
+# the same reason: a swarm cannot build a way to talk before it can talk.
+#
+# Restored from `swarm2.board`, deleted on 2026-09-11 in commit `ea3fe22` with the note "an inbox
+# needs a correspondent and there is one agent". That is true of a newborn swarm and false of the
+# swarm it becomes ten minutes later, and the argument cut the wrong way: a coordinator that can
+# spawn agents and cannot address them has built a roster it cannot use. Recovered with
+# `git show ea3fe22^:src/core/domains/board.yaml`; the entities are renamed and the decisions below
+# are the originals, which were probed against the compiler and are still right.
+#
+# ## An address is a pair
+#
+# `(agent_id, name)`, not the agent alone. An agent may hold several mailboxes — `main` for work,
+# and whatever else it wants to separate — and a sender addresses one of them. A single inbox per
+# agent would be a decision the kernel made on the swarm's behalf about how it organises itself.
+#
+# Uniqueness of the pair is prose plus `MailboxNameTaken`, because ess has no field-level uniqueness
+# attribute at all: probed 2026-09-11 by putting `unique: true` on a field, refused verbatim with
+# `unknown field 'unique'`. The implementation checks `OpenMailboxes` before creating one.
+#
+# ## `recipient_id` is on the message, and it is not a mistake
+#
+# It duplicates `Mailbox.agent_id`. It is there because a view's fields must be produced by its own
+# source entity — ESS does not join — and the original attempt was refused in as many words:
+#
+#     error[ESS-VIEW-001]: `swarm2.board.Message` has no field `agent_id`, so
+#     `swarm2.board.UnreadForAgent` promises an observation nothing produces
+#
+# ## Read and acked are LIFECYCLE STATES, not timestamps a view filters on
+#
+# This is the one place this file departs from the original, and it is a correction rather than a
+# preference. The board expressed "unread" as `filter: read_at == null`, which was the only shape
+# ess/1 admitted. Against this runtime that filter is a trap: `views.rs` keeps a row only when its
+# filter evaluates to `Truth::True`, and a three-valued evaluator reads an unwritten `Optional`
+# field as `Unknown`, not as null. Every unread message would be excluded from its own inbox — the
+# filter would select nothing, and it would do it silently.
+#
+# So readness is carried by the state, which is always known, and `filter: state == Unread` is total.
+# The timestamps stay as a record of WHEN, which is a different question from whether.
+#
+# ## A broadcast is N messages, one per recipient
+#
+# Not one message in N mailboxes, and the reason is written into three relations that are each
+# load-bearing. `mailbox_id` is a scalar and `Mailbox owns Message` has exactly one owner, so a
+# fanned-out single message would need two owners. `recipient_id` is derived from the mailbox's
+# owner, so one message cannot have thirteen recipients. And `Acked` is terminal per message, so a
+# shared message could only be acked once — by whoever got there first — when what a sender needs to
+# know is who has NOT.
+#
+# There is no `PostBroadcast` command, and that is deliberate. One outcome creates one instance;
+# ESS refuses an outcome per recipient. The original declared the command and left the fan-out to
+# its implementation, which makes the specification describe one message where N happen. Here the
+# HOST fans out instead: it reads `OpenMailboxes` and issues `PostMessage` once per row, sharing one
+# `broadcast_id`. That is the same division of labour the periodic binding already uses — the host
+# reads a view and supplies which instance each occurrence is for — and it keeps every command in
+# this file honest about doing exactly one thing.
+#
+# ## A post wakes nobody
+#
+# There is no binding from `MessagePosted` to anything that wakes an agent, and the original said
+# why: a post is not an interrupt. Mail is read at the start of a turn, which at the declared
+# cadence is never more than thirty seconds away.
+domain: swarm.mailbox
+
+summary: >-
+  Named mailboxes per agent, messages addressed to a pair, read and acked as lifecycle states, and
+  a broadcast that is N messages sharing one id.
+
+naming:
+  wire: mailboxes
+  display: Mailboxes
+
+entities:
+  # One address an agent can be written to. An agent may hold several.
+  - name: swarm.mailbox.Mailbox
+    identity:
+      name: mailbox_id
+      type: Uuid
+    fields:
+      - name: swarm_id
+        type: Uuid
+      # The role slug of the agent that owns it — `swarm.agent.Agent`'s identity.
+      - name: agent_id
+        type: String
+      # The second half of the address. Unique per agent; see the header.
+      - name: name
+        type: String
+      - name: created_at
+        type: Timestamp
+      - name: closed_at
+        type: Optional<Timestamp>
+    relations:
+      - name: messages
+        kind: owns
+        target: swarm.mailbox.Message
+        cardinality: many
+        via: mailbox_id
+      - name: agent
+        kind: references
+        target: swarm.agent.Agent
+        cardinality: one
+        via: agent_id
+    lifecycle:
+      # Closed rather than deleted: messages posted to it were delivered, and a mailbox that was
+      # in force during a run is evidence. Same reason `swarm.config` keeps Superseded.
+      initial: Open
+      states: [Open, Closed]
+      terminal: [Closed]
+      transitions:
+        - name: close
+          from: [Open]
+          to: Closed
+
+  # One thing said to one mailbox.
+  - name: swarm.mailbox.Message
+    identity:
+      name: message_id
+      type: Uuid
+    fields:
+      - name: mailbox_id
+        type: Uuid
+      - name: swarm_id
+        type: Uuid
+      # Denormalised from the mailbox's owner. See the header: ESS does not join.
+      - name: recipient_id
+        type: String
+      - name: sender_id
+        type: String
+      - name: subject
+        type: String
+      - name: body
+        type: String
+      # The thread edge. A message with none is a thread root.
+      - name: parent_message_id
+        type: Optional<Uuid>
+      # The N copies of one broadcast share this. Absent on a message sent to one mailbox.
+      - name: broadcast_id
+        type: Optional<Uuid>
+      - name: sent_at
+        type: Timestamp
+      # WHEN it was read and by whom. WHETHER it was read is the state; see the header.
+      - name: read_at
+        type: Optional<Timestamp>
+      - name: read_by
+        type: Optional<String>
+      - name: acked_at
+        type: Optional<Timestamp>
+      - name: acked_by
+        type: Optional<String>
+      - name: ack_note
+        type: Optional<String>
+    relations:
+      - name: sender
+        kind: references
+        target: swarm.agent.Agent
+        cardinality: one
+        via: sender_id
+    lifecycle:
+      initial: Unread
+      states: [Unread, Read, Acked]
+      terminal: [Acked]
+      transitions:
+        - name: read
+          from: [Unread]
+          to: Read
+        # From either: acknowledging something is a stronger claim than having read it, and a
+        # recipient that acts on a message without marking it read first has still acted on it.
+        - name: ack
+          from: [Unread, Read]
+          to: Acked
+
+errors:
+  - name: swarm.mailbox.MailboxStateConflict
+    summary: The mailbox is not in a state this command acts from, so nothing moved.
+    fields:
+      - name: state
+        type: swarm.mailbox.Mailbox.State
+
+  - name: swarm.mailbox.MessageStateConflict
+    summary: The message is not in a state this command acts from, so nothing moved.
+    fields:
+      - name: state
+        type: swarm.mailbox.Message.State
+
+  # Raised by the implementation, never by an outcome: "a mailbox with this name already exists"
+  # is a lookup, and a `when:` reads the command's input and nothing else (ESS-COMMAND-003).
+  - name: swarm.mailbox.MailboxNameTaken
+    summary: That agent already holds a mailbox by that name, so a second was not opened.
+    fields:
+      - name: agent_id
+        type: String
+      - name: name
+        type: String
+
+  # Also the implementation's: `PostMessage` creates a Message and so has no `wrong_state:` branch
+  # to put this on, because the state in question belongs to a different entity.
+  - name: swarm.mailbox.MailboxNotOpen
+    summary: The mailbox is closed, so nothing was posted to it.
+    fields:
+      - name: mailbox_id
+        type: Uuid
+      - name: state
+        type: swarm.mailbox.Mailbox.State
+
+commands:
+  - name: swarm.mailbox.OpenMailbox
+    naming:
+      wire: open-mailbox
+      display: Open a mailbox
+    input:
+      - name: swarm_id
+        type: Uuid
+      - name: agent_id
+        type: String
+      - name: name
+        type: String
+      - name: created_at
+        type: Timestamp
+    outcomes:
+      - name: opened
+        creates: swarm.mailbox.Mailbox
+        instance: mailbox_id
+        emits:
+          - swarm.mailbox.MailboxOpened
+        payload:
+          swarm.mailbox.MailboxOpened:
+            swarm_id: input.swarm_id
+            agent_id: input.agent_id
+            name: input.name
+            created_at: input.created_at
+            mailbox_id:
+              generated: true
+        sets:
+          swarm_id: input.swarm_id
+          agent_id: input.agent_id
+          name: input.name
+          created_at: input.created_at
+        summary: The mailbox is Open and can be written to.
+
+  - name: swarm.mailbox.CloseMailbox
+    naming:
+      wire: close-mailbox
+      display: Close a mailbox
+    input:
+      - name: mailbox_id
+        type: Uuid
+      - name: closed_at
+        type: Timestamp
+    outcomes:
+      - name: closed
+        moves: swarm.mailbox.Mailbox.close
+        instance: mailbox_id
+        emits:
+          - swarm.mailbox.MailboxClosed
+        payload:
+          swarm.mailbox.MailboxClosed:
+            mailbox_id: input.mailbox_id
+            closed_at: input.closed_at
+        sets:
+          closed_at: input.closed_at
+        summary: Nothing more is posted to it. What it holds stays readable.
+      - name: wrong-state
+        wrong_state: true
+        error: swarm.mailbox.MailboxStateConflict
+        summary: It is already closed.
+
+  # The whole of sending. A broadcast is this command issued once per open mailbox, by the host,
+  # with one `broadcast_id` shared between them — see the header.
+  - name: swarm.mailbox.PostMessage
+    naming:
+      wire: post
+      display: Post a message to a mailbox
+    input:
+      - name: mailbox_id
+        type: Uuid
+      - name: swarm_id
+        type: Uuid
+      - name: recipient_id
+        type: String
+      - name: sender_id
+        type: String
+      - name: subject
+        type: String
+      - name: body
+        type: String
+      - name: sent_at
+        type: Timestamp
+      - name: parent_message_id
+        type: Optional<Uuid>
+      - name: broadcast_id
+        type: Optional<Uuid>
+    outcomes:
+      - name: posted
+        creates: swarm.mailbox.Message
+        instance: message_id
+        emits:
+          - swarm.mailbox.MessagePosted
+        payload:
+          swarm.mailbox.MessagePosted:
+            mailbox_id: input.mailbox_id
+            swarm_id: input.swarm_id
+            recipient_id: input.recipient_id
+            sender_id: input.sender_id
+            subject: input.subject
+            body: input.body
+            sent_at: input.sent_at
+            parent_message_id: input.parent_message_id
+            broadcast_id: input.broadcast_id
+            message_id:
+              generated: true
+        sets:
+          mailbox_id: input.mailbox_id
+          swarm_id: input.swarm_id
+          recipient_id: input.recipient_id
+          sender_id: input.sender_id
+          subject: input.subject
+          body: input.body
+          sent_at: input.sent_at
+          parent_message_id: input.parent_message_id
+          broadcast_id: input.broadcast_id
+        summary: The message is Unread in the recipient's mailbox. Nobody is woken.
+
+  - name: swarm.mailbox.MarkRead
+    naming:
+      wire: mark-read
+      display: Mark a message read
+    input:
+      - name: message_id
+        type: Uuid
+      - name: read_by
+        type: String
+      - name: read_at
+        type: Timestamp
+    outcomes:
+      - name: read
+        moves: swarm.mailbox.Message.read
+        instance: message_id
+        emits:
+          - swarm.mailbox.MessageRead
+        payload:
+          swarm.mailbox.MessageRead:
+            message_id: input.message_id
+            read_by: input.read_by
+            read_at: input.read_at
+        sets:
+          read_by: input.read_by
+          read_at: input.read_at
+        summary: It leaves the unread view. It is not an acknowledgement.
+      - name: wrong-state
+        wrong_state: true
+        error: swarm.mailbox.MessageStateConflict
+        summary: It was already read, or already acked.
+
+  - name: swarm.mailbox.AckMessage
+    naming:
+      wire: ack
+      display: Acknowledge a message
+    input:
+      - name: message_id
+        type: Uuid
+      - name: acked_by
+        type: String
+      - name: acked_at
+        type: Timestamp
+      - name: ack_note
+        type: Optional<String>
+    outcomes:
+      - name: acked
+        moves: swarm.mailbox.Message.ack
+        instance: message_id
+        emits:
+          - swarm.mailbox.MessageAcked
+        payload:
+          swarm.mailbox.MessageAcked:
+            message_id: input.message_id
+            acked_by: input.acked_by
+            acked_at: input.acked_at
+            ack_note: input.ack_note
+        sets:
+          acked_by: input.acked_by
+          acked_at: input.acked_at
+          ack_note: input.ack_note
+        summary: The recipient says it has dealt with this. Terminal.
+      - name: wrong-state
+        wrong_state: true
+        error: swarm.mailbox.MessageStateConflict
+        summary: It was already acked.
+
+events:
+  - name: swarm.mailbox.MailboxOpened
+    fields:
+      - name: mailbox_id
+        type: Uuid
+      - name: swarm_id
+        type: Uuid
+      - name: agent_id
+        type: String
+      - name: name
+        type: String
+      - name: created_at
+        type: Timestamp
+
+  - name: swarm.mailbox.MailboxClosed
+    fields:
+      - name: mailbox_id
+        type: Uuid
+      - name: closed_at
+        type: Timestamp
+
+  - name: swarm.mailbox.MessagePosted
+    fields:
+      - name: message_id
+        type: Uuid
+      - name: mailbox_id
+        type: Uuid
+      - name: swarm_id
+        type: Uuid
+      - name: recipient_id
+        type: String
+      - name: sender_id
+        type: String
+      - name: subject
+        type: String
+      - name: body
+        type: String
+      - name: sent_at
+        type: Timestamp
+      - name: parent_message_id
+        type: Optional<Uuid>
+      - name: broadcast_id
+        type: Optional<Uuid>
+
+  - name: swarm.mailbox.MessageRead
+    fields:
+      - name: message_id
+        type: Uuid
+      - name: read_by
+        type: String
+      - name: read_at
+        type: Timestamp
+
+  - name: swarm.mailbox.MessageAcked
+    fields:
+      - name: message_id
+        type: Uuid
+      - name: acked_by
+        type: String
+      - name: acked_at
+        type: Timestamp
+      - name: ack_note
+        type: Optional<String>
+
+views:
+  # An inbox. Every unread message in the swarm — the caller filters to its own, the way
+  # `swarm.blackbox.Canvas` leaves the swarm key to the caller: a view's filter is one equality on
+  # its own source and takes no argument, so "unread FOR agent X" is not a thing a view can be.
+  - name: swarm.mailbox.UnreadMessages
+    source: swarm.mailbox.Message
+    consistency: read_your_writes
+    order_by:
+      - sent_at desc
+    filter:
+      state == Unread
+    fields:
+      - name: message_id
+        type: Uuid
+      - name: mailbox_id
+        type: Uuid
+      - name: recipient_id
+        type: String
+      - name: sender_id
+        type: String
+      - name: subject
+        type: String
+      - name: body
+        type: String
+      - name: sent_at
+        type: Timestamp
+      - name: parent_message_id
+        type: Optional<Uuid>
+      - name: broadcast_id
+        type: Optional<Uuid>
+      - name: state
+        type: swarm.mailbox.Message.State
+    naming:
+      wire: unread
+      display: Messages nobody has read
+
+  # What a broadcast fans out to, and what the host reads to do it.
+  - name: swarm.mailbox.OpenMailboxes
+    source: swarm.mailbox.Mailbox
+    consistency: read_your_writes
+    filter:
+      state == Open
+    fields:
+      - name: mailbox_id
+        type: Uuid
+      - name: swarm_id
+        type: Uuid
+      - name: agent_id
+        type: String
+      - name: name
+        type: String
+      - name: state
+        type: swarm.mailbox.Mailbox.State
+    naming:
+      wire: open
+      display: Mailboxes that can be written to
+
+  - name: swarm.mailbox.Messages
+    source: swarm.mailbox.Message
+    consistency: eventual
+    order_by:
+      - sent_at desc
+    fields:
+      - name: message_id
+        type: Uuid
+      - name: mailbox_id
+        type: Uuid
+      - name: recipient_id
+        type: String
+      - name: sender_id
+        type: String
+      - name: subject
+        type: String
+      - name: sent_at
+        type: Timestamp
+      - name: broadcast_id
+        type: Optional<Uuid>
+      - name: state
+        type: swarm.mailbox.Message.State
+    naming:
+      wire: all
+      display: Every message, newest first
+
+  - name: swarm.mailbox.MessageById
+    source: swarm.mailbox.Message
+    consistency: read_your_writes
+    fields:
+      - name: message_id
+        type: Uuid
+      - name: mailbox_id
+        type: Uuid
+      - name: recipient_id
+        type: String
+      - name: sender_id
+        type: String
+      - name: subject
+        type: String
+      - name: body
+        type: String
+      - name: sent_at
+        type: Timestamp
+      - name: read_at
+        type: Optional<Timestamp>
+      - name: acked_at
+        type: Optional<Timestamp>
+      - name: ack_note
+        type: Optional<String>
+      - name: parent_message_id
+        type: Optional<Uuid>
+      - name: broadcast_id
+        type: Optional<Uuid>
+      - name: state
+        type: swarm.mailbox.Message.State
+    naming:
+      wire: by-id
+      display: One message, whole
+
+  - name: swarm.mailbox.MailboxById
+    source: swarm.mailbox.Mailbox
+    consistency: read_your_writes
+    fields:
+      - name: mailbox_id
+        type: Uuid
+      - name: swarm_id
+        type: Uuid
+      - name: agent_id
+        type: String
+      - name: name
+        type: String
+      - name: created_at
+        type: Timestamp
+      - name: closed_at
+        type: Optional<Timestamp>
+      - name: state
+        type: swarm.mailbox.Mailbox.State
+    naming:
+      wire: mailbox-by-id
+      display: One mailbox, whole
+
+actors:
+  # Any agent in the swarm, including the coordinator. It opens its own mailboxes, writes to
+  # anyone's, and reads and acks what arrives in its own.
+  - name: swarm.mailbox.SwarmAgent
+    may:
+      - swarm.mailbox.OpenMailbox
+      - swarm.mailbox.CloseMailbox
+      - swarm.mailbox.PostMessage
+      - swarm.mailbox.MarkRead
+      - swarm.mailbox.AckMessage
+    naming:
+      display: A swarm member
+
+  # A person may write to a running swarm — that is the whole point of an inbox a human can reach.
+  # They may not read or ack on a recipient's behalf: an ack the recipient did not perform is the
+  # one lie this domain exists to prevent.
+  - name: swarm.mailbox.Operator
+    may:
+      - swarm.mailbox.PostMessage
+    naming:
+      display: Operator

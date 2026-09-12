@@ -9,6 +9,7 @@ specification:
   - domains/blackbox.yaml
   - domains/config.yaml
   - domains/goal.yaml
+  - domains/mailbox.yaml
   - domains/manager.yaml
   - components.yaml
   - topology.yaml

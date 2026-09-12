@@ -115,7 +115,9 @@ fn every_view_the_kernel_declares_computes() {
     let mut world = World::new();
     goal_resting_in(&spec, &mut world, "g-1", "a goal", "Evaluating");
 
-    // 22 views, none of which may panic or refuse on a world that holds one goal.
+    // Every view the kernel declares, none of which may panic or refuse on a world that holds one
+    // goal. The list below is every entity a view may name; a domain added to `src/core` without
+    // its entity added here fails this assertion rather than going unchecked.
     let declared = spec.ir().views().len();
     let computed: usize = [
         "swarm.goal.Goal",
@@ -126,6 +128,8 @@ fn every_view_the_kernel_declares_computes() {
         "swarm.blackbox.Box",
         "swarm.blackbox.Schema",
         "swarm.blackbox.Connection",
+        "swarm.mailbox.Mailbox",
+        "swarm.mailbox.Message",
     ]
     .iter()
     .map(|entity| views_over(spec.ir(), &world, entity).len())

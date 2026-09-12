@@ -16,7 +16,7 @@ fn kernel() -> PathBuf {
 #[test]
 fn the_kernel_compiles_from_its_manifest() {
     let spec = Spec::load(kernel()).expect("the kernel resolves");
-    assert_eq!(spec.files(), 8, "ess-inputs.yaml names eight files");
+    assert_eq!(spec.files(), 9, "ess-inputs.yaml names nine files");
     assert_eq!(spec.ir().system().to_string(), "swarm");
 }
 

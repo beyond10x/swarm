@@ -5,12 +5,14 @@
 # eventbus like connections + presentation layer for the human to observe. from there on they build
 # what they need and like."
 #
-# Three components, because a bare swarm has three jobs: hold the swarm record and its config
-# (`swarm-manager`), run the agents (`agent-runtime`), and carry the boxes a swarm draws and the
-# connections between them (`blackbox-bus`). The 2026-09-11 draft had eight — `board`, `scheduler`,
-# `decision-console`, `flow-engine` and `orchestrator` were what the first coordinator built for
-# itself, and a swarm that starts with them has not started bare. They are recoverable from the
-# import commit.
+# Four components, because a bare swarm has four jobs: hold the swarm record and its config
+# (`swarm-manager`), run the agents (`agent-runtime`), carry the boxes a swarm draws and the
+# connections between them (`blackbox-bus`), and hold what its agents say to each other
+# (`mailbox-bus`). The 2026-09-11 draft had eight; `scheduler`, `decision-console`, `flow-engine`
+# and `orchestrator` were what the first coordinator built for itself, and a swarm that starts with
+# them has not started bare. They are recoverable from the import commit. `board` came back on
+# 2026-09-12 as `mailbox-bus`: a coordinator that can spawn agents and cannot address them has
+# built a roster it cannot use.
 #
 # A binding is `when: event → invoke: command`; `delivery` and `on_failure` are required words.
 # A `mapping` maps one event field per input, or a literal. This is the dataflow: nothing routes an
@@ -153,6 +155,27 @@ components:
         - swarm.blackbox.ConnectionBroken
         - swarm.blackbox.ConnectionRepaired
         - swarm.blackbox.ConnectionRemoved
+    reached_by: network
+
+  - component: mailbox-bus
+    summary: Named mailboxes per agent and the messages in them. What one agent says to another, and what a person says to a running swarm.
+    owns:
+      domains:
+        - swarm.mailbox
+    accepts:
+      commands:
+        - swarm.mailbox.OpenMailbox
+        - swarm.mailbox.CloseMailbox
+        - swarm.mailbox.PostMessage
+        - swarm.mailbox.MarkRead
+        - swarm.mailbox.AckMessage
+    publishes:
+      events:
+        - swarm.mailbox.MailboxOpened
+        - swarm.mailbox.MailboxClosed
+        - swarm.mailbox.MessagePosted
+        - swarm.mailbox.MessageRead
+        - swarm.mailbox.MessageAcked
     reached_by: network
 
 bindings:

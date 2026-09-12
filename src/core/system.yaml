@@ -27,3 +27,4 @@ domains:
   - swarm.agent
   - swarm.blackbox
   - swarm.goal
+  - swarm.mailbox
