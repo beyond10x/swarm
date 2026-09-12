@@ -253,3 +253,47 @@ on seven stories, so the next `aep plan artifact waves` starts from it rather th
 **The disk was 20G free at pre-flight and 56G by the close**, because another session freed about
 41G mid-wave. A wave sized on the pre-flight number would have been sized wrongly in the safe
 direction; one sized on the close would have been wrong in the other.
+
+---
+
+## Cleanup, and the one thing it could not finish
+
+Both trees were read for records first — nothing untracked, nothing unread; every log an agent wrote
+lives under `~/.cache/swarm-wave-2026-09-12/`, outside the trees, and survives them.
+
+**2.4G of build output was inside the worktrees**, not in the directories assigned for it — 1.3G in
+unit A's tree and 1.1G in unit B's, plus `dist/` and `node_modules/`. Unit B's brief assigned no
+`CARGO_TARGET_DIR` because it was the Vue unit, and it ran `cargo test` anyway; unit A's did assign
+one and something ran cargo without the export. All of it is removed, by exact path. **The lesson for
+the next brief: assign a build directory to every unit, not only the ones expected to compile.** An
+in-tree `target/` is invisible to `git worktree list` the moment the tree is gone.
+
+`worktree finish` succeeded for both. **`worktree gc` refuses both, and will keep refusing:**
+
+```
+commit 06d82a938f24ae285f1f4351d7cf1ae87ca9d612 is not reachable from an advertised remote ref
+commit ed48d488fa46c4620178ecec4b9401287a0b1948 is not reachable from an advertised remote ref
+```
+
+**This repository has no remote configured at all** — `git remote -v` is empty — so no amount of
+pushing satisfies that check until one exists. Publication was outside this wave's grant in any
+case.
+
+| | |
+|---|---|
+| retained ids | `wave-20260912-a`, `wave-20260912-b` |
+| paths | `~/.local/state/worktree/trees/b10x/swarm/wave-20260912-{a,b}` |
+| work items | `story:redelivery-for-at-least-once`, `story:render-a-ui-box`, both `implemented` |
+| published commits | **none.** `06d82a9` and `ed48d48`, both merged into `main` at `c1bec3e`, local only |
+| retained evidence | none in the trees; the scratch logs are outside them |
+| blocker | the repository has no remote, so the manager cannot obtain recovery proof |
+| next owner | the operator |
+| next action | add a remote and publish `main`, then `worktree gc --repo . --dry-run --id <id>` and apply the reviewed ids |
+
+The unit branches are **not** deleted either, for the same reason: `git branch -d` would succeed
+since both are merged, but a branch is the only local name left pointing at work nothing has
+published, and removing the name while the trees are retained would be tidying away the thing the
+retention exists to protect.
+
+**The next wave's pre-flight will refuse on these two trees.** That is correct behaviour and it is
+this wave's cost, not a defect in the next one.
