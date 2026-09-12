@@ -42,7 +42,7 @@
 //! ```
 //!
 //! Either may be set to `0`, `off` or `none` to lift it, and to nothing else: a value that is
-//! merely wrong — `-1`, `banana` — keeps the default and says so in a warning. Lifting both
+//! merely wrong — `-1`, `nan`, `inf`, `banana` — keeps the default and says so in a warning. Lifting both
 //! restores the old behaviour, which is a loop that stops when the goal is reached or when a person
 //! pauses it.
 
@@ -74,9 +74,10 @@ impl Default for Caps {
 impl Caps {
     /// Reads the caps from the environment, falling back to the defaults.
     ///
-    /// A value that does not parse, or that is below zero, is a mistake worth refusing loudly
-    /// rather than silently treating as "no cap", so it keeps the default and says so. `read`
-    /// carries the reason that sentence is worth more than one line.
+    /// A value that does not parse, that is below zero, or that is not a finite number at all, is
+    /// a mistake worth refusing loudly rather than silently treating as "no cap", so it keeps the
+    /// default and says so. `read` carries the reason that sentence is worth more than one line —
+    /// and the reason it took three attempts to write.
     pub fn configured() -> Self {
         Self {
             max_turns: read("SWARM_MAX_TURNS", TURNS),
@@ -137,10 +138,14 @@ impl std::fmt::Display for Reached {
 /// So a negative value joins an unparseable one in the branch this module's own doc promised —
 /// refused loudly, default kept. A cap is a bound, and a reader that treats a mistake as "no bound"
 /// is answering a question nobody asked it.
-fn read<T>(name: &str, fallback: T) -> Option<T>
-where
-    T: std::str::FromStr + PartialOrd + Default + Copy,
-{
+///
+/// The same argument reaches one value further, and the first version of this function stopped
+/// short of it. `==` and `<` are both FALSE of NaN, so `SWARM_MAX_SPEND_USD=nan` was neither lifted
+/// nor refused: it fell through and became the ceiling, and `spent >= NaN` is false for every spend
+/// there has ever been. `inf` does the same by being a number no spend reaches. Both are caught by
+/// [`Cap::is_usable`] BEFORE the comparisons, because a classification that decides by comparison
+/// cannot classify a value that compares false with everything.
+fn read<T: Cap>(name: &str, fallback: T) -> Option<T> {
     let Ok(raw) = std::env::var(name) else {
         return Some(fallback);
     };
@@ -158,10 +163,33 @@ where
         Some(fallback)
     };
     match raw.parse::<T>() {
+        Ok(value) if !value.is_usable() => refuse("it is not a finite number"),
         Ok(value) if value == T::default() => None,
         Ok(value) if value < T::default() => refuse("a cap below zero is a mistake, not a lift"),
         Ok(value) => Some(value),
         Err(_) => refuse("it does not parse"),
+    }
+}
+
+/// A type a cap can be read into.
+///
+/// The one thing [`read`] cannot do generically is decide whether a parsed value is a number at
+/// all. Integers always are; floats have three values that are not — `NaN`, `inf`, `-inf` — and
+/// all three defeat a classification written in `==` and `<`.
+trait Cap: std::str::FromStr + PartialOrd + Default + Copy {
+    /// Whether this value can serve as a bound something might exceed.
+    fn is_usable(self) -> bool;
+}
+
+impl Cap for u64 {
+    fn is_usable(self) -> bool {
+        true
+    }
+}
+
+impl Cap for f64 {
+    fn is_usable(self) -> bool {
+        self.is_finite()
     }
 }
 

@@ -140,7 +140,15 @@ async fn ask_the_coordinator(server: &Arc<Server>, swarm: &Arc<Swarm>) {
         // `fire` measured the ones BEFORE it. Two guards over one bound, disagreeing by one, stop
         // the loop a turn early — `SWARM_MAX_TURNS=3` ran twice. Both now measure turns already
         // taken, which is what a cap of three means.
-        if capped(server.caps(), swarm, id, iterations.saturating_sub(1)).is_some() {
+        if let Some(reached) = capped(server.caps(), swarm, id, iterations.saturating_sub(1)) {
+            // Reported from here as well as from `fire`, and that is not belt-and-braces: a
+            // coordinator that never writes a verdict leaves its goal in `Pursuing`, which
+            // `GoalsAwaitingATick` does not select, so `fire` never sees the goal again after the
+            // first period and THIS is the only guard that ever trips. Stopping here in silence
+            // left a goal sitting in `Pursuing` with nothing in `capped_goals()`, nothing on the
+            // watch stream and no warning — which is precisely the picture the $11.35 run
+            // presented to everybody who looked at it.
+            report_capped(server, swarm, id, iterations.saturating_sub(1), reached);
             server.release_turn(swarm.slug(), id);
             continue;
         }
@@ -239,25 +247,7 @@ async fn fire(server: &Server, swarm: &Arc<Swarm>, binding: &str) -> Result<(), 
         let within_budget = match capped(server.caps(), swarm, goal, so_far) {
             None => true,
             Some(reached) => {
-                let (spent, _) = swarm.spend_on(goal);
-                let capped = CappedGoal {
-                    swarm: swarm.slug().to_owned(),
-                    goal: goal.to_owned(),
-                    turns: so_far,
-                    spent_usd: spent.cost_usd,
-                    reached,
-                    why: reached.to_string(),
-                };
-                if server.report_capped(capped.clone()) {
-                    tracing::warn!(swarm = %swarm.slug(), goal, %reached, "the loop stopped asking");
-                    swarm.announce(What::Capped {
-                        goal: capped.goal,
-                        turns: capped.turns,
-                        spent_usd: capped.spent_usd,
-                        reached: capped.reached,
-                        why: capped.why,
-                    });
-                }
+                report_capped(server, swarm, goal, so_far, reached);
                 false
             }
         };
@@ -276,6 +266,32 @@ async fn fire(server: &Server, swarm: &Arc<Swarm>, binding: &str) -> Result<(), 
         }
     }
     Ok(())
+}
+
+/// Records that the loop has stopped asking about a goal, and tells everybody who can hear.
+///
+/// Both cap guards call this, because a reader cannot tell which guard stopped a goal and must not
+/// have to. `report_capped` is idempotent per goal, so the once-per-turn warning stays once.
+fn report_capped(server: &Server, swarm: &Arc<Swarm>, goal: &str, turns: u64, reached: Reached) {
+    let (spent, _) = swarm.spend_on(goal);
+    let capped = CappedGoal {
+        swarm: swarm.slug().to_owned(),
+        goal: goal.to_owned(),
+        turns,
+        spent_usd: spent.cost_usd,
+        reached,
+        why: reached.to_string(),
+    };
+    if server.report_capped(capped.clone()) {
+        tracing::warn!(swarm = %swarm.slug(), goal, %reached, "the loop stopped asking");
+        swarm.announce(What::Capped {
+            goal: capped.goal,
+            turns: capped.turns,
+            spent_usd: capped.spent_usd,
+            reached: capped.reached,
+            why: capped.why,
+        });
+    }
 }
 
 /// Whether this goal has used up what it may.

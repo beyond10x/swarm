@@ -35,6 +35,10 @@
 //! as a swarm that had never been given one. Those two are different facts and
 //! [`Unfinished::Unusable`] now says which.
 //!
+//! Step 1 refuses rather than guesses when a swarm has more than one Active config, which is what
+//! a swarm has as soon as its operator activates a replacement — `ActivateConfig` does not
+//! supersede the row it replaces, whatever `config.yaml` says about it. See `from_config`.
+//!
 //! What this must never do is decide the verdict itself. A runtime that answered "reached" on a
 //! coordinator's behalf — on a timeout, on a crash, on a budget — would be reporting work nobody
 //! did. Every failure here leaves the goal in `Pursuing`, where a person can see it waiting.
@@ -364,13 +368,46 @@ pub fn configured() -> Option<Launch> {
 /// source. `Err` is "it says something this host cannot do", which must NOT fall through — a
 /// config silently replaced by the default is the bug this whole path exists to end.
 async fn from_config(swarm: &Swarm) -> Result<Option<Launch>, String> {
-    let active = swarm
+    let active: Vec<Json> = swarm
         .instances("swarm.config.Config")
         .await
         .into_iter()
-        .find(|config| config.get("state").and_then(Json::as_str) == Some("Active"));
+        .filter(|config| config.get("state").and_then(Json::as_str) == Some("Active"))
+        .collect();
+
+    // `config.yaml:9-12` says one config is Active per swarm at a time, and `ActivateConfig`'s own
+    // summary says the previous row is superseded in the same transaction. Neither is true: the
+    // same paragraph records that no binding can do it, and nothing else does it either, so
+    // activating a replacement — the documented way to change a launch line — leaves BOTH rows
+    // Active.
+    //
+    // This used to be `.find(state == "Active")`. Over a map keyed by generated UUID that is a coin
+    // flip, and what it was flipping was which coordinator a swarm launches: a replaced config won
+    // about half the time, per swarm, for the life of the process.
+    //
+    // Ordering by `activated_at` would be the kinder answer and is not available: the `activated`
+    // outcome writes no `writes:` and `ConfigActivated` carries no timestamp, so `activated_at` is
+    // `null` on every row that has ever existed. There is nothing in the log that says which
+    // activation came last.
+    //
+    // So it refuses. A runtime that picked one would be answering a question the model says cannot
+    // be asked, and answering it wrong half the time. The refusal names the rows and the fix, and
+    // a swarm with one Active config — which is every swarm whose config was activated once — is
+    // untouched by any of this.
+    if active.len() > 1 {
+        let ids: Vec<&str> = active
+            .iter()
+            .filter_map(|config| config.get("id").and_then(Json::as_str))
+            .collect();
+        return Err(format!(
+            "{} configs are Active at once ({}), and nothing records which was activated last —              `activated_at` is never written. swarm.config.ActivateConfig does not supersede the              row it replaces, though config.yaml says it does. Supersede all but one with              swarm.config.SupersedeConfig, or set SWARM_COORDINATOR to say which coordinator to run",
+            active.len(),
+            ids.join(", ")
+        ));
+    }
+
     let Some(launch) = active
-        .as_ref()
+        .first()
         .and_then(|config| config.get("fields"))
         .and_then(|fields| fields.get("launch"))
     else {
