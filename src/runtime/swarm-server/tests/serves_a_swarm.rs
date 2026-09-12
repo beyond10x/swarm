@@ -275,11 +275,28 @@ async fn a_failed_at_least_once_delivery_is_kept_and_retried_rather_than_dropped
     }
 }
 
-/// A redelivery that succeeds commits what the first attempt could not.
+/// A redelivery that succeeds commits what the first attempt could not — the whole path.
 ///
 /// The transient failure is a stale world, which is the ordinary shape of one: the second handle's
 /// world was folded before the first handle wrote the swarm, so the binding's command acts on an
 /// instance its world does not hold yet and fails. `reload` is what makes the next attempt see it.
+///
+/// **Why it is built from two handles on one log, which `store.rs` does not admit.** That module
+/// says one writer per file, and this opens two connections to one. It is deliberate and it is the
+/// best available proof of the WHOLE path — a real `pump()` failure, owed by `owe()`, drained by
+/// `redeliver()` — because this kernel offers no transient failure that one handle can produce:
+/// every way a binding's command can fail here is permanent. A missing subject stays missing
+/// (identities for `Swarm` and `Config` are minted by the implementation, so no later command can
+/// supply the one the delivery wants), and a terminal state is absorbing. A failure that heals must
+/// therefore be manufactured, and a stale fold is the smallest manufacture available.
+///
+/// What would replace it: a seam that makes `apply` or `store.commit` fail once on demand, or a
+/// kernel binding whose command has a precondition a later command can satisfy. Either removes the
+/// two-connection trick from this file. Until then the narrower claim — a due delivery applies,
+/// commits and stops being owed — is proved with one handle in `swarm.rs`'s own unit tests, so if
+/// this case is ever deleted for touching a state the store excludes, the queue is not left
+/// unproved. It is deterministic rather than flaky: the writes are sequential, awaited one at a
+/// time, and no two are in flight together.
 #[tokio::test]
 async fn a_redelivery_that_succeeds_commits_what_the_first_attempt_could_not() {
     let data = tempdir::TempDir::new("swarm-redeliver").expect("a scratch directory");

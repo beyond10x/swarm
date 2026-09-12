@@ -61,16 +61,27 @@ pub async fn run(server: Arc<Server>) {
         server.tick_scheduled(shortest);
         tokio::time::sleep(shortest).await;
         server.ticked();
+        // The clock the redelivery queue needed. A failed `at_least_once` delivery is re-attempted
+        // from here rather than from a timer of its own: the trigger is already the one loop that
+        // walks every swarm on a period, and a second one would be a second cadence to keep in step
+        // with the first.
+        //
+        // What this is NOT is a thirty-second retry. `RETRY_DELAY` is a floor: a delivery queued
+        // just after a drain waits a full period beyond it, so the real wait is 30 to 60 seconds,
+        // and the drain of the LAST swarm additionally waits for every earlier swarm's occurrences
+        // — `fire` is awaited, not spawned — so the upper bound grows with the number of swarms
+        // held. Draining every swarm before any of them is fired keeps that growth to one pass of
+        // cheap work rather than one pass of the tick path; it does not remove it. A bound that
+        // does not move with the swarm count needs its own task, which is the second cadence this
+        // deliberately does not have.
         for swarm in server.all().await {
-            // The clock this queue needed. A failed `at_least_once` delivery is re-attempted from
-            // here rather than from a timer of its own: the trigger is already the one loop that
-            // walks every swarm on a period, and a second one would be a second cadence to keep in
-            // step with the first. `RETRY_DELAY` is the trigger's own shortest period for the same
-            // reason, so nothing is drained earlier than it asked to be.
             let attempted = swarm.redeliver(Instant::now()).await;
             if attempted > 0 {
                 tracing::info!(swarm = %swarm.slug(), attempted, "re-attempted owed deliveries");
             }
+        }
+
+        for swarm in server.all().await {
             for (binding, _) in &periodic {
                 if let Err(why) = fire(&server, &swarm, binding).await {
                     tracing::warn!(swarm = %swarm.slug(), binding = %binding, error = %why,

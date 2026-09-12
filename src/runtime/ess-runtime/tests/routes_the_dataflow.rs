@@ -212,9 +212,13 @@ fn the_pump_says_which_deliveries_it_leaves_to_its_caller() {
     //
     // `swarm-server` serves all three as of 2026-09-12 — `Swarm::issue` keeps the failure and
     // `Swarm::redeliver` re-attempts it under a bound and a delay — and this list is what it reads
-    // to know which failures are worth keeping. Every other caller of `pump()` is still under-served
-    // by exactly this set: `swarm-cli` and any host that routes an event without draining a queue
-    // will drop a failed delivery of these three and nothing will say so.
+    // to know which failures are worth keeping.
+    //
+    // It is the only caller of `pump()` in this workspace outside these tests. `swarm-cli` is an
+    // HTTP client and never routes anything, so naming it as under-served (as an earlier draft of
+    // this comment did) would have been a guess dressed as a fact. Who is under-served is therefore
+    // exactly: any host, present or future, that routes an event and does not drain a queue — for
+    // which this list is the notice.
     //
     // The list cannot answer the acceptance's first branch and stay honest. `needs_redelivery` is a
     // pure function of the IR; it cannot observe that some host now redelivers, so returning empty
