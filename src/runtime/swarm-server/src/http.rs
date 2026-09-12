@@ -36,7 +36,45 @@ pub struct Issue {
     /// Who is issuing it. `None` means the system itself, which skips the actor check.
     #[serde(default)]
     pub actor: Option<String>,
-    /// The idempotency key. Retrying with the same one is a retry, not a second request.
+    /// The key this request commits under. It guards the APPEND, and it does not make re-issuing
+    /// the command harmless.
+    ///
+    /// `store.rs` scopes the key to the INSTANCE'S STREAM: committing it twice on one stream with
+    /// the same events appends nothing, and committing it with different events is refused. That
+    /// is the whole of what it buys. `Swarm::issue` applies the command BEFORE it appends, against
+    /// the world the first attempt left — so a client that resends after a dropped response gets
+    /// the specification's answer to the second application, not a copy of the first. Measured:
+    /// two `ActivateConfig` calls under one key answer `activated` then `wrong-state`. For a
+    /// command that CREATES, the second attempt mints a fresh instance, so the key lands on a
+    /// stream it was never spent on and nothing refuses it: two `DraftConfig` calls under one key
+    /// leave two Configs. Both are in `tests/redelivery_under_attack.rs` under
+    /// `story:request-key-is-not-idempotency`.
+    ///
+    /// So what a disconnected client gets is this and no more: it will not double-APPEND to a
+    /// stream the key was already spent on. Everything else it must establish by reading, and a
+    /// client that cannot tolerate the second answer should read before it resends. The log
+    /// (`GET /swarms/{slug}/log`) carries the `request` each event was written under, so it
+    /// answers whether this key's first attempt landed — within the window it returns, and no
+    /// further.
+    ///
+    /// That window is a TAIL. `limit` defaults to 200 and is capped at 1000, `Store::history`
+    /// returns the newest that many, and there is no cursor, no offset and no way to ask the
+    /// endpoint about one key. An attempt older than `limit` events is therefore unreachable, and
+    /// reads exactly like one that never happened — so a client that resends on absence past the
+    /// window resends a command that landed, which is the failure this whole doc is about.
+    /// Measured in `tests/the_request_key_contract.rs`. Read early, read with the largest limit,
+    /// or accept the second answer. The canvas (`GET /swarms/{slug}`) answers the weaker question
+    /// of whether the effect is there: a canvas record is an instance — entity, id,
+    /// identity_field, state, fields, revision — and names no key at all.
+    ///
+    /// Omitting the field gives up that guard. `issue_command` mints a fresh uuid when it is
+    /// absent, and a key spent on no stream can refuse nothing, so a repeat appends. Measured:
+    /// two `MoveBox` calls under one key append one `BoxMoved`, the same two under minted keys
+    /// append two (`tests/the_request_key_contract.rs`). Sending a key of the client's own is the
+    /// only way to have the guard at all; omitting it is honest about wanting neither.
+    ///
+    /// Changing that means giving `Swarm::issue` a request-to-answer record, which is a schema in
+    /// `ess-runtime` and not a comment. Until then this doc and those two cases move together.
     #[serde(default)]
     pub request: Option<String>,
 }

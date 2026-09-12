@@ -268,8 +268,27 @@ export function view(
 /**
  * Issues one command.
  *
- * `request` is an idempotency key. Sending the same one twice with the same input is a retry and
- * writes nothing the second time, which is what makes a dropped response safe to resend.
+ * `request` is the key this request commits under. It guards the APPEND and it does not make
+ * re-issuing the command harmless — the server scopes it to the INSTANCE'S STREAM, so sending the
+ * same one twice appends nothing only where the first attempt already spent it on that same
+ * stream. The server applies the command before it appends, against the world the first attempt
+ * left, so a retry gets the specification's answer to the SECOND application: two `ActivateConfig`
+ * calls under one key answer `activated` then `wrong-state`. A command that creates mints a fresh
+ * instance per attempt, so the key lands on a stream it was never spent on and two `DraftConfig`
+ * calls under one key leave two instances. Both measured in the server's
+ * `tests/redelivery_under_attack.rs`, under `story:request-key-is-not-idempotency`.
+ *
+ * So a caller that lost its response should not blind-resend. {@link log} carries the `request`
+ * each event was written under, so it answers whether the first attempt landed — within the window
+ * it returns, and no further. That window is a tail: `limit` defaults to 200 and the server caps it
+ * at 1000, and there is no cursor and no way to ask about one key, so an attempt older than `limit`
+ * events is unreachable and reads exactly like one that never happened. Resending on absence past
+ * the window resends a command that landed. {@link canvas} answers the weaker question of whether
+ * the effect is there — a canvas record is an instance and names no key at all.
+ *
+ * Omitting `request` gives up that guard rather than costing nothing: the server mints a fresh key
+ * when the field is absent, and a key spent on no stream can refuse nothing, so a repeat appends.
+ * Measured in the server's `tests/the_request_key_contract.rs`.
  */
 export function issue(
   slug: string,

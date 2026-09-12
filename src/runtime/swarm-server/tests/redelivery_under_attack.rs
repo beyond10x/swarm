@@ -5,15 +5,17 @@
 //! claim on `Delivery::request` that "at most one attempt can append ... so a duplicate delivery
 //! cannot double-write". Both were red, and both were right to be.
 //!
-//! The `swarm.rs` claim was wrong and has been corrected in place rather than defended: an
+//! Both claims were wrong and both have been corrected in place rather than defended: an
 //! idempotency key is scoped to one instance's stream (`store.rs`), so it cannot refuse an attempt
-//! that writes to a stream it was never spent on. The `http.rs` contract is not kept by the code
-//! either, and that is older and wider than the redelivery queue — it is filed as
-//! `story:request-key-is-not-idempotency`.
+//! that writes to a stream it was never spent on, and `http.rs` now says so where a caller reads
+//! it. That correction was older and wider than the redelivery queue and was filed as
+//! `story:request-key-is-not-idempotency`; `tests/the_request_key_contract.rs` is the check that
+//! holds every surface of it to one story, this file included.
 //!
 //! So each case below now asserts what the code DOES, with the story named in the assertion
-//! message. They are characterisation, not approval: the day somebody makes a request key mean
-//! what both documents say, these two go red and point at the line that says so. Leaving them red
+//! message. They are characterisation, not approval: the day somebody makes a request key
+//! idempotent in the way those two documents once promised, these cases go red and point at the
+//! line that says so. Leaving them red
 //! today was the alternative, and a red case is read by the suite's exit status, which would have
 //! deleted every result after it.
 
@@ -47,9 +49,11 @@ fn args(value: Json) -> serde_json::Map<String, Json> {
 
 /// What a client retry under the same idempotency key actually does today: a different answer.
 ///
-/// `http.rs` documents `Issue::request` as "the idempotency key. Retrying with the same one is a
-/// retry, not a second request." A client whose connection dropped after the server committed does
-/// exactly this. The key reaches the log, where it makes the APPEND idempotent — but `Swarm::issue`
+/// `http.rs` used to document `Issue::request` as "the idempotency key. Retrying with the same one
+/// is a retry, not a second request." It no longer does: that sentence was corrected under this
+/// story, and `tests/the_request_key_contract.rs` holds the check that keeps every surface saying
+/// the same true thing. A client whose connection dropped after the server committed does exactly
+/// what follows. The key reaches the log, where it makes the APPEND idempotent — but `Swarm::issue`
 /// applies the command again first, against the world the first one left, and the specification
 /// answers the second `ActivateConfig` with `wrong-state` because the config it names is already
 /// Active. The caller is told its request failed when its request succeeded.
