@@ -22,16 +22,23 @@ pub struct Server {
     spec: Arc<Spec>,
     root: PathBuf,
     swarms: RwLock<BTreeMap<String, Arc<Swarm>>>,
-    /// Held across the construction of a swarm that is not yet in `swarms`, so at most one
-    /// `Swarm::open` runs at a time in this process.
+    /// One lock per slug, held across the construction of that slug's swarm, so at most one
+    /// `Swarm::open` per slug runs at a time in this `Server`.
     ///
     /// The map's own lock cannot do this job: it has to be dropped across the await, which is what
     /// let two opens of one slug both construct a handle. It also cannot be left to the store to
     /// arbitrate — the event log sets no `busy_timeout` (`ess-runtime/src/store.rs:21-23`), so two
     /// simultaneous opens of one `eventlog.sqlite3` do not queue, one of them is refused outright.
-    /// Opening is rare (a hit in `swarms` never reaches here) and this is one process, so one lock
-    /// for all slugs is enough and a per-slug map of locks would only be more to get wrong.
-    opening: tokio::sync::Mutex<()>,
+    ///
+    /// Per slug and not one lock for all of them, because `Swarm::open` is a store open plus a full
+    /// replay of the log: one lock made an open of a slug with no directory, no log and nothing in
+    /// common with another slug wait 253 ms for that other slug's 4000-command replay. Two clients
+    /// creating two different swarms (`http.rs`, the only caller) have no reason to queue.
+    ///
+    /// The outer lock is `std` and is held only long enough to clone one `Arc` out of the map —
+    /// never across an await. One entry per slug ever opened, which is bounded by the swarms on
+    /// disk; nothing removes them, because a slug that was opened once may be opened again.
+    opening: Mutex<BTreeMap<String, Arc<tokio::sync::Mutex<()>>>>,
     /// When this process started, RFC 3339.
     started_at: String,
     /// When the trigger will next fire, RFC 3339. `None` until the trigger has said.
@@ -72,7 +79,7 @@ impl Server {
             spec,
             root,
             swarms: RwLock::new(swarms),
-            opening: tokio::sync::Mutex::new(()),
+            opening: Mutex::new(BTreeMap::new()),
             started_at: now(),
             next_tick_at: Mutex::new(None),
             ticks: Mutex::new(0),
@@ -94,45 +101,45 @@ impl Server {
     /// — no `give_up`, no `What::Undelivered`, no log line. Two handles over one event log is also
     /// two in-memory worlds, which disagree from the first command either one applies.
     ///
-    /// So construction is serialised on `opening` and the map is re-read under it. That also
-    /// answers the refusal the store would otherwise hand back: with no `busy_timeout` set
+    /// So construction is serialised per slug on `opening`, and the map is re-read under that
+    /// slug's lock: the second caller finds the first's handle and never constructs one, so there
+    /// is no losing handle to drop and no insert that can land over a live one. That also answers
+    /// the refusal the store would otherwise hand back: with no `busy_timeout` set
     /// (`ess-runtime/src/store.rs:21-23`), two simultaneous opens of one `eventlog.sqlite3` end
     /// with one refused `database is locked`, which reached `POST /swarms` as a `500` for a swarm
     /// that was open and healthy. Only one open of a given file is now in flight at a time.
     ///
-    /// A refusal that is not contention is still a refusal: when the store fails and no handle is
-    /// in the map, the error is returned.
+    /// The lock is per slug, so an open of one swarm never waits on another's replay.
+    ///
+    /// When the store fails, the error is returned.
     pub async fn open(&self, slug: &str) -> Result<Arc<Swarm>, Refused> {
         if let Some(open) = self.swarms.read().await.get(slug) {
             return Ok(Arc::clone(open));
         }
 
-        let _constructing = self.opening.lock().await;
-        // Whoever held `opening` before this call may have been opening this very slug, in which
-        // case it is in the map now and nothing is constructed twice.
+        // This slug's construction lock, and nobody else's. Taken under an `std` guard that is
+        // dropped on the next line, so no await happens while it is held.
+        let gate = Arc::clone(
+            self.opening
+                .lock()
+                .expect("not poisoned")
+                .entry(slug.to_owned())
+                .or_default(),
+        );
+        let _constructing = gate.lock().await;
+
+        // Whoever held this slug's gate before this call was opening this slug, so it is in the map
+        // now and nothing is constructed twice.
         if let Some(open) = self.swarms.read().await.get(slug) {
             return Ok(Arc::clone(open));
         }
 
         let swarm = Arc::new(Swarm::open(Arc::clone(&self.spec), &self.root, slug).await?);
-        let mut swarms = self.swarms.write().await;
-        // Never over an incumbent, even if one appeared by a route this lock does not cover. The
-        // loser is cloned out and dropped after the guard is released: dropping a `Swarm` closes a
-        // SQLite connection, and doing that under the write guard would stall every `open`, `get`,
-        // `slugs` and `status` for as long as the close takes.
-        let loser = if swarms.contains_key(slug) {
-            Some(swarm)
-        } else {
-            swarms.insert(slug.to_owned(), swarm);
-            None
-        };
-        let kept = swarms
-            .get(slug)
-            .map(Arc::clone)
-            .expect("the slug is in the map, inserted here or by an earlier open");
-        drop(swarms);
-        drop(loser);
-        Ok(kept)
+        self.swarms
+            .write()
+            .await
+            .insert(slug.to_owned(), Arc::clone(&swarm));
+        Ok(swarm)
     }
 
     /// One open swarm.
