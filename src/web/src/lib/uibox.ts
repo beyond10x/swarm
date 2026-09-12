@@ -53,7 +53,21 @@ export interface UiBoxUnknown {
   named: string
 }
 
-export type UiBoxSpec = UiBoxPanel | UiBoxUnknown
+/**
+ * A Ui box naming a component that cannot be contained by the box it is drawn in.
+ *
+ * `UiModal` teleports its markup to `document.body`, locks the page's scroll and takes Escape and
+ * Tab from the whole document. A panel's `inert` is an attribute on ITS OWN subtree and reaches
+ * none of that, so the box would have put a full-screen backdrop over the application with nothing
+ * bound to close it. A component that acts outside itself is refused, because there is no way to
+ * render it that leaves the page usable.
+ */
+export interface UiBoxUnsafe {
+  kind: 'unsafe-component'
+  named: string
+}
+
+export type UiBoxSpec = UiBoxPanel | UiBoxUnknown | UiBoxUnsafe
 
 const BOX = 'swarm.blackbox.Box'
 
@@ -77,6 +91,7 @@ export function uiBoxSpec(
   instance: BoxLike,
   known: ReadonlySet<string>,
   declared?: Declared,
+  refused?: ReadonlySet<string>,
 ): UiBoxSpec | undefined {
   if (instance.entity !== BOX) return undefined
   if (instance.fields.kind !== 'Ui') return undefined
@@ -85,6 +100,7 @@ export function uiBoxSpec(
   // A Ui box that names nothing has refused nothing: there is no component to report as missing.
   if (typeof component !== 'string' || !component) return undefined
   if (!known.has(component)) return { kind: 'unknown-component', named: component }
+  if (refused?.has(component)) return { kind: 'unsafe-component', named: component }
 
   const types = declared?.[component]
 
@@ -164,4 +180,25 @@ export function columnsFrom(rows: readonly Record<string, unknown>[]): { key: st
   const first = rows[0]
   if (!first) return []
   return Object.keys(first).map((key) => ({ key, label: key }))
+}
+
+/**
+ * What is wrong with the view a box is fed from, if anything.
+ *
+ * A `view` is a name an agent wrote, and it is wrong in the same ways `ref_id` is — this is the
+ * refusal the unknown component already gets, for the other name on the box. Without it, a view
+ * that does not exist and a view with nothing in it are the same picture: an empty table saying
+ * "No rows", which is the one reading that is certainly false.
+ *
+ * `declared` is `/spec`'s list of views. Undefined means the specification has not been read yet,
+ * and nothing is accused of not existing before the system has said what exists.
+ */
+export function viewProblem(
+  view: string,
+  declared: readonly string[] | undefined,
+  error: string | undefined,
+): string | undefined {
+  if (declared && !declared.includes(view)) return `No view named ${view} in the specification.`
+  if (error) return `The view ${view} could not be read: ${error}`
+  return undefined
 }

@@ -19,10 +19,16 @@
 // back — no command does, and `blackbox.yaml` records that as UNMAPPED — so a text input a person
 // could type into would discard the typing on the next refresh. That looks like it worked, which is
 // worse than plainly not offering it.
+//
+// `inert` is an attribute on THIS subtree, so it can only make that promise for a component that
+// stays in it. One does not: `UiModal` teleports to `document.body`, locks the page's scroll and
+// takes Escape and Tab from the whole document, and a box naming it covered the application with a
+// backdrop nothing was bound to close. Such a component is refused rather than drawn — see
+// `uiRefused` in the contract, which is decided by reading the components, not by this file.
 import { computed, watchEffect } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import { uiComponents, uiEmitters } from '@/components/ui'
-import { columnsFrom, type UiBoxSpec } from '@/lib/uibox'
+import { columnsFrom, viewProblem, type UiBoxSpec } from '@/lib/uibox'
 import type { Instance } from '@/runtime'
 import { useSwarmStore } from '@/stores/swarms'
 
@@ -58,8 +64,19 @@ const component = computed(() =>
 
 /** The name on the box — a refusal has to say what it refused, and a panel says what it is. */
 const named = computed(() =>
-  decision.value.kind === 'unknown-component' ? decision.value.named : decision.value.component,
+  decision.value.kind === 'panel' ? decision.value.component : decision.value.named,
 )
+
+/** Why this box draws no component, when it draws none. */
+const refusal = computed(() => {
+  if (decision.value.kind === 'unknown-component') {
+    return `No component named ${decision.value.named} in the library.`
+  }
+  if (decision.value.kind === 'unsafe-component') {
+    return `${decision.value.named} is not drawn on a canvas: it renders outside this box and takes the whole page.`
+  }
+  return undefined
+})
 
 /**
  * Whether the component this box names emits, per the contract table.
@@ -87,7 +104,21 @@ watchEffect(() => {
 const rows = computed(() => {
   const view = spec.value?.view
   const slug = props.data.slug
-  return view && slug ? store.viewRows(slug, view) : undefined
+  return view && slug ? (store.viewState(slug, view)?.rows ?? []) : undefined
+})
+
+/**
+ * What is wrong with the view this box is fed from, if anything.
+ *
+ * A name in `view` is an agent's, exactly as `ref_id` is, and it is wrong in the same ways. Shown
+ * instead of the component: the rows ARE the panel, and a table reading "No rows" for a view that
+ * does not exist is the one answer that is certainly false.
+ */
+const feed = computed(() => {
+  const view = spec.value?.view
+  const slug = props.data.slug
+  if (!view || !slug) return undefined
+  return viewProblem(view, store.shape?.views, store.viewState(slug, view)?.error)
 })
 
 /**
@@ -116,18 +147,20 @@ const bound = computed<Record<string, unknown>>(() => {
       <span class="named">{{ named }}</span>
     </header>
 
-    <div v-if="component" class="body nodrag nowheel">
-      <!-- `inert` is the whole mechanism: the component renders exactly as it would, and takes no
-           input, because there is nowhere for what it emits to go. -->
+    <p v-if="refusal" class="refused">{{ refusal }}</p>
+    <p v-else-if="feed" class="refused">{{ feed }}</p>
+    <div v-else-if="component" class="body nodrag nowheel">
+      <!-- `inert` makes this subtree take no input, because there is nowhere for what it emits
+           to go. It is the whole mechanism only for a component that stays in this subtree, which
+           is why one that does not is refused above rather than rendered here. -->
       <div :inert="inert || undefined">
         <component :is="component" v-bind="bound" />
       </div>
     </div>
-    <p v-else class="refused">
-      No component named <code>{{ named }}</code> in the library.
-    </p>
 
-    <p v-if="inert" class="note">Read-only: nothing can keep what this component emits.</p>
+    <p v-if="inert && !refusal && !feed" class="note">
+      Read-only: nothing can keep what this component emits.
+    </p>
 
     <Handle id="out" type="source" :position="Position.Right" />
   </div>

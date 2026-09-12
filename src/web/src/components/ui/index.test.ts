@@ -114,8 +114,16 @@ test('the declared prop types are the contract table, component for component', 
   assert.deepEqual(exported, wanted)
 })
 
-test('the components that emit are the components the table says emit', () => {
+// Superseded in force by 'every component the table says emits is either rendered inert or
+// refused' below, which is the same assertion once a refused component exists. Kept as it was for
+// the case where nothing is refused at all.
+test('the components that emit are the components rendered inert, plus any that are refused', () => {
   const listed = literal('uiEmitters')
+    .replace(/[[\]]/g, '')
+    .split(',')
+    .map((entry) => entry.trim().replace(/'/g, ''))
+    .filter(Boolean)
+  const refused = literal('uiRefused')
     .replace(/[[\]]/g, '')
     .split(',')
     .map((entry) => entry.trim().replace(/'/g, ''))
@@ -123,5 +131,72 @@ test('the components that emit are the components the table says emit', () => {
   const wanted = Object.entries(table)
     .filter(([, d]) => d.emits)
     .map(([name]) => name)
-  assert.deepEqual([...listed].sort(), [...wanted].sort())
+  assert.deepEqual([...listed, ...refused.filter((name) => wanted.includes(name))].sort(), [...wanted].sort())
+})
+
+// A component a panel can render is one that draws inside its own box and touches nothing else.
+//
+// `UiBox.vue` made every emitter safe with `inert`, which is an attribute on a SUBTREE: a
+// component that teleports its markup to `document.body`, or that installs a document-level
+// listener, or that writes `document.body.style`, is not inside that subtree and the attribute
+// cannot reach it. `UiModal` does all three, so a box naming it put a fixed full-screen backdrop
+// over the application with the scroll locked and Escape and Tab swallowed, and — no `@close`
+// being bound — no way back.
+//
+// So the predicate is not "emits". It is "acts only on itself", and it is decided by reading the
+// components rather than by remembering: every `.vue` beside this file is scanned, and the scan
+// must equal what `index.ts` declares. A component that starts teleporting is refused by having
+// been written that way.
+
+const HERE = new URL('.', import.meta.url)
+
+/** Every component file the contract re-exports. */
+const files = exported.map((name) => ({ name, source: readFileSync(new URL(`./${name}.vue`, HERE), 'utf8') }))
+
+/** Reaching outside your own subtree, in the three forms the library actually uses. */
+const ESCAPES = /<Teleport\b|document\.|window\.addEventListener|window\.matchMedia/
+
+const escaping = files.filter((file) => ESCAPES.test(file.source)).map((file) => file.name)
+
+test('the refused components are exactly the ones that act outside their own subtree', () => {
+  const declaredRefused = literal('uiRefused')
+    .replace(/[[\]]/g, '')
+    .split(',')
+    .map((entry) => entry.trim().replace(/'/g, ''))
+    .filter(Boolean)
+  assert.deepEqual([...declaredRefused].sort(), [...escaping].sort())
+})
+
+test('nothing a panel renders inert reaches outside its own subtree', () => {
+  const inert = literal('uiEmitters')
+    .replace(/[[\]]/g, '')
+    .split(',')
+    .map((entry) => entry.trim().replace(/'/g, ''))
+    .filter(Boolean)
+  assert.deepEqual(
+    inert.filter((name) => escaping.includes(name)),
+    [],
+    '`inert` is a subtree attribute; a component that escapes the subtree must be refused, not inerted',
+  )
+})
+
+test('every component the table says emits is either rendered inert or refused', () => {
+  const inert = literal('uiEmitters')
+    .replace(/[[\]]/g, '')
+    .split(',')
+    .map((entry) => entry.trim().replace(/'/g, ''))
+    .filter(Boolean)
+  const refused = literal('uiRefused')
+    .replace(/[[\]]/g, '')
+    .split(',')
+    .map((entry) => entry.trim().replace(/'/g, ''))
+    .filter(Boolean)
+  const documented = Object.entries(table)
+    .filter(([, d]) => d.emits)
+    .map(([name]) => name)
+  assert.deepEqual(
+    [...documented].sort(),
+    [...new Set([...inert, ...refused.filter((name) => documented.includes(name))])].sort(),
+  )
+  assert.deepEqual(inert.filter((name) => refused.includes(name)), [], 'a component is one or the other')
 })

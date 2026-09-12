@@ -141,21 +141,32 @@ export const uiPropTypes = {
   UiStateBadge: { state: 'string' },
 } as const
 
-// The components that emit.
+// The components a panel renders INERT, and the components it refuses outright.
 //
-// Taken from the table's last column. A `Box{kind: Ui}` has no way to keep what a component
-// emits — nothing writes `Box.props` back, and no command exists to — so a panel renders one of
-// these inert and says so, rather than offering an edit that is discarded on the next refresh.
+// Both start from the table's last column, and then the one predicate that matters for a canvas
+// splits them: does the component draw inside its own box and act only on it?
+//
+// `inert` is an attribute on a SUBTREE. It makes the markup under a panel's wrapper take no input,
+// which is exactly right for a text input whose edits nothing could keep — nothing writes
+// `Box.props` back. It reaches nothing a component puts OUTSIDE that subtree: `UiModal` teleports
+// to `document.body`, sets `document.body.style.overflow`, and installs a document-level keydown
+// handler that swallows Escape and Tab. A box naming it would cover the application with a fixed
+// backdrop, with no `@close` bound and no way back — from a value an agent may put in `props`.
+//
+// So a component that acts outside itself is REFUSED, not inerted, and `index.test.ts` decides
+// which those are by reading every component in this directory rather than by trusting this list.
 export const uiEmitters: ReadonlySet<string> = new Set([
   'UiButton',
   'UiIconButton',
   'UiTile',
   'UiTag',
   'UiFileList',
-  'UiModal',
   'UiTextInput',
   'UiTextArea',
   'UiNumberInput',
   'UiSelect',
   'UiTabs',
 ])
+
+/** Components no panel may draw: `inert` cannot contain them, so nothing can. */
+export const uiRefused: ReadonlySet<string> = new Set(['UiModal'])

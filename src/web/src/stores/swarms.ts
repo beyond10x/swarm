@@ -117,7 +117,7 @@ export const useSwarmStore = defineStore('swarms', () => {
    * its own world — it is not on the canvas payload and cannot be derived from it. Only views
    * somebody asked for are read: a swarm declares many and a panel watches one.
    */
-  const views = ref<Record<string, Record<string, Record<string, unknown>[]>>>({})
+  const views = ref<Record<string, Record<string, ViewRead>>>({})
   /** Which views are being drawn, per swarm, so a change re-reads exactly those. */
   const viewed = new Map<string, Set<string>>()
 
@@ -130,19 +130,27 @@ export const useSwarmStore = defineStore('swarms', () => {
     void readView(slug, name)
   }
 
-  /** One view's rows as last read, empty until the first read lands. */
-  function viewRows(slug: string, name: string): Record<string, unknown>[] {
-    return views.value[slug]?.[name] ?? []
+  /**
+   * One view as last read: its rows, or why they could not be read.
+   *
+   * Not bare rows. A view that was refused and a view with nothing in it both end up as `[]`, and
+   * a panel showing "No rows" for the first is stating the one thing that is certainly untrue.
+   */
+  function viewState(slug: string, name: string): ViewRead | undefined {
+    return views.value[slug]?.[name]
   }
 
   async function readView(slug: string, name: string): Promise<void> {
+    const held = (views.value[slug] ??= {})
     try {
-      const rows = await runtime.view(slug, name)
-      const held = (views.value[slug] ??= {})
-      held[name] = rows
-    } catch {
-      // A view the server refuses is a view the panel keeps its last rows for: a box may name one
-      // that does not exist, and blanking the panel would hide that it ever had rows.
+      held[name] = { rows: await runtime.view(slug, name) }
+    } catch (why) {
+      // The rows already read are kept beside the failure: a view that has gone away had rows a
+      // moment ago, and blanking the panel would hide that it ever did.
+      held[name] = {
+        rows: held[name]?.rows,
+        error: why instanceof Error ? why.message : 'the runtime could not be reached',
+      }
     }
   }
 
@@ -474,10 +482,16 @@ export const useSwarmStore = defineStore('swarms', () => {
     held, loaded, visible, problem, shape, live, status, statusAt, clock, reachable, nextTickIn,
     load, refresh, getSwarm, goalOf, canAct, createSwarm, follow, unfollow, wake, pollStatus,
     recentlyChanged, lastTurn, loadTurn, liveTurn, capOn,
-    views, followView, viewRows,
+    views, followView, viewState,
     startSwarm, pauseSwarm, resumeSwarm, stopSwarm, deleteSwarm,
   }
 })
+
+/** One view as last read: the rows it held, and the reason if the last read failed. */
+export interface ViewRead {
+  rows?: Record<string, unknown>[]
+  error?: string
+}
 
 /** What a recorded run cost, summed the same way the server sums a live one. */
 function sumSpent(events: AgentEvent[]): Spent {

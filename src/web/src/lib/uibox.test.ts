@@ -5,7 +5,7 @@
 // function precisely so it can be checked without mounting a component.
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { columnsFrom, uiBoxSpec } from './uibox.ts'
+import { columnsFrom, uiBoxSpec, viewProblem } from './uibox.ts'
 
 const KNOWN = new Set(['UiTable', 'UiKeyValue', 'UiBadge', 'UiTextArea'])
 
@@ -138,4 +138,49 @@ test('a table fed from a view gets its columns from the rows when the box named 
 
 test('no rows means no columns invented', () => {
   assert.deepEqual(columnsFrom([]), [])
+})
+
+
+// A component that cannot be contained is refused rather than rendered.
+//
+// `UiModal` teleports to `document.body`, locks the page's scroll and swallows Escape and Tab from
+// the whole document, so the `inert` a panel puts on its own wrapper cannot reach any of it. A box
+// naming one used to draw a full-screen backdrop over the application with no way out.
+const REFUSED = new Set(['UiModal'])
+
+test('a component that acts outside its own subtree is refused, not drawn', () => {
+  const spec = uiBoxSpec(
+    { entity: 'swarm.blackbox.Box', fields: { kind: 'Ui', ref_id: 'UiModal', props: { open: 'true' } } },
+    new Set(['UiModal', 'UiBadge']),
+    undefined,
+    REFUSED,
+  )
+  assert.deepEqual(spec, { kind: 'unsafe-component', named: 'UiModal' })
+})
+
+test('a component that stays in its own box is drawn as before', () => {
+  const spec = uiBoxSpec(box({ kind: 'Ui', ref_id: 'UiBadge', props: { text: 'live' } }), KNOWN, DECLARED, REFUSED)
+  assert.equal(spec?.kind, 'panel')
+})
+
+// A view named on a box is a name an agent wrote, exactly like `ref_id`, and it is wrong in the
+// same ways. An unread view and an empty view look identical once the rows are `[]`, so the panel
+// has to be told which it is looking at.
+
+test('a view the specification does not declare is named as the mistake it is', () => {
+  const problem = viewProblem('swarm.blackbox.Canvs', ['swarm.blackbox.Canvas'], undefined)
+  assert.match(problem ?? '', /swarm\.blackbox\.Canvs/)
+})
+
+test('a view the specification declares is no problem', () => {
+  assert.equal(viewProblem('swarm.blackbox.Canvas', ['swarm.blackbox.Canvas'], undefined), undefined)
+})
+
+test('a view that could not be read says so rather than showing no rows', () => {
+  const problem = viewProblem('swarm.blackbox.Canvas', ['swarm.blackbox.Canvas'], 'the runtime refused it')
+  assert.match(problem ?? '', /the runtime refused it/)
+})
+
+test('before the specification is read nothing is accused of not existing', () => {
+  assert.equal(viewProblem('swarm.blackbox.Canvas', undefined, undefined), undefined)
 })

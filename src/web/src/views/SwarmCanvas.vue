@@ -18,7 +18,7 @@ import { MiniMap } from '@vue-flow/minimap'
 import InstanceNode, { type InstanceNodeData } from '@/components/canvas/InstanceNode.vue'
 import UiBox, { type UiBoxData } from '@/components/canvas/UiBox.vue'
 import { uiBoxSpec } from '@/lib/uibox'
-import { uiComponentNames, uiPropTypes } from '@/components/ui'
+import { uiComponentNames, uiPropTypes, uiRefused } from '@/components/ui'
 import { layoutDag } from '@/lib/layout'
 import type { Canvas, Instance, Shape } from '@/runtime'
 import '@vue-flow/core/dist/style.css'
@@ -95,7 +95,7 @@ function reconcile(): void {
         wanted.map((instance) => {
           // A refusal is a line of text, not a panel: only a box that draws a component is given
           // a panel's room.
-          const drawn = uiBoxSpec(instance, uiComponentNames, uiPropTypes)?.kind === 'panel'
+          const drawn = uiBoxSpec(instance, uiComponentNames, uiPropTypes, uiRefused)?.kind === 'panel'
           return {
             id: instance.id,
             width: drawn ? PANEL_W : NODE_W,
@@ -117,7 +117,7 @@ function reconcile(): void {
     // A Ui box is drawn by `UiBox` whether or not the library has the component it names: a box
     // naming one nobody wrote is a refusal that has to be SEEN, and an instance node listing
     // `ref_id` among its fields never says the library has no such thing.
-    const decided = uiBoxSpec(instance, uiComponentNames, uiPropTypes)
+    const decided = uiBoxSpec(instance, uiComponentNames, uiPropTypes, uiRefused)
     const type = decided ? 'ui' : 'instance'
     const data: InstanceNodeData | UiBoxData = decided
       ? { instance, decision: decided, slug: props.slug, changed }
