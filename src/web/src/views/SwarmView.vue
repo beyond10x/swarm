@@ -9,7 +9,7 @@ import { useRouter } from 'vue-router'
 import {
   UiButton, UiEmptyState, UiSpinner, UiStateBadge, UiTable, UiTabs, UiToolbar,
 } from '@/components/ui'
-import { useSwarmStore, field, type SwarmAction } from '@/stores/swarms'
+import { useSwarmStore, field, ACTIONS, type SwarmAction } from '@/stores/swarms'
 import SwarmCanvas from '@/views/SwarmCanvas.vue'
 import LoopPanel from '@/components/runtime/LoopPanel.vue'
 import EventLog from '@/components/runtime/EventLog.vue'
@@ -22,6 +22,9 @@ const router = useRouter()
 
 onMounted(async () => {
   await store.load()
+  // The list leaves out a swarm in a terminal state, on purpose. This page was asked for one by
+  // name, so it reads it by name rather than reporting that the runtime does not hold it.
+  await store.ensure(props.id)
   // This page is the one that watches: the stream is opened here and closed on leaving.
   store.follow(props.id)
 })
@@ -102,8 +105,13 @@ const rows = computed(() =>
   }),
 )
 
-const ACTIONS: SwarmAction[] = ['start', 'pause', 'resume', 'stop', 'delete']
 const can = (action: SwarmAction): boolean => store.canAct(props.id, action)
+
+/** Why an action is disabled, for the button to carry. Undefined when it is not. */
+const whyDisabled = (action: SwarmAction): string | undefined => store.whyNot(props.id, action)
+
+/** One line for a swarm that offers nothing at all — the case with no record is the whole story. */
+const disabledNote = computed(() => store.whyNothing(props.id))
 
 async function act(action: SwarmAction): Promise<void> {
   const ok = await store[
@@ -126,20 +134,31 @@ async function act(action: SwarmAction): Promise<void> {
     <template v-else>
       <UiToolbar>
         <h1>{{ displayName }}</h1>
-        <UiStateBadge :state="record?.state ?? 'Uncreated'" />
+        <UiStateBadge :state="record?.state ?? 'No record'" />
 
         <template #right>
-          <UiButton
+          <!-- The reason sits on a wrapper, not on the button: a disabled control fires no
+               pointer events, so a `title` on it is never shown. -->
+          <span
             v-for="action in ACTIONS"
             :key="action"
-            :variant="action === 'delete' ? 'danger' : 'secondary'"
-            :disabled="!can(action)"
-            @click="act(action)"
+            class="action"
+            :title="whyDisabled(action)"
           >
-            {{ action }}
-          </UiButton>
+            <UiButton
+              :variant="action === 'delete' ? 'danger' : 'secondary'"
+              :disabled="!can(action)"
+              :aria-description="whyDisabled(action)"
+              @click="act(action)"
+            >
+              {{ action }}
+            </UiButton>
+          </span>
         </template>
       </UiToolbar>
+
+      <!-- Every action disabled and nothing to hover: say why in the open. -->
+      <p v-if="disabledNote" class="note" role="note">{{ disabledNote }}</p>
 
       <p v-if="store.problem" class="problem" role="alert">{{ store.problem }}</p>
 
@@ -214,6 +233,18 @@ h1 {
   border: 1px solid var(--border, #2a3240);
   border-radius: 0.5rem;
   overflow: hidden;
+}
+
+.action {
+  display: inline-flex;
+}
+
+.note {
+  border: 1px solid var(--border, #2a3240);
+  border-radius: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  margin: 0;
+  color: var(--color-muted, #9aa4b2);
 }
 
 .problem {
