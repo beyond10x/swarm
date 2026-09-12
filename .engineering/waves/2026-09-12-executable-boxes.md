@@ -3,7 +3,7 @@
 Coordinator: this session. Skill `aep-drive:wave` **0.9.1**. `aep` **0.55.0**.
 Base branch `main`, at `7cdace9`.
 
-**Status: proposed. Nothing has been dispatched and no worktree exists.**
+**Status: closed 2026-09-12. Both units merged; the whole gate is green on the integration branch.**
 
 ---
 
@@ -152,8 +152,15 @@ Filled in by stage 2 as each is created. Nothing exists yet.
 
 | unit | branch | head | worktree | build dir | scratch | stage |
 |---|---|---|---|---|---|---|
-| A | `wave/2026-09-12/redelivery` | — | — | — | — | not started |
-| B | `wave/2026-09-12/ui-box` | — | — | — | — | not started |
+| A | `wave/2026-09-12/redelivery` | `06d82a9` | `~/.local/state/worktree/trees/b10x/swarm/wave-20260912-a` | `~/.cache/swarm-wave-2026-09-12/unit-a/target` | `~/.cache/swarm-wave-2026-09-12/unit-a/scratch` | merged |
+| B | `wave/2026-09-12/ui-box` | `ed48d48` | `~/.local/state/worktree/trees/b10x/swarm/wave-20260912-b` | `~/.cache/swarm-wave-2026-09-12/unit-b/node_modules` (in tree) | `~/.cache/swarm-wave-2026-09-12/unit-b/scratch` | merged |
+
+Managed worktree ids: `wave-20260912-a`, `wave-20260912-b`, owner class `agent`.
+Both forked from the integration branch at `a6861dd`.
+
+**Unit A must export `CARGO_TARGET_DIR` to the path above.** Two worktrees sharing one build
+directory serve one tree's binaries to another, which reads as a mysterious test failure and costs
+several gate runs before anybody suspects it.
 
 Integration branch: `wave/2026-09-12/integration`, forked from `main`.
 
@@ -188,3 +195,61 @@ implemented anything. Both corrections are in the store.
   `Server::periods()` filters on periodic causes, so the failure arises only on the `issue()` path.
   The defect is one missing `else` in `swarm.rs`.
 - `honour-view-consistency` claimed nine `eventual` views. There are six.
+
+---
+
+## What the wave cost, and what it found
+
+Six sub-agent runs per unit's worth of work: two implementors, each corrected twice, and four
+adversary passes.
+
+| run | tokens | tool uses | wall |
+|---|---|---|---|
+| unit A implementor, three rounds | 100,636 + 143,616 + 183,204 | 28 + 25 | 207s + 153s + 131s |
+| unit B implementor, three rounds | 107,981 + 154,015 + 189,127 | 67 + 30 + 23 | 268s + 191s + 152s |
+| adversary A, passes 1 and 2 | 81,044 + 103,527 | 30 + 32 | 182s + 237s |
+| adversary B, passes 1 and 2 | 67,867 + 71,595 | 30 + 34 | 143s + 131s |
+| seven scopers | ~270,000 | 114 | 25–41s each |
+| **total** | **~1.47M** | **~440** | — |
+
+No wave in this repository had ever written a number down, so this is the first.
+
+### The gate, per step, on `16875a7`
+
+| step | exit |
+|---|---|
+| `cargo fmt --all --check` | 0 |
+| `cargo clippy --all-targets` | 0 |
+| `cargo test` (56 passed) | 0 |
+| `ess specify validate --path src/core` | 0 |
+| `check-sets-are-emitted.py` | 0 |
+| `aep plan artifact validate` | 0 |
+| `npm test` in `src/web` (36 passed) | 0 |
+| `vue-tsc --noEmit` | 0 |
+| `vite build` | 0 |
+| `website` build | 0 |
+
+No step was skipped and none reported a skip.
+
+### The findings ledger
+
+| unit | pass 1 | pass 2 | carried | resolved |
+|---|---|---|---|---|
+| A | 7 (5 introduced) | 4 (4 introduced) | **0** | 7 |
+| B | 4 (4 introduced) | 2 (2 introduced) | **0** | 4 |
+
+Zero carried in both, which is what said the corrections had landed and that the second passes were
+finding fresh ground rather than repeating themselves. Both second passes attacked code the first
+correction created, and in unit A's case found a deadlock that correction introduced.
+
+Two findings were pre-existing and left the wave as their own stories:
+`story:request-key-is-not-idempotency` and `story:uitable-emits-contract`.
+
+### Two things this wave establishes for the next one
+
+**The largest disjoint set here is two, and six files are why.** That is now recorded as typed scope
+on seven stories, so the next `aep plan artifact waves` starts from it rather than re-deriving it.
+
+**The disk was 20G free at pre-flight and 56G by the close**, because another session freed about
+41G mid-wave. A wave sized on the pre-flight number would have been sized wrongly in the safe
+direction; one sized on the close would have been wrong in the other.

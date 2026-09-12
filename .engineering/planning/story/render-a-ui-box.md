@@ -2,7 +2,7 @@
 format: aep.planning-md/1
 id: story:render-a-ui-box
 kind: story
-status: active
+status: implemented
 title: Render a UI box
 summary: 'A Box{kind: Ui} renders a real component on the canvas.'
 relations:
@@ -21,7 +21,7 @@ scope:
   path: src/web/src/stores/swarms.ts
 - confidence: cited
   path: src/web/src/views/SwarmCanvas.vue
-revision: 11
+revision: 13
 ---
 ## What
 
@@ -49,11 +49,21 @@ already registers node types from data, which is the seam this needs.
 
 ## Scope
 
-Derived 2026-09-12 by `story-scoper`. Every line is **cited** or **inferred**.
+Rewritten 2026-09-12 from the implementor's confirmation, after the work landed.
 
-- **Primary surface:** `src/web` — cited; the acceptance is entirely about what the canvas draws.
-- **Files (cited):** `src/web/src/views/SwarmCanvas.vue` — the `nodeTypes` registry and the node-data build, named by the story as the seam.
-- **Files (inferred):** a new `src/web/src/components/canvas/UiBox.vue` (collides with nothing), `src/web/src/components/ui/index.ts` (rendering by name needs a name-to-component map beside the named re-exports), `src/web/src/runtime.ts` and `stores/swarms.ts` (a table fed from a view needs a per-view fetch the store does not hold today), `src/core/domains/blackbox.yaml`.
-- **Confidence:** medium. The rendering seam and the component contract are read; the props carrier and the view-refresh path are not declared anywhere.
-- **Would collide with:** any unit touching the canvas node registry, `components/ui/index.ts`, or — if a props field is needed — `swarm.blackbox.Box`.
-- **Not established:** where a UI box's props are stored. `Box` has `ref_id` for the component name and no props field; nothing in `src/core` matches `props`.
+**Landed on, all confirmed by building:**
+
+- `src/web/src/views/SwarmCanvas.vue` — the node-type registry, as the scope said.
+- `src/web/src/components/canvas/UiBox.vue` and `src/web/src/lib/uibox.ts` — new; the node and the decode.
+- `src/web/src/components/ui/index.ts` — the contract's comment table is now also data: `uiPropTypes`, `uiEmitters` and `uiRefused` are parsed from it, and a drift test fails when the halves disagree.
+- `src/core/domains/blackbox.yaml` — `Box.props` as `Optional<Map<String, String>>`, threaded through `DraftBox`, the emitted event, `sets:` and the `Canvas` view. `ref_id` carries the component name, which it was already documented to do.
+- `src/web/src/stores/swarms.ts` — per-view rows held beside the error that produced them.
+- Four test files, two of them the adversaries'.
+
+**Guessed and wrong:**
+
+- `src/web/src/runtime.ts` — **not touched.** The scope expected a per-view fetch the store did not hold. `runtime.view(slug, name)` already existed; only the store needed it.
+
+**Beyond the scope list:** `src/web/src/views/SwarmView.vue` gained one attribute, `:slug`. A canvas cannot read a view without knowing which swarm it is, and inferring that from the flow id would have been a guess. `package.json` and `tsconfig.json` gained a test lane on node's own runner, with no new dependency.
+
+**What the work cost beyond the story.** Two adversary passes, six findings. The first correction replaced a JSON-shape heuristic — which turned a badge reading `404` into the number 404 and dropped a required prop whose value was `null` — with a lookup against the type the contract declares. The second pass then found that `:inert` does not contain a `Teleport`: a box naming `UiModal` rendered an unclosable full-screen dialog that scroll-locked the page and swallowed Tab and Escape. Containment is now a refusal rather than an attribute, and which components must be refused is machine-derived by scanning all 21 for markup or listeners that escape their own subtree. `UiModal` is the only one today.
