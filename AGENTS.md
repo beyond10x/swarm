@@ -85,6 +85,16 @@ publications are separate and both are intended.
 and the name appears in no other repository in the organisation; it arrived with the scaffold import
 commit `b7a7b78`. The address is `https://beyond10x.github.io/swarm/`.
 
+## Runtime control
+
+Pause and stop close runtime admission and invalidate existing turn claims before acknowledging
+process cleanup. If the domain transition commits but cleanup fails, the HTTP response is a `host`
+error with status 500; admission stays closed and the committed transition is not rolled back.
+Retry cleanup with `POST /swarms/{slug}/quiesce`. A successful retry returns
+`{"quiescent":true}`; a Running swarm refuses that endpoint. Repeating the domain command retains
+its normal wrong-state outcome. Start and resume must finish prior cleanup before reopening
+admission. Process groups cover ordinary descendants, not intentionally escaped daemons.
+
 ## The gate
 
 Every step, in this order. **Read each command's own exit status.** Never a pipeline's, never a

@@ -98,6 +98,11 @@ cd src/web && npm install && npm run dev   # the canvas, in a browser
 Then create a swarm, give it a goal, and start it. Thirty seconds later the loop turns for the first
 time and you can watch a coordinator think.
 
+Pause and stop cancel active coordinator and worker turns and wait for their processes to exit.
+Their ordinary process-group descendants are included. Goals, assignments, work directories and
+recorded evidence remain; resume or start allows eligible work to continue. This process control
+does not contain a program that deliberately escapes its process group.
+
 The full instructions — building, testing, how the pieces fit, and every check that has to pass
 before a change lands — are in [`AGENTS.md`](AGENTS.md), which is written for the people and agents
 working on the code.
