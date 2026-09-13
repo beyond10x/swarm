@@ -30,7 +30,7 @@ scope:
   path: website/src/data/spec-facts.json
 - confidence: cited
   path: website/src/pages/index.js
-revision: 13
+revision: 14
 ---
 ## Context
 
@@ -77,3 +77,13 @@ Final implementation scope, derived from the reviewed diffs on 2026-09-13. All l
 - Coordinator-owned publication surfaces: `website/scripts/spec-facts.mjs`, `website/src/data/spec-facts.json`, and `website/src/pages/index.js` derive and display the separate checker size and include its integration tests in the published inventory.
 - Existing kernel entity/event declarations and issuer vocabulary were read as compatibility inputs. This story introduces no kernel noun or event format. The parallel control story owns its separate manager descriptions and server behavior.
 - Confidence: high, from the implementation and integration diffs. The initial scoper's inferred integration needs have been resolved to these cited paths. Future checker changes collide with this crate and example documentation; workspace and publication changes require coordinator sequencing.
+
+## Implementation evidence
+
+Implemented at unit head `7d5c596`, merged into the approved integration at `271242a`. Both adversary passes and the direct final correction review are recorded in the wave page. The final checker package executes 135 passing tests, retaining all original 83 mapped scenarios, both adversary rounds and numeric/Unicode baseline comparisons. The combined full gate at `8a3738c` passed all eleven steps: 311 Rust tests and 71 web tests; final `npm run spec:check` exited 0.
+
+The integrated binary matches parsed original demonstration JSON and text words, allowing wrapping differences. Both CLI invocations exit 0, all seven clauses are met, and unattended remains false. All 17 original input paths and SHA256 hashes are unchanged, including SQLite/WAL/SHM. No historical evidence export changed.
+
+The compatibility limits remain explicit: inaccessible evidence fails closed without SQLite write fallback; surrogate encoding errors use a concise diagnostic; Python's environment-dependent stack-exhaustion threshold is not emulated. Measured accepted nesting through 30,000 and 100,000-level malformed-input handling pass. Ordinary runtime JSON ordering/request hashes remain unchanged.
+
+Evidence: `.engineering/waves/2026-09-13c-control-and-rust-checker.md`, `/home/timo/.cache/swarm-wave-2026-09-13c/checker/correction-2-report.md`, and `/home/timo/.cache/swarm-wave-2026-09-13c/integration/gate/`. Main merge/publication state is recorded in the wave handoff. Story lifecycle remains operator-owned and unchanged.

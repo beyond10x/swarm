@@ -23,7 +23,7 @@ AEP output, verbatim:
 valid
 ```
 
-Status: **approved by the operator's `ok`; both units integrated; full gate pending**. Coordinator: Codex leader.
+Status: **approved by the operator's `ok`; both units integrated; all eleven gate steps green; publication pending**. Coordinator: Codex leader.
 Skill `aep-drive:wave 0.8.1`; planning skill 0.8.1; installed `aep --version` reports `protocol 0.55.0`.
 Interactive run: the operator asked to see the next wave after cleanup. This proposal is the review boundary.
 The operator subsequently approved this exact proposal. The active integration branch is now `wave/2026-09-13c/integration`; owning session `wave-20260913c-leader`.
@@ -235,12 +235,12 @@ A pre-flight that finds less than the disk floor or an unconfigured cache refuse
 
 | purpose | managed id | branch | source path | build path | scratch root | stage |
 |---|---|---|---|---|---|---|
-| integration | swarm-next-wave-plan-20260913 | wave/2026-09-13c/integration | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-next-wave-plan-20260913 | same path /target | /home/timo/.cache/swarm-wave-2026-09-13c/integration | full gate pending |
+| integration | swarm-next-wave-plan-20260913 | wave/2026-09-13c/integration | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-next-wave-plan-20260913 | same path /target | /home/timo/.cache/swarm-wave-2026-09-13c/integration | gate green; retained unpublished |
 | A | swarm-wave-20260913c-control | wave/2026-09-13c/control | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-control | same path /target | /home/timo/.cache/swarm-wave-2026-09-13c/control | integrated; retained unpublished |
 | B | swarm-wave-20260913c-checker | wave/2026-09-13c/checker | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-checker | same path /target | /home/timo/.cache/swarm-wave-2026-09-13c/checker | integrated; retained unpublished |
 
 The coordinator updates each actual path, branch head and stage on transition.
-Current owning session: wave-20260913c-leader. Each implementor owns a distinct lease.
+Handoff owner: Codex leader. Implementor leases are released; the leader releases its own lease after the main merge.
 Both units forked bootstrap c935d85; their assigned scratch roots contain brief.md.
 Planning evidence remains at /home/timo/.cache/swarm-next-wave-plan-20260913.
 All new commits are local until a publication decision; source trees remain retained.
@@ -843,3 +843,17 @@ Correction 7d5c596 is merged at 271242a after direct coordinator review under th
 The local parser preserves Unicode category quoting, nonfinite constants, escaped lone surrogates, duplicate keys and ordinary malformed-grammar rejection. Eleven added groups compare 88 baseline JSON/text/exit scenarios; a unit test rejects 100,000-level incomplete structures without recursive stack growth. Measured accepted nesting through 30,000 is preserved. Python's environment-dependent stack-exhaustion threshold is not emulated; surrogate text errors use a concise diagnostic rather than its traceback. No global serde map-order/precision feature changed. The original 83 mapped scenarios and all earlier review regressions remain.
 
 All 17 historical input hashes remain unchanged; all seven clauses met and unattended false remain the original verdict. Website facts were rederived from the combined tree before the gate. Both source trees are retained unpublished; A's reproducible target was removed after its verified handoff. Final gate, main merge and remaining output cleanup follow.
+
+## Final gate and retained handoff
+
+Combined source commit: `8a3738c`. All eleven AGENTS.md steps ran in order with each command's own exit status: **0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0**. Rust: **311 passed** (including 135 server and 135 checker cases). Web: **71 passed**. No ignored or filtered cases were counted as passed. Full output: `/home/timo/.cache/swarm-wave-2026-09-13c/integration/gate/{01..11}.log`; exact statuses: `gate/status.tsv`. The excluded unrelated-slug timing target remains excluded as directed.
+
+The integrated checker's JSON and text commands both exit0 on the original demonstration. A separate Node comparison confirms parsed JSON equality, identical text words allowing wrapping differences, and unchanged paths/SHA256 for all17 input files. Seven clauses met; unattended false. Historical exports have no diff. Final code/test setup contains no Python under examples/two-agents.
+
+Non-failing diagnostics: AEP validates71 artifacts with12 prose/empty-findings warnings (no review was rewritten to hide them). Docusaurus warns about specification/runtime/loop/status anchors; direct inspection of the generated index.html confirms all four target ids exist. Both website build and facts check exit0.
+
+All task-owned reproducible output has been removed after verification: A target (~2.7GB), B target (~851MB) and Python bytecode cache, integration target (~3.0GB), web dependencies/dist, website dependencies/build/.docusaurus. No primary build output or shared compiler cache was removed. Retained review/run evidence occupies about8MB under `/home/timo/.cache/swarm-wave-2026-09-13c`; planning scratch remains `/home/timo/.cache/swarm-next-wave-plan-20260913`.
+
+The three source trees/branches in the ownership table remain intentionally retained, clean and unpublished. Work-item references are the two selected stories and their parent epic. Control head6d84959 and checker head7d5c596 are ancestors of integration. Last published base is5331fe8; approval authorizes the green integration's local main merge, but explicitly excludes push/tag/version bump. The leader owns that merge and the publication handoff; afterward the next action is the operator's publication decision, followed by worktree finish and exact-id reviewed GC. No artifact lifecycle status was moved. A broad GC dry-run was read but no other repository's records were removed.
+
+Next queued work: story:show-command-issuers-in-the-canvas, showing claimed issuer identity consistently in historical and live rows while retaining actor type and honest unknown labels. Its shared swarm.rs surface no longer needs to compete with control implementation; scope and readiness must be reread before the next wave starts.

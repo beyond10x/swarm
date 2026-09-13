@@ -36,7 +36,7 @@ scope:
   path: src/runtime/swarm-server/tests/the_cascade_of_a_caused_command.rs
 - confidence: cited
   path: src/runtime/swarm-server/tests/the_turn_cap_under_attack.rs
-revision: 15
+revision: 16
 ---
 ## Context
 
@@ -97,3 +97,11 @@ Pause/stop acknowledgement waits for runtime-owned turns and ordinary descendant
 Final unit package: 135 passed (including three child-process entrypoint tests); formatting and strict Clippy passed. Original specification checks passed after the manager summary edits. Adversary finding trend: 1 → 0, carried0/new0/resolved1. Reports are review-result:adversary-2026-09-13c-unit-a-pass-{1,2}; the one finding has a fixed outcome. The final adversary's Python fake process was replaced by a Rust child fixture; the coordinator inspected the exact fixture-only diff, and the behavioral body, assertions and queue order compare byte-for-byte unchanged. Both contention tests and the package reran green. No third attack occurred.
 
 Retained logs/reports: /home/timo/.cache/swarm-wave-2026-09-13c/control/{report.md,correction-1-report.md,fixture-correction-report.md,adversary-1/report.md,adversary-2/report.md}. Wave notes: .engineering/waves/2026-09-13c-control-and-rust-checker.md.
+
+## Integration gate
+
+The approved combined integration at `8a3738c` passed all eleven AGENTS.md gate steps in order, each command's own exit status captured separately. Results: 311 Rust tests, including 135 server and 135 checker cases, and 71 web tests; ESS/emitted-field/planning validation, formatting, Clippy, web type/build and website build/facts checks all exited 0.
+
+Complete command logs and exact statuses: `/home/timo/.cache/swarm-wave-2026-09-13c/integration/gate/`. The integrated evidence checker independently matched the original JSON/text output and preserved all 17 original input hashes. The website build warns about four anchors, but direct inspection confirms all four targets exist in emitted `index.html`; the warning is not evidence of a missing target. Planning validation retains its existing prose/empty-findings warnings and exits 0.
+
+This records verification, not an artifact status transition. Main merge and publication are recorded in the wave handoff.
