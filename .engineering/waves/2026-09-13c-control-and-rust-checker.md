@@ -23,7 +23,7 @@ AEP output, verbatim:
 valid
 ```
 
-Status: **approved by the operator's `ok`; control integrated; checker final correction underway**. Coordinator: Codex leader.
+Status: **approved by the operator's `ok`; both units integrated; full gate pending**. Coordinator: Codex leader.
 Skill `aep-drive:wave 0.8.1`; planning skill 0.8.1; installed `aep --version` reports `protocol 0.55.0`.
 Interactive run: the operator asked to see the next wave after cleanup. This proposal is the review boundary.
 The operator subsequently approved this exact proposal. The active integration branch is now `wave/2026-09-13c/integration`; owning session `wave-20260913c-leader`.
@@ -35,7 +35,7 @@ Bootstrap registers a buildable `swarm-check` shell with a deliberately failing 
 | unit | stage | source | target | scratch | branch/head |
 |---|---|---|---|---|---|
 | A | integrated bb44d5b | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-control | same source /target | /home/timo/.cache/swarm-wave-2026-09-13c/control | wave/2026-09-13c/control; 6d84959 (base c935d85) |
-| B | correction 2 | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-checker | same source /target | /home/timo/.cache/swarm-wave-2026-09-13c/checker | wave/2026-09-13c/checker; 8ac92f7 (base c935d85) |
+| B | integrated 271242a | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-checker | same source /target | /home/timo/.cache/swarm-wave-2026-09-13c/checker | wave/2026-09-13c/checker; 7d5c596 (base c935d85) |
 
 Integration target is inside `swarm-next-wave-plan-20260913/target`; integration scratch is `/home/timo/.cache/swarm-wave-2026-09-13c/integration`. All implementation builds set RUSTC_WRAPPER to `/usr/bin/sccache`, CARGO_BUILD_JOBS=2 and unit-owned TMPDIR. The primary checkout's target remains untouched.
 Base: published, clean `main` at `5331fe8e3c338d12f8fde2371f1218f6c3a551a9`.
@@ -50,7 +50,7 @@ Full implementor reports, original red outputs and per-lane runner counts are re
 - /home/timo/.cache/swarm-wave-2026-09-13c/control/report.md
 - /home/timo/.cache/swarm-wave-2026-09-13c/checker/report.md
 
-Each implementor released its own lease before coordinator commits. The adversaries own separate pass-1 leases and scratch roots under each unit's adversary-1 directory. No implementation has merged into integration or main yet.
+At this initial handoff, each implementor released its own lease before coordinator commits; adversaries then acquired separate pass-1 leases. The current integration state is in the execution ledger above.
 
 Integration dependencies: src/web npm ci --offline exited 0. Website npm ci --offline exited 1 (EALLOWGIT: the environment disables Git dependency fetches). Package.json and lockfile compare exactly with primary; its existing website/node_modules was copied into integration for the isolated build. No dependency or npm policy was changed. These are installation observations, not a substitute for the final build gate.
 
@@ -235,9 +235,9 @@ A pre-flight that finds less than the disk floor or an unconfigured cache refuse
 
 | purpose | managed id | branch | source path | build path | scratch root | stage |
 |---|---|---|---|---|---|---|
-| integration | swarm-next-wave-plan-20260913 | wave/2026-09-13c/integration | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-next-wave-plan-20260913 | same path /target | /home/timo/.cache/swarm-wave-2026-09-13c/integration | integrating shared documentation |
-| A | swarm-wave-20260913c-control | wave/2026-09-13c/control | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-control | same path /target | /home/timo/.cache/swarm-wave-2026-09-13c/control | correction 1 |
-| B | swarm-wave-20260913c-checker | wave/2026-09-13c/checker | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-checker | same path /target | /home/timo/.cache/swarm-wave-2026-09-13c/checker | correction 1 |
+| integration | swarm-next-wave-plan-20260913 | wave/2026-09-13c/integration | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-next-wave-plan-20260913 | same path /target | /home/timo/.cache/swarm-wave-2026-09-13c/integration | full gate pending |
+| A | swarm-wave-20260913c-control | wave/2026-09-13c/control | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-control | same path /target | /home/timo/.cache/swarm-wave-2026-09-13c/control | integrated; retained unpublished |
+| B | swarm-wave-20260913c-checker | wave/2026-09-13c/checker | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-checker | same path /target | /home/timo/.cache/swarm-wave-2026-09-13c/checker | integrated; retained unpublished |
 
 The coordinator updates each actual path, branch head and stage on transition.
 Current owning session: wave-20260913c-leader. Each implementor owns a distinct lease.
@@ -835,3 +835,11 @@ Command: `aep plan artifact waves --kind story --status draft --format json`. Ex
   "cycles": []
 }
 ```
+
+## Checker final correction and integration
+
+Correction 7d5c596 is merged at 271242a after direct coordinator review under the two-attack limit. The package grows 123 → 135 executed, all passing; formatter, strict Clippy and original demonstration comparisons exit 0. Pass-1 file hash is unchanged; pass-2 behavioral assertions and expectations are preserved (no byte-preservation claim after formatting). Both final findings have fixed outcomes in the store. Report: /home/timo/.cache/swarm-wave-2026-09-13c/checker/correction-2-report.md.
+
+The local parser preserves Unicode category quoting, nonfinite constants, escaped lone surrogates, duplicate keys and ordinary malformed-grammar rejection. Eleven added groups compare 88 baseline JSON/text/exit scenarios; a unit test rejects 100,000-level incomplete structures without recursive stack growth. Measured accepted nesting through 30,000 is preserved. Python's environment-dependent stack-exhaustion threshold is not emulated; surrogate text errors use a concise diagnostic rather than its traceback. No global serde map-order/precision feature changed. The original 83 mapped scenarios and all earlier review regressions remain.
+
+All 17 historical input hashes remain unchanged; all seven clauses met and unattended false remain the original verdict. Website facts were rederived from the combined tree before the gate. Both source trees are retained unpublished; A's reproducible target was removed after its verified handoff. Final gate, main merge and remaining output cleanup follow.

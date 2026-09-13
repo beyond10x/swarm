@@ -99,9 +99,9 @@
     "swarmServer": 8916,
     "swarmCli": 874,
     "runtimeTotal": 11871,
-    "swarmCheck": 4,
-    "integrationTests": 9490,
-    "integrationTestFiles": 28,
+    "swarmCheck": 1927,
+    "integrationTests": 11017,
+    "integrationTestFiles": 38,
     "web": 8910,
     "specYaml": 4808
   }
