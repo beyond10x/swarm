@@ -1,4 +1,4 @@
-//! What a goal may cost before the loop stops asking.
+//! What an agent may cost before the loop stops asking.
 //!
 //! A swarm running the real coordinator spends about a quarter of a dollar every thirty seconds,
 //! and a goal whose text cannot be satisfied never reaches `Reached` — so the loop turns until
@@ -37,8 +37,8 @@
 //! specification never declared, and a replay would then disagree with the log.
 //!
 //! ```text
-//!   SWARM_MAX_TURNS       default 20      turns of one goal
-//!   SWARM_MAX_SPEND_USD   default 5.00    dollars on one goal
+//!   SWARM_MAX_TURNS       default 20      turns of one agent, across every goal it works
+//!   SWARM_MAX_SPEND_USD   default 5.00    dollars of one agent, across every goal it works
 //! ```
 //!
 //! Either may be set to `0`, `off` or `none` to lift it, and to nothing else: a value that is
@@ -53,12 +53,37 @@ const TURNS: u64 = 20;
 /// The default spend cap, in US dollars, per goal.
 const SPEND_USD: f64 = 5.00;
 
-/// What one goal may use up.
+/// What one agent may use up, across every goal it works.
+///
+/// A cap's unit of account is THE AGENT, not the goal — `story:spend-is-bounded-per-goal-only`,
+/// 2026-09-12. It was the goal until that day, and a bound keyed on a goal binds a swarm to the
+/// number of goals it has rather than to anything an operator chose: one agent at $1.00 a turn
+/// over two goals reaches $6.00 against a $5.00 cap with every per-goal fold reporting $3.00 and
+/// inside its bounds. Measured, and driven in `trigger::bounds`.
+///
+/// Two consequences a reader of these numbers has to know, because neither is visible in them:
+///
+/// * a goal that has used up NOTHING can be refused. `trigger::capped` applies these caps to the
+///   goal's record and then to the agent's, and the second can fire on a goal with zero turns and
+///   $0.00 of its own because another goal spent the agent's money. That is the bound doing what
+///   it exists to do, and it is why what a capped goal publishes are the figures of the bound that
+///   fired rather than the goal's own (`budget::Capped`);
+/// * an existing setting was TIGHTENED. `SWARM_MAX_SPEND_USD=5` with three goals permitted $15
+///   before 2026-09-12 and permits $5 now. Tightening is the direction this story exists to move —
+///   the server runs metaharness by default and spends real money every thirty seconds — but an
+///   operator whose setting quietly means something new is the harm, so it is written here, on
+///   `Server::caps`, on `Status::caps`, and on the `Caps` interface the UI reads.
+///
+/// What the caps bound is one agent, across every goal it works. There is exactly one agent today,
+/// `trigger::COORDINATOR`, so today every row in a swarm is that agent's — a consequence of
+/// `story:spawn-a-second-agent` being open, not a design choice, and one that stops being true the
+/// day a second agent exists. The unit of account does not change when it does.
 #[derive(Clone, Copy, Debug, Serialize)]
 pub struct Caps {
-    /// Turns of one goal. `None` means no cap.
+    /// Turns of one agent, across every goal it works. `None` means no cap.
     pub max_turns: Option<u64>,
-    /// Dollars spent on one goal, as the vendor priced them. `None` means no cap.
+    /// Dollars of one agent, across every goal it works, as the vendor priced them. `None` means
+    /// no cap.
     pub max_spend_usd: Option<f64>,
 }
 
@@ -85,7 +110,10 @@ impl Caps {
         }
     }
 
-    /// Whether this goal has used up either cap, and which.
+    /// Whether the record these figures were folded from has used up either cap, and which.
+    ///
+    /// It says nothing about WHOSE figures they are: `trigger::capped` calls this twice, once with
+    /// a goal's record and once with an agent's, and [`Bound`] is what carries the difference.
     pub fn exceeded(&self, turns: u64, spent_usd: Option<f64>) -> Option<Reached> {
         if let Some(max) = self.max_turns
             && turns >= max
@@ -109,18 +137,93 @@ pub enum Reached {
     Spend { spent: f64, max: f64 },
 }
 
+impl Reached {
+    /// The measurement alone, with no advice and no subject: "the spend cap was reached: $6.00 of
+    /// $5.00". [`Display`](std::fmt::Display) adds the advice a goal's own reader wants;
+    /// [`Capped::why`] adds the subject when the figures are an agent's.
+    /// The environment variable that sets the cap this verdict is about. A reader told to raise a
+    /// cap and not told which one has to go and find out.
+    pub fn variable(&self) -> &'static str {
+        match self {
+            Self::Turns { .. } => "SWARM_MAX_TURNS",
+            Self::Spend { .. } => "SWARM_MAX_SPEND_USD",
+        }
+    }
+
+    pub fn measured(&self) -> String {
+        match self {
+            Self::Turns { turns, max } => format!("the turn cap was reached: {turns} of {max}"),
+            Self::Spend { spent, max } => {
+                format!("the spend cap was reached: ${spent:.2} of ${max:.2}")
+            }
+        }
+    }
+}
+
 impl std::fmt::Display for Reached {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Turns { turns, max } => write!(
+            Self::Turns { .. } | Self::Spend { .. } => write!(
                 f,
-                "the turn cap was reached: {turns} of {max}. The goal is not met; raise \
-                 SWARM_MAX_TURNS or abandon it"
+                "{}. The goal is not met; raise {} or abandon it",
+                self.measured(),
+                self.variable()
             ),
-            Self::Spend { spent, max } => write!(
-                f,
-                "the spend cap was reached: ${spent:.2} of ${max:.2}. The goal is not met; raise \
-                 SWARM_MAX_SPEND_USD or abandon it"
+        }
+    }
+}
+
+/// Which record a bound was measured on.
+///
+/// `Reached` cannot carry this itself. Its two variants and their field names are pinned by a case
+/// this unit may not edit (`tests/the_ceiling_under_attack.rs:148-165` matches
+/// `Reached::Spend { spent, max }` and `Reached::Turns { turns, max }` exhaustively), and a third
+/// field on either variant stops that file compiling. So the bound rides beside the verdict rather
+/// than inside it, and [`Capped`] is the pair.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Bound {
+    /// The goal's own record: what this goal has used up.
+    Goal,
+    /// One agent's whole record, across every goal it works. Carries the agent, because a figure
+    /// summed over goals is unreadable without the name it was summed for.
+    Agent(String),
+}
+
+/// A bound that fired, with the figures it fired on.
+///
+/// The reason this type exists rather than a bare [`Reached`]: a goal stopped by the agent bound
+/// was published with its OWN turns and spend — `turns: 2, spent_usd: null` — beside a `why`
+/// reading "the turn cap was reached: 4 of 3", which tells a reader to raise a cap that goal used
+/// none of. Two folds that no longer agree cannot both be published as one goal's figures, so what
+/// is published are the figures of the bound that actually fired.
+#[derive(Clone, Debug)]
+pub struct Capped {
+    /// Whose record the caps were applied to.
+    pub bound: Bound,
+    /// Which cap was reached, and at what numbers.
+    pub reached: Reached,
+    /// Turns on that record — the goal's, or the agent's across every goal it works.
+    pub turns: u64,
+    /// Dollars on that record. `None` when nothing on it was priced.
+    pub spent_usd: Option<f64>,
+}
+
+impl Capped {
+    /// What a reader is told, naming the record the cap was measured on.
+    ///
+    /// For the goal bound this is [`Reached`]'s own sentence, unchanged. For the agent bound that
+    /// sentence would name the wrong subject, so the subject is said out loud: the goal may be
+    /// within every bound of its own and still be refused, and a reader who is not told that reads
+    /// the figures as this goal's and the cap as this goal's to raise.
+    pub fn why(&self) -> String {
+        match &self.bound {
+            Bound::Goal => self.reached.to_string(),
+            Bound::Agent(agent) => format!(
+                "{}, by the agent `{agent}` across every goal it works. This goal is within its \
+                 own bounds; raise {}, or stop one of the agent's other goals",
+                self.reached.measured(),
+                self.reached.variable()
             ),
         }
     }

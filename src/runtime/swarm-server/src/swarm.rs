@@ -475,6 +475,21 @@ impl Swarm {
         })
     }
 
+    /// Everything one agent has run, across every goal it worked.
+    ///
+    /// The fold that keys on nothing but the agent. A cap keyed on a goal is bounded by the number
+    /// of goals a swarm has rather than by anything an operator chose: one agent spending $1.00 a
+    /// turn over two goals reaches $6.00 against a $5.00 cap and is refused nowhere, because each
+    /// goal holds only $3.00. Measured, and pinned in
+    /// `tests/the_turn_cap_under_attack.rs`.
+    ///
+    /// An unattributed row belongs to no agent here as in [`Swarm::spend_by`], so a ceiling read
+    /// from this cannot be evaded by a row that never said who spent it — such a row is in no
+    /// agent's total, and the rows that name an agent are still all of that agent's.
+    pub fn spend_by_agent(&self, agent: &str) -> (Spent, u64) {
+        self.spend_where(|row| row.get("agent").and_then(Json::as_str) == Some(agent))
+    }
+
     /// Folds the spend record, keeping the rows a caller wants.
     fn spend_where(&self, keep: impl Fn(&Json) -> bool) -> (Spent, u64) {
         let mut total = Spent::default();
@@ -1560,6 +1575,57 @@ mod attribution {
 
         // An agent that has spent nothing on this goal is zero, not the goal's total.
         let (nobody, none) = swarm.spend_by(goal, "worker-b");
+        assert_eq!(none, 0);
+        assert_eq!(nobody.cost_usd, None);
+    }
+
+    /// The fold a ceiling that is not keyed on a goal is read from.
+    ///
+    /// `spend_by` needs a goal to be given, so a caller that wants an agent's whole record has to
+    /// know every goal it ever worked — which is the reason `story:spend-is-bounded-per-goal-only`
+    /// existed. `spend_by_agent` asks nothing about the goal, and mutation-checking it means
+    /// keying it on the goal again: do that and the $6.00 below reads $3.00.
+    #[tokio::test]
+    async fn an_agents_total_asks_nothing_about_the_goal() {
+        let data = tempdir::TempDir::new("swarm-agent-total").expect("a scratch directory");
+        let kernel = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../src/core")
+            .canonicalize()
+            .expect("the kernel specification is beside this crate");
+        let spec = Arc::new(Spec::load(kernel).expect("the kernel resolves"));
+        let swarm = Swarm::open(spec, data.path(), "agent-total")
+            .await
+            .expect("a swarm opens");
+
+        let cost = |usd: f64| {
+            let mut spent = Spent::default();
+            spent.cost_usd = Some(usd);
+            spent
+        };
+        for goal in ["goal-one", "goal-two"] {
+            for turn in 1..=3 {
+                swarm.record_spend("worker-a", goal, turn, &cost(1.00), Some(false), None);
+            }
+        }
+        swarm.record_spend("worker-b", "goal-one", 1, &cost(9.00), Some(false), None);
+
+        // Six turns and $6.00, spread over two goals, read without naming either.
+        let (spent, turns) = swarm.spend_by_agent("worker-a");
+        assert_eq!(turns, 6);
+        assert_eq!(spent.cost_usd, Some(6.00));
+
+        // Neither goal on its own can see it: three turns and $3.00 each, both inside the defaults.
+        for goal in ["goal-one", "goal-two"] {
+            let (spent, turns) = swarm.spend_by(goal, "worker-a");
+            assert_eq!(turns, 3);
+            assert_eq!(spent.cost_usd, Some(3.00));
+        }
+
+        // One agent's total is not another's, and is not the swarm's.
+        let (other, its_turns) = swarm.spend_by_agent("worker-b");
+        assert_eq!(its_turns, 1);
+        assert_eq!(other.cost_usd, Some(9.00));
+        let (nobody, none) = swarm.spend_by_agent("worker-c");
         assert_eq!(none, 0);
         assert_eq!(nobody.cost_usd, None);
     }

@@ -19,7 +19,7 @@ use serde_json::{Map, Value as Json};
 
 use ess_runtime::route::Occurrence;
 
-use crate::budget::{Caps, Reached};
+use crate::budget::{Bound, Capped, Caps, Reached};
 use crate::coordinator;
 use crate::state::{CappedGoal, Server};
 use crate::swarm::{Swarm, TurnPhase, What};
@@ -140,7 +140,13 @@ async fn ask_the_coordinator(server: &Arc<Server>, swarm: &Arc<Swarm>) {
         // `fire` measured the ones BEFORE it. Two guards over one bound, disagreeing by one, stop
         // the loop a turn early — `SWARM_MAX_TURNS=3` ran twice. Both now measure turns already
         // taken, which is what a cap of three means.
-        if let Some(reached) = capped(server.caps(), swarm, id, iterations.saturating_sub(1)) {
+        if let Some(bound) = bounded(
+            server.caps(),
+            swarm,
+            COORDINATOR,
+            id,
+            iterations.saturating_sub(1),
+        ) {
             // Reported from here as well as from `fire`, and that is not belt-and-braces: a
             // coordinator that never writes a verdict leaves its goal in `Pursuing`, which
             // `GoalsAwaitingATick` does not select, so `fire` never sees the goal again after the
@@ -148,7 +154,7 @@ async fn ask_the_coordinator(server: &Arc<Server>, swarm: &Arc<Swarm>) {
             // left a goal sitting in `Pursuing` with nothing in `capped_goals()`, nothing on the
             // watch stream and no warning — which is precisely the picture the $11.35 run
             // presented to everybody who looked at it.
-            report_capped(server, swarm, id, iterations.saturating_sub(1), reached);
+            report_capped(server, swarm, id, &bound);
             server.release_turn(swarm.slug(), id);
             continue;
         }
@@ -244,10 +250,10 @@ async fn fire(server: &Server, swarm: &Arc<Swarm>, binding: &str) -> Result<(), 
 
         // A goal past its cap is ineligible, the same way a paused swarm's goals are. Nothing in
         // the model changes; the loop stops asking, and raising the cap resumes it here.
-        let within_budget = match capped(server.caps(), swarm, goal, so_far) {
+        let within_budget = match bounded(server.caps(), swarm, COORDINATOR, goal, so_far) {
             None => true,
-            Some(reached) => {
-                report_capped(server, swarm, goal, so_far, reached);
+            Some(bound) => {
+                report_capped(server, swarm, goal, &bound);
                 false
             }
         };
@@ -272,18 +278,26 @@ async fn fire(server: &Server, swarm: &Arc<Swarm>, binding: &str) -> Result<(), 
 ///
 /// Both cap guards call this, because a reader cannot tell which guard stopped a goal and must not
 /// have to. `report_capped` is idempotent per goal, so the once-per-turn warning stays once.
-fn report_capped(server: &Server, swarm: &Arc<Swarm>, goal: &str, turns: u64, reached: Reached) {
-    let (spent, _) = swarm.spend_on(goal);
+///
+/// What is published are the figures of the bound that FIRED, not the goal's. It composed the two
+/// from different folds until 2026-09-13 — `turns` and `spent_usd` from `spend_on(goal)`, `reached`
+/// and `why` from whichever branch of [`bounded`] tripped — and once the agent bound existed those
+/// two folds stopped agreeing: a goal that had taken 2 turns was published as `turns: 2,
+/// spent_usd: null` beside `"the turn cap was reached: 4 of 3"`, telling every reader of `/status`
+/// and of the watch stream to raise a cap that goal had used none of.
+fn report_capped(server: &Server, swarm: &Arc<Swarm>, goal: &str, bound: &Capped) {
+    let reached = bound.reached;
     let capped = CappedGoal {
         swarm: swarm.slug().to_owned(),
         goal: goal.to_owned(),
-        turns,
-        spent_usd: spent.cost_usd,
+        turns: bound.turns,
+        spent_usd: bound.spent_usd,
         reached,
-        why: reached.to_string(),
+        why: bound.why(),
     };
     if server.report_capped(capped.clone()) {
-        tracing::warn!(swarm = %swarm.slug(), goal, %reached, "the loop stopped asking");
+        tracing::warn!(swarm = %swarm.slug(), goal, why = %capped.why,
+                       "the loop stopped asking");
         swarm.announce(What::Capped {
             goal: capped.goal,
             turns: capped.turns,
@@ -301,11 +315,67 @@ fn report_capped(server: &Server, swarm: &Arc<Swarm>, goal: &str, turns: u64, re
 /// a verdict would sit at turn 1 for ever, with the turn cap reading 1 on every pass, while it
 /// spent without limit. Observed 2026-09-12, which is how this line came to be written.
 ///
-/// The larger of the two is used, because a swarm whose records were archived should not have its
-/// cap reset by the absence.
-fn capped(caps: Caps, swarm: &Arc<Swarm>, goal_id: &str, iterations: u64) -> Option<Reached> {
+/// The larger of the two is used ON THE GOAL BOUND ONLY, because a swarm whose records were
+/// archived should not have its cap reset by the absence. The agent bound below reads the agent's
+/// recorded attempts alone, and has no equivalent defence: there is no `iterations` figure kept
+/// per agent to compare it against, and the goal's is not one — it counts a different subject.
+///
+/// So "the same caps apply to both" is true of the CAPS and not of that defence, and an earlier
+/// revision of this comment claimed otherwise. Nothing found reaches it either way: there is no
+/// archive, rotate or prune path for `spend.jsonl` anywhere in the tree (searched 2026-09-13), so
+/// the only way an agent's rows disappear is somebody deleting the file by hand. If one is ever
+/// added, this is the line it has to answer.
+///
+/// Two bounds, not one, and the second is the one a goal cannot get round. A cap keyed on a goal
+/// binds a swarm to the number of goals it has: one agent at $1.00 a turn over two goals reaches
+/// $6.00 against a $5.00 cap with each goal holding $3.00, and every per-goal fold says it is
+/// inside its bounds. So the agent's whole record is read as well, keyed on nothing but the agent,
+/// and the same caps apply to it. An agent is bounded whichever goals it spreads its turns over —
+/// which means a goal that has used up NOTHING of its own can be refused here, and that is the
+/// bound working rather than failing.
+///
+/// The caps are the same numbers deliberately: an operator who set `SWARM_MAX_SPEND_USD=5` meant
+/// five dollars, and a ceiling that let the same agent spend five per goal would be answering a
+/// question nobody asked it. Lifting a cap still lifts both, because `None` exceeds nothing.
+pub fn bounded(
+    caps: Caps,
+    swarm: &Arc<Swarm>,
+    agent: &str,
+    goal_id: &str,
+    iterations: u64,
+) -> Option<Capped> {
     let (spent, attempts) = swarm.spend_on(goal_id);
-    caps.exceeded(iterations.max(attempts), spent.cost_usd)
+    let turns = iterations.max(attempts);
+    if let Some(reached) = caps.exceeded(turns, spent.cost_usd) {
+        return Some(Capped {
+            bound: Bound::Goal,
+            reached,
+            turns,
+            spent_usd: spent.cost_usd,
+        });
+    }
+    // The same caps, read off a figure that names no goal. Nothing below this line asks which goal
+    // the agent is working, which is the whole point of it — and the figures that travel with the
+    // verdict are this fold's, because the goal's no longer describe what was measured.
+    let (spent, attempts) = swarm.spend_by_agent(agent);
+    caps.exceeded(attempts, spent.cost_usd)
+        .map(|reached| Capped {
+            bound: Bound::Agent(agent.to_owned()),
+            reached,
+            turns: attempts,
+            spent_usd: spent.cost_usd,
+        })
+}
+
+/// The verdict alone, for a caller that wants only whether this goal may take another turn.
+pub fn capped(
+    caps: Caps,
+    swarm: &Arc<Swarm>,
+    agent: &str,
+    goal_id: &str,
+    iterations: u64,
+) -> Option<Reached> {
+    bounded(caps, swarm, agent, goal_id, iterations).map(|capped| capped.reached)
 }
 
 /// Whether this swarm's loop should turn at all.
@@ -459,6 +529,202 @@ mod bounds {
         assert!(
             server.capped_goals().iter().any(|c| c.goal == goal),
             "the goal is reported capped, so a reader can see why the loop stopped"
+        );
+    }
+
+    /// The agent bound, driven through the real loop — the coverage the `agent` argument had none of.
+    ///
+    /// Every other loop-driving case builds a swarm with ONE goal, where `capped`'s per-goal branch
+    /// returns first and the agent branch is never the one that fires. Replace `COORDINATOR` with
+    /// any other string at either call site and none of them goes red. This one does: two goals,
+    /// a cap of three turns, and a coordinator that never finishes either. Neither goal reaches
+    /// three on its own, so the only bound that can stop this swarm is the one read off the
+    /// agent's whole record.
+    ///
+    /// It also drives `report_capped`: what a capped goal PUBLISHES must be the figures of the
+    /// bound that actually fired. Before this case, a goal stopped by the agent bound was published
+    /// with its own turn count — 1 or 2 — beside `why` reading "the turn cap was reached: 3 of 3",
+    /// which tells a reader to raise a cap that goal used none of.
+    #[tokio::test]
+    async fn an_agent_is_stopped_by_its_own_record_across_two_goals() {
+        let _guard = crate::ENVIRONMENT.lock().await;
+        let data = tempdir::TempDir::new("swarm-two-goals").expect("a scratch directory");
+        let program = never_reached(&data.path().join("coordinator.sh"));
+        // SAFETY: every case in this crate that reads the environment holds `ENVIRONMENT` first.
+        unsafe {
+            std::env::set_var("SWARM_MAX_TURNS", "3");
+            std::env::set_var("SWARM_MAX_SPEND_USD", "off");
+            std::env::set_var("SWARM_COORDINATOR", &program);
+        }
+
+        let (server, swarm, first) = a_swarm_with_a_goal(&data, "two-goals").await;
+        let swarm_id = swarm.instances("swarm.manager.Swarm").await[0]["id"]
+            .as_str()
+            .expect("an identity")
+            .to_owned();
+        swarm
+            .issue(
+                None,
+                "swarm.goal.SetGoal",
+                json!({"swarm_id": swarm_id, "text": "a second goal, equally unreachable"})
+                    .as_object()
+                    .expect("an object")
+                    .clone(),
+                "second-goal",
+            )
+            .await
+            .expect("the command applies");
+        let goals: Vec<String> = swarm
+            .instances("swarm.goal.Goal")
+            .await
+            .iter()
+            .filter_map(|goal| goal["id"].as_str().map(ToOwned::to_owned))
+            .collect();
+        assert_eq!(goals.len(), 2, "the swarm has two goals: {goals:?}");
+        assert!(goals.contains(&first));
+
+        for _ in 0..12 {
+            one_period(&server, &swarm).await;
+        }
+
+        let per_goal: Vec<u64> = goals.iter().map(|goal| swarm.spend_on(goal).1).collect();
+        let (agent_spent, agent_turns) = swarm.spend_by_agent(COORDINATOR);
+        assert_eq!(
+            agent_turns,
+            per_goal.iter().sum::<u64>(),
+            "the agent's record is every row of both goals"
+        );
+
+        // The bound that fired is the agent's. Neither goal reached three on its own, so a cap
+        // keyed on a goal would have let this swarm run for ever.
+        for (goal, turns) in goals.iter().zip(&per_goal) {
+            assert!(
+                *turns < 3,
+                "goal {goal} took {turns} turns, so the per-goal bound is what stopped it and this \
+                 case has stopped measuring the agent bound: {per_goal:?}"
+            );
+        }
+        assert!(
+            (3..=4).contains(&agent_turns),
+            "a cap of three turns stops the agent at three, or at four when both goals were \
+             already in flight when it tripped: {agent_turns}"
+        );
+
+        // The guard in `fire` as well as the one in `ask_the_coordinator`. `fire` applies the
+        // `Pursue` for the turn about to be taken, so a goal whose occurrences keep being issued
+        // keeps advancing its own `iterations` even when no turn runs — twelve periods of it here.
+        // Without this, the agent argument at `fire`'s call site has no coverage: break it and
+        // the other guard still stops the turns, and every assertion above still passes.
+        for (goal, turns) in goals.iter().zip(&per_goal) {
+            let iterations = swarm
+                .instances("swarm.goal.Goal")
+                .await
+                .iter()
+                .find(|instance| instance["id"].as_str() == Some(goal.as_str()))
+                .and_then(|instance| instance["fields"]["iterations"].as_u64())
+                .expect("the goal counts its own turns");
+            assert_eq!(
+                iterations, *turns,
+                "goal {goal} went no further than the turns it took: the loop stopped ASKING, so \
+                 its own count stopped too"
+            );
+        }
+
+        // What a reader is told. The figures published must be the ones the bound was measured on.
+        let reported = server.capped_goals();
+        assert!(!reported.is_empty(), "the loop said why it stopped");
+        for capped in &reported {
+            assert_eq!(
+                capped.turns, agent_turns,
+                "a goal stopped by the agent bound publishes the agent's figure, not its own: \
+                 {capped:?}"
+            );
+            assert_eq!(
+                capped.spent_usd, agent_spent.cost_usd,
+                "and the agent's spend, not the goal's: {capped:?}"
+            );
+            assert!(
+                capped.why.contains(COORDINATOR),
+                "and says whose record it was measured on: {}",
+                capped.why
+            );
+        }
+    }
+
+    /// The same bound at the OTHER guard, which is the only one a stuck goal ever reaches.
+    ///
+    /// A coordinator that never writes a verdict leaves its goal in `Pursuing`, and
+    /// `GoalsAwaitingATick` does not select those — so `fire` never sees either goal again after
+    /// the first period and `ask_the_coordinator`'s guard is the only thing that can stop this
+    /// swarm. That makes it the case that covers the `agent` argument at `trigger.rs:146`:
+    /// replace `COORDINATOR` there with any other string and the agent's record reads zero, the
+    /// bound never trips, and twelve periods take twenty-four attempts instead of four.
+    ///
+    /// Two cases, not one, because the two call sites are reached by different shapes of failure
+    /// and a mutation at either survives the other's case.
+    #[tokio::test]
+    async fn a_stuck_agent_is_stopped_across_two_goals_by_the_other_guard() {
+        let _guard = crate::ENVIRONMENT.lock().await;
+        let data = tempdir::TempDir::new("swarm-two-goals-stuck").expect("a scratch directory");
+        let program = data.path().join("coordinator.sh");
+        std::fs::write(&program, "#!/bin/sh\ncat > /dev/null\nexit 3\n").expect("written");
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755))
+            .expect("runnable");
+        // SAFETY: every case in this crate that reads the environment holds `ENVIRONMENT` first.
+        unsafe {
+            std::env::set_var("SWARM_MAX_TURNS", "3");
+            std::env::set_var("SWARM_MAX_SPEND_USD", "off");
+            std::env::set_var("SWARM_COORDINATOR", &program);
+        }
+
+        let (server, swarm, _first) = a_swarm_with_a_goal(&data, "two-goals-stuck").await;
+        let swarm_id = swarm.instances("swarm.manager.Swarm").await[0]["id"]
+            .as_str()
+            .expect("an identity")
+            .to_owned();
+        swarm
+            .issue(
+                None,
+                "swarm.goal.SetGoal",
+                json!({"swarm_id": swarm_id, "text": "a second goal nobody answers"})
+                    .as_object()
+                    .expect("an object")
+                    .clone(),
+                "second-stuck-goal",
+            )
+            .await
+            .expect("the command applies");
+        let goals: Vec<String> = swarm
+            .instances("swarm.goal.Goal")
+            .await
+            .iter()
+            .filter_map(|goal| goal["id"].as_str().map(ToOwned::to_owned))
+            .collect();
+        assert_eq!(goals.len(), 2, "the swarm has two goals: {goals:?}");
+
+        for _ in 0..12 {
+            one_period(&server, &swarm).await;
+        }
+
+        let per_goal: Vec<u64> = goals.iter().map(|goal| swarm.spend_on(goal).1).collect();
+        let (_, agent_turns) = swarm.spend_by_agent(COORDINATOR);
+        for (goal, turns) in goals.iter().zip(&per_goal) {
+            assert!(
+                *turns < 3,
+                "goal {goal} took {turns} of its own turns, so the per-goal bound is what stopped \
+                 this and the case has stopped measuring the agent bound: {per_goal:?}"
+            );
+        }
+        assert!(
+            (3..=4).contains(&agent_turns),
+            "a cap of three turns stops the agent at three, or at four when both goals were \
+             already in flight when it tripped: {agent_turns} attempts over twelve periods"
+        );
+        assert!(
+            server.capped_goals().iter().any(|c| c.turns == agent_turns),
+            "and the goal is reported capped on the figure the bound was measured on: {:?}",
+            server.capped_goals()
         );
     }
 

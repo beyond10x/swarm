@@ -155,7 +155,7 @@ pub struct Server {
     /// Goals the loop has stopped asking about, keyed `slug/goal_id`. Holding the reason here and
     /// not only on the stream is what lets a page that connected afterwards still say which cap.
     capped: Mutex<BTreeMap<String, CappedGoal>>,
-    /// What one goal may use up.
+    /// What one agent may use up, across every goal it works. See [`crate::budget`].
     caps: Caps,
 }
 
@@ -630,7 +630,12 @@ impl Server {
         self.in_flight.lock().expect("not poisoned").len()
     }
 
-    /// What one goal may use up.
+    /// What one agent may use up, across every goal it works.
+    ///
+    /// The unit of account is the agent, not the goal, since 2026-09-12
+    /// (`story:spend-is-bounded-per-goal-only`): `trigger::bounded` applies these to the goal's
+    /// record and then to the agent's, so a goal that has used up nothing of its own can still be
+    /// refused because another goal spent the agent's money. `budget` carries the whole reason.
     pub fn caps(&self) -> Caps {
         self.caps
     }
@@ -852,6 +857,10 @@ impl std::fmt::Display for Removal {
 impl std::error::Error for Removal {}
 
 /// One goal the loop has stopped asking about.
+/// The figures are the ones the bound that fired was measured on, which for the agent bound are
+/// summed over every goal that agent works and are not this goal's — `why` says so in words when
+/// that is the case (`budget::Capped::why`). Composing them from the goal's own fold instead
+/// published `turns: 2, spent_usd: null` beside "the turn cap was reached: 4 of 3".
 #[derive(Clone, Debug, Serialize)]
 pub struct CappedGoal {
     pub swarm: String,
@@ -872,7 +881,11 @@ pub struct Status {
     pub periodic: Vec<Periodic>,
     pub next_tick_at: Option<String>,
     pub ticks: u64,
-    /// What one goal may use up before the loop stops asking.
+    /// What one agent may use up, across every goal it works, before the loop stops asking.
+    ///
+    /// Read by the UI (`src/web/src/runtime.ts`). These numbers are NOT per goal: a swarm with
+    /// three goals and `SWARM_MAX_SPEND_USD=5` may spend $5 in total, not $15, and a goal that has
+    /// spent nothing can be refused for what another goal spent.
     pub caps: Caps,
     /// Every goal the loop has stopped asking about, with why.
     pub capped: Vec<CappedGoal>,

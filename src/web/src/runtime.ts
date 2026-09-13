@@ -163,7 +163,15 @@ export interface SwarmStatus {
   turns_recorded: number;
 }
 
-/** What one goal may use up before the loop stops asking. */
+/**
+ * What one agent may use up, across every goal it works, before the loop stops asking.
+ *
+ * NOT per goal, since 2026-09-12 (`story:spend-is-bounded-per-goal-only`): a swarm with three
+ * goals and `max_spend_usd: 5` may spend $5 in total, not $15, and a goal that has spent nothing
+ * of its own can be refused for what another goal spent. A `CappedGoal` carries the figures of
+ * whichever bound fired, so its `turns` and `spent_usd` may be the agent's totals rather than
+ * that goal's; its `why` says which.
+ */
 export interface Caps {
   max_turns: number | null;
   max_spend_usd: number | null;
