@@ -13,7 +13,11 @@ scope:
   path: src/core/domains/config.yaml
 - confidence: cited
   path: src/runtime/swarm-server/src/coordinator.rs
-revision: 13
+- confidence: cited
+  path: src/runtime/swarm-server/src/frame.rs
+- confidence: cited
+  path: src/web/src/runtime.ts
+revision: 16
 ---
 ## What
 
@@ -235,3 +239,24 @@ owns, and it is not optional at a dollar a turn.
 
 The refusal text the vendor surfaces is usable — the model quoted the admitted set back accurately —
 so stating it in the prompt and letting the seam enforce it are consistent, not redundant.
+
+## Scope
+
+Corrected 2026-09-13 from unit A's confirmation table, after the 2026-09-13a wave implemented it.
+
+- **`src/runtime/swarm-server/src/frame.rs`** — **new, 653 lines**, not in the original scope. The
+  whole sealing mechanism lives here, including a hand-written SHA-256: adding `sha2` would have
+  changed `Cargo.lock`, which was not the unit's file. The adversary put **2,517 inputs** through it
+  against `sha2::Sha256` with **0 mismatches**.
+- **`src/runtime/swarm-server/src/coordinator.rs`** — cited, confirmed, and the largest change.
+- **`src/core/domains/config.yaml`** — cited, confirmed. Carries `admitted_operations`, which a
+  config may only ever **narrow**; the intersection that makes that true was missing until an
+  adversary showed a coordinator could widen its own frame with a config it drafts for itself.
+- **`src/runtime/swarm-server/tests/`** — four new files, two of them adversaries'.
+- **`src/web/src/runtime.ts`** — **not in the original scope**, taken by the coordinator at
+  integration. The stream gained `agent` and `unit`; the only consumer had to be told.
+- **The subject scope is runtime-derived, not a config field** — the `UNMAPPED:` question is decided.
+  A config a coordinator writes for itself could widen its own scope, which confines nothing.
+- **Confidence:** high. Clause 3 was measured by 17 subject probes through metaharness's own
+  `SubjectScope::verdict`, not through this repository's assertions about it.
+- **Would collide with:** anything touching `coordinator.rs`, `frame.rs` or `config.yaml`.

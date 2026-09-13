@@ -12,12 +12,13 @@ relations:
 - depends_on: story:a-turn-is-confined-by-a-frame
 - verifies: story:spawn-a-second-agent
 - verifies: story:a-turn-is-confined-by-a-frame
+- depends_on: story:an-event-cannot-say-which-agent-acted
 scope:
 - confidence: cited
   path: AGENTS.md
 - confidence: cited
   path: README.md
-revision: 8
+revision: 9
 ---
 ## What
 
@@ -55,32 +56,47 @@ it missed and the re-run targets that clause rather than starting again. A real 
 — two concurrent `claude-opus-5` sessions — and "it didn't work" is not an affordable report.
 
 1. **A non-Coordinator agent exists.** An `AgentSpawned` whose role is not `Coordinator`.
-2. **Work was handed over.** An `AssignmentPosted` and the matching `AssignmentTaken` by that agent.
-   `AssignmentTaken` has fired zero times in this repository's history.
-3. **Two transcripts, neither overwritten.** Two turn files under `data/swarms/<slug>/turns/`
-   attributed to two different agents.
-4. **The work was finished, not merely started.** A `FinishAssignment` or a `GateGreen`.
-5. **The confinement acted.** At least one tool call refused by the frame, in the turn record — a
-   refusal that happened, not a flag that was set.
-6. **Spend is attributed per agent.** Spend rows exist for both agents, each naming its own agent.
-7. **The bound held with more than one agent to bound.** The agent ceiling refused one of them.
-   Separate from clause 6 because per-agent *recording* and per-agent *enforcement* fail
-   independently: the 2026-09-12d wave delivered the fold, and a fold that records correctly while
-   nothing refuses is the exact shape of the defect that wave was opened to fix.
+2. **Work was handed over.** An `AssignmentPosted` to that agent, and a later `AssignmentTaken`
+   naming it. **What this clause can and cannot establish**, measured 2026-09-13
+   (`review-result:adversary-2026-09-13a-unit-b-pass-1`, finding 6): it establishes that the record
+   *says* the agent took it, and it **cannot** establish that the agent, rather than the coordinator
+   or an operator's curl, issued the command — `apply.rs:174` permits actors by specification actor
+   *type*, not agent instance, and `TakeAssignment`'s `agent_id` is caller-supplied input. The
+   checker must say so in its own output rather than implying more.
+   `story:an-event-cannot-say-which-agent-acted` is the gap and is filed.
+3. **Two transcripts, neither overwritten.** A turn file for every attempt `spend.jsonl` claims, and
+   those files attributed to two different agents. An attempt with no file beside it is a record that
+   was overwritten, and counts as not met.
+4. **The work was finished by the agent that took it.** A `FinishAssignment` or `GateGreen` **for the
+   assignment clause 2 matched, emitted by the agent that took it.** Tightened 2026-09-13 from "a
+   `FinishAssignment` or a `GateGreen`" anywhere in the log, which the adversary showed a coordinator
+   finishing its own goal satisfies — the single-agent status quo this story exists to disprove.
+5. **The confinement acted.** At least one tool call refused **by the frame**, in the turn record — a
+   refusal that happened, not a flag that was set, and not another decider's denial. Read it from the
+   run's own refusal record; `census.by_decider` counts decisions of every outcome and is not a
+   denial map.
+6. **Spend is attributed per agent.** Spend rows exist for two agents the log **spawned**, each
+   naming its own agent.
+7. **The bound held with more than one agent to bound.** The agent ceiling refused one of two
+   **spawned** agents, and the refusal is in a record a reader finds after the run. Separate from
+   clause 6 because per-agent recording and per-agent enforcement fail independently. Note
+   2026-09-13: `report_capped` currently publishes only to the watch stream and the tracing log, so
+   nothing durable records a refusal; that is runtime work, not checker work.
 
 Clauses 1–4, 6 and 7 rest on `story:spawn-a-second-agent`; clause 5 rests on
-`story:a-turn-is-confined-by-a-frame`, whose own clause 2 is the unproven one. Clause 7 additionally
-needs `story:spawn-a-second-agent`'s clause 4 — the in-flight claim keyed on the unit of work —
-because two agents on one goal serialise on one claim today.
+`story:a-turn-is-confined-by-a-frame`. Clause 7 additionally needs `spawn-a-second-agent`'s clause 4.
 
-**Unattended, operationally:** no operator input between the swarm starting and a verdict being
-recorded. The checker establishes it from the log — every command in the window carries a
-non-human actor — rather than from anybody's recollection.
+**Unattended, operationally.** No operator input between the swarm starting and a verdict being
+recorded. **This is not yet checkable and the checker must not pretend it is**: `store.rs:192` writes
+`actor.unwrap_or("system")` and `http.rs:38` makes the actor optional, so an operator's command and
+the runtime's own record identically as `system`. Measured: `dsfsdf`, the swarm this story names as
+hand-driven, contains 26 operator pause/resume/stop commands inside its window and every one is
+`system`. Until `story:an-event-cannot-say-which-agent-acted` closes, the checker reports the
+condition as **undeterminable** and says why, and it does **not** decide the exit status on it.
 
 **Budget, measured.** `--max-budget-usd` is **not** a pre-spend bound: a probe on 2026-09-13 launched
-with `--max-budget-usd 0.01` ended at `total_cost_usd 0.0710`, seven times the cap, because the
-vendor stops the session once its own estimate crosses the number. One turn on `claude-opus-5[1m]`
-cost $0.070. Plan the demonstration's budget against that ratio, not against the flag. The same probe
+with `--max-budget-usd 0.01` ended at `total_cost_usd 0.0710`, seven times the cap. One turn on
+`claude-opus-5[1m]` cost $0.070. Plan against that ratio, not against the flag. The same probe
 reported the operator's seven-day rate-limit window at 76% utilisation.
 
 ## What it costs

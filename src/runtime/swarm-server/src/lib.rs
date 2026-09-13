@@ -6,6 +6,7 @@
 
 pub mod budget;
 pub mod coordinator;
+pub mod frame;
 pub mod http;
 pub mod state;
 pub mod swarm;
