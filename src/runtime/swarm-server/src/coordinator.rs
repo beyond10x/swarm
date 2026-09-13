@@ -1007,6 +1007,31 @@ fn frame_file(record_at: &std::path::Path) -> PathBuf {
     record_at.with_extension("frame.json")
 }
 
+/// Persists usage already observed if the owning future is dropped rather than returning normally.
+struct AbandonedTurn<'a> {
+    swarm: &'a Swarm,
+    actor: &'a str,
+    unit: &'a str,
+    iteration: u64,
+    observed: Option<Spent>,
+    returned: bool,
+}
+impl Drop for AbandonedTurn<'_> {
+    fn drop(&mut self) {
+        if !self.returned
+            && let Some(spent) = &self.observed
+        {
+            self.swarm.record_spend(
+                self.actor,
+                self.unit,
+                self.iteration,
+                spent,
+                None,
+                Some("turn task dropped before completion"),
+            );
+        }
+    }
+}
 /// One agent's turn at one unit of work: the launch, the stream, the record and the verdict.
 ///
 /// Everything the coordinator's turn and a member's turn have in common is here, and everything
@@ -1027,6 +1052,37 @@ async fn run_turn(
     iterations: u64,
     goal: &str,
     assignment: Option<&Assignment>,
+) -> Result<Answer, Unfinished> {
+    let mut evidence = AbandonedTurn {
+        swarm,
+        actor,
+        unit: unit_id,
+        iteration: iterations,
+        observed: None,
+        returned: false,
+    };
+    let result = run_turn_inner(
+        swarm,
+        actor,
+        unit_id,
+        iterations,
+        goal,
+        assignment,
+        &mut evidence.observed,
+    )
+    .await;
+    evidence.returned = true;
+    result
+}
+#[allow(clippy::result_large_err)]
+async fn run_turn_inner(
+    swarm: &Arc<Swarm>,
+    actor: &str,
+    unit_id: &str,
+    iterations: u64,
+    goal: &str,
+    assignment: Option<&Assignment>,
+    observed: &mut Option<Spent>,
 ) -> Result<Answer, Unfinished> {
     let resolved = resolve(swarm)
         .await
@@ -1142,19 +1198,27 @@ async fn run_turn(
         Launch::Program(parts) => parts.clone(),
     };
 
-    let mut child = Command::new(&program[0])
+    let mut command = Command::new(&program[0]);
+    command
         .args(&program[1..])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
+        .stderr(Stdio::piped());
+    let mut child = swarm
+        .control
+        .spawn(&mut command)
         .map_err(|why| Unfinished::Unrunnable {
             why: format!("{}: {why}", program[0]),
             spent: spent.clone(),
         })?;
 
+    *observed = Some(spent.clone());
+    let stdin = child.stdin.take();
+    let stderr = child.stderr.take();
+    let stdout = child.stdout.take();
+    let reaped = swarm.control.supervise(child);
     // A program is handed the question on stdin; metaharness was handed it in the prompt.
-    if let Some(mut stdin) = child.stdin.take() {
+    if let Some(mut stdin) = stdin {
         if matches!(launch, Launch::Program(_)) {
             let text = serde_json::to_string(&asked).map_err(|why| Unfinished::Unrunnable {
                 why: why.to_string(),
@@ -1169,7 +1233,6 @@ async fn run_turn(
     let mut record = tokio::fs::File::create(&record_at).await.ok();
 
     // stderr is drained on its own so a chatty program cannot fill the pipe and stall.
-    let stderr = child.stderr.take();
     let drained = tokio::spawn(async move {
         let mut text = String::new();
         if let Some(stderr) = stderr {
@@ -1187,7 +1250,7 @@ async fn run_turn(
     let mut last_line = String::new();
     let mut last_text = String::new();
     let mut seq = 0u64;
-    if let Some(stdout) = child.stdout.take() {
+    if let Some(stdout) = stdout {
         let mut lines = BufReader::new(stdout).lines();
         while let Ok(Some(line)) = lines.next_line().await {
             if line.trim().is_empty() {
@@ -1202,6 +1265,7 @@ async fn run_turn(
             }
             seq += 1;
             spent.absorb(&parsed);
+            *observed = Some(spent.clone());
             if parsed.get("event").and_then(Json::as_str) == Some("text")
                 && let Some(text) = parsed.get("text").and_then(Json::as_str)
             {
@@ -1230,12 +1294,21 @@ async fn run_turn(
         let _ = std::fs::remove_file(&record_at);
     }
 
-    let status = child.wait().await.map_err(|why| Unfinished::Unrunnable {
-        why: why.to_string(),
-        spent: spent.clone(),
-    })?;
+    let status = reaped
+        .await
+        .map_err(|why| Unfinished::Unrunnable {
+            why: why.to_string(),
+            spent: spent.clone(),
+        })?
+        .map_err(|why| Unfinished::Unrunnable {
+            why: why.to_string(),
+            spent: spent.clone(),
+        })?;
     let stderr = drained.await.unwrap_or_default();
 
+    if let Err(why) = swarm.control.check() {
+        return Err(Unfinished::Unrunnable { why, spent });
+    }
     if !status.success() {
         // A coordinator that failed has not reported anything, and must not be read as "not yet":
         // that would be this runtime answering on its behalf.
@@ -1294,6 +1367,28 @@ pub async fn take_a_turn(
     goal: &str,
     iterations: u64,
 ) -> Result<Answer, Unfinished> {
+    if crate::control::Control::in_turn() {
+        return take_a_turn_claimed(swarm, actor, goal_id, goal, iterations).await;
+    }
+    let claim = swarm
+        .control
+        .admit(format!("goal:{}", goal_id))
+        .ok_or_else(|| Unfinished::Unusable {
+            why: "swarm is not running or unit already has a turn".to_owned(),
+        })?;
+    claim
+        .scope(take_a_turn_claimed(swarm, actor, goal_id, goal, iterations))
+        .await
+}
+
+#[allow(clippy::result_large_err)]
+async fn take_a_turn_claimed(
+    swarm: &Arc<Swarm>,
+    actor: &str,
+    goal_id: &str,
+    goal: &str,
+    iterations: u64,
+) -> Result<Answer, Unfinished> {
     let answer = run_turn(swarm, actor, goal_id, iterations, goal, None).await?;
 
     let input = json!({ "goal_id": goal_id, "reached": answer.verdict.reached })
@@ -1333,6 +1428,26 @@ pub async fn work_an_assignment(
     assignment: &Assignment,
     iterations: u64,
 ) -> Result<Answer, Unfinished> {
+    if crate::control::Control::in_turn() {
+        return work_an_assignment_claimed(swarm, assignment, iterations).await;
+    }
+    let claim = swarm
+        .control
+        .admit(format!("assignment:{}", assignment.assignment_id))
+        .ok_or_else(|| Unfinished::Unusable {
+            why: "swarm is not running or unit already has a turn".to_owned(),
+        })?;
+    claim
+        .scope(work_an_assignment_claimed(swarm, assignment, iterations))
+        .await
+}
+
+#[allow(clippy::result_large_err)]
+async fn work_an_assignment_claimed(
+    swarm: &Arc<Swarm>,
+    assignment: &Assignment,
+    iterations: u64,
+) -> Result<Answer, Unfinished> {
     let answer = run_turn(
         swarm,
         &assignment.agent_id,
@@ -1347,6 +1462,20 @@ pub async fn work_an_assignment(
     // assignment Assigned and the member Working, so the next period continues it rather than
     // taking it again — which is what `TakeAssignment`'s own `wrong-state` branch would refuse.
     if answer.verdict.reached {
+        #[cfg(test)]
+        swarm.control.before_result().await;
+        // Finishing the assignment and returning its worker to Idle are one logical result.
+        // Pause/stop must precede both commands or follow both; a Done assignment is no longer
+        // eligible for dispatch and cannot repair a worker stranded between these writes.
+        let _publication =
+            swarm
+                .control
+                .publish()
+                .await
+                .map_err(|why| Unfinished::Unreportable {
+                    why,
+                    spent: answer.spent.clone(),
+                })?;
         let input = json!({"assignment_id": assignment.assignment_id,
                            "note": answer.verdict.note})
         .as_object()

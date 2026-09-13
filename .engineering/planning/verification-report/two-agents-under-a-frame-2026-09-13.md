@@ -8,7 +8,7 @@ relations:
 - verifies: story:a-recorded-run-shows-two-agents-working
 - verifies: story:spawn-a-second-agent
 - verifies: story:a-turn-is-confined-by-a-frame
-revision: 3
+revision: 4
 ---
 ## The verdict
 
@@ -69,22 +69,11 @@ turn launches, so a swarm whose agent has already spent past the cap is refused 
 
 ## What this run does not show
 
-- **The unattended condition could not be answered when this run was recorded, and can be now.**
-  It read UNDETERMINABLE here, by design, because `store.rs` wrote `actor.unwrap_or("system")` and
-  `http.rs` made the actor optional, so an operator's command and the loop's own were the same
-  record. `story:an-event-cannot-say-which-agent-acted` closed on 2026-09-13 and gave commands an
-  issuer, so the condition now decides. **On this log it decides NOT MET**, and correctly: the run
-  was started by an operator's `SetGoal` and `StartSwarm`.
+- **The original log cannot establish the unattended condition.** It predates issuer envelopes: its subject column duplicates actor on all 24 events, so the record cannot distinguish an operator from the runtime. The current checker reports unattended NOT MET for that missing attribution. This is not a finding that the initial SetGoal or StartSwarm made the run attended; the checker explicitly permits the opening command.
 
-  **The seven clauses are unchanged — seven met, exit 0.** The unattended condition is reported
-  beside them and decides nothing, so the verdict this report records has not moved. What moved is
-  that a later run can earn the condition instead of abstaining from it, and this one is kept as the
-  honest negative case: its `subject` column is a copy of `actor` on all 24 rows, the signature of a
-  log written before issuers existed.
-- **It is not containment.** Clause 5 is a refusal at a decision seam. `--substrate`,
-  `--write-scope` and `--cgroup-root` are `b10x` only, and metaharness's own record says a hermetic
-  run here is not network-isolated. `AGENTS.md`'s rule that nothing confines a coordinator stands.
-- **Depth one, breadth two.** One coordinator, one worker, one assignment.
+  **The seven clauses remain seven met, exit 0.** Unattended is reported separately and does not decide that exit status. `5331fe8` enables later runs to carry the necessary attribution but does not retroactively add it to this log.
+- **It is not containment.** Clause 5 is refusal at a tool decision seam. The metaharness Claude arm does not apply substrate, write-scope or cgroup containment, and the hermetic-run attestation is not a claim of network isolation.
+- **Depth one, breadth two.** One coordinator, one worker, one assignment. Recursive delegation and larger swarms remain undemonstrated.
 
 ## One defect this run found, in the checker
 

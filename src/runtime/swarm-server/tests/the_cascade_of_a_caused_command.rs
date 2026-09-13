@@ -115,6 +115,12 @@ async fn a_command_a_period_caused_is_pumped_like_one_a_caller_asked_for() {
         .to_owned();
     issue(
         &swarm,
+        "swarm.manager.StartSwarm",
+        json!({"swarm_id": swarm_id, "started_at": "2026-09-13T10:00:00Z"}),
+    )
+    .await;
+    issue(
+        &swarm,
         "swarm.goal.SetGoal",
         json!({"swarm_id": swarm_id, "text": "be adversarially examined"}),
     )

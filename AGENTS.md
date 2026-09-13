@@ -31,6 +31,7 @@ interesting part.
 | `src/runtime/ess-runtime/` | the interpreter. Compiles the spec, folds events into entities, computes views, routes bindings. Knows nothing about swarms |
 | `src/runtime/swarm-server/` | HTTP surface, per-swarm event streams, and the trigger that fires periodic bindings |
 | `src/runtime/swarm-cli/` | the verbs a coordinator uses from inside a turn — mail, views, and `do` |
+| `src/runtime/swarm-check/` | the Rust checker for retained two-agent demonstration evidence |
 | `src/web/` | the Vue canvas. Reads `/spec` at load rather than hard-coding entities |
 | `website/` | the public Docusaurus site at `beyond10x.github.io/swarm/` |
 | `data/` | runtime state — per-swarm event logs, transcripts and work directories. Not specification input; `ess-inputs.yaml` exists because the legacy layout would otherwise read instance documents as sources |
@@ -42,9 +43,10 @@ The route table is `src/runtime/swarm-server/src/http.rs`; the CLI verbs are the
 ## Build, run, test
 
 ```console
-cargo build                                  # the three runtime crates
+cargo build                                  # the workspace crates
 cargo run -p swarm-server                    # serves on :5000, or $SWARM_PORT
 cargo run -p swarm-cli -- --help             # the coordinator's verbs
+cargo run -p swarm-check -- data/swarms/two-agents-proof  # retained demonstration evidence
 cargo test                                   # unit and integration tests
 cargo test -p swarm-server --test serves_a_swarm    # one integration case
 
@@ -82,6 +84,17 @@ publications are separate and both are intended.
 `swarm.beyond10x.dev` was never real. `dig beyond10x.dev` returns no A record and no NS delegation,
 and the name appears in no other repository in the organisation; it arrived with the scaffold import
 commit `b7a7b78`. The address is `https://beyond10x.github.io/swarm/`.
+
+## Runtime control
+
+Pause and stop close runtime admission and invalidate existing turn claims before acknowledging
+process cleanup. If the domain transition commits but cleanup fails, the HTTP response is a `host`
+error with status 500; admission stays closed and the committed transition is not rolled back.
+Retry cleanup with `POST /swarms/{slug}/quiesce`. A successful retry returns
+`{"quiescent":true}`; a Running swarm refuses that endpoint. Repeating the domain command retains
+its normal wrong-state outcome. Start and resume must finish prior cleanup before reopening
+admission. Linux is the verified process host. Process groups cover ordinary descendants, not
+intentionally escaped daemons.
 
 ## The gate
 
@@ -194,7 +207,7 @@ prose must respect them:
   transcripts and two agents' spend rows. All three of those events had fired **zero times** in this
   repository's history before that run.
   `verification-report:two-agents-under-a-frame-2026-09-13` records it clause by clause, and
-  `examples/two-agents/check-two-agents.py` re-derives the verdict from the log at any time.
+  `cargo run -p swarm-check -- data/swarms/two-agents-proof` re-derives the verdict from the retained log.
   **What is still overstated:** one coordinator, one worker, one assignment. Agents spawning agents,
   more than two agents, and a swarm that extends its own specification are all undemonstrated.
 - **Nothing confines a coordinator — and a turn is now narrowed.** metaharness gives hermeticity and

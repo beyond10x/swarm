@@ -91,16 +91,17 @@
     }
   ],
   "surfaces": {
-    "httpRoutes": 12,
+    "httpRoutes": 13,
     "cliVerbs": 10
   },
   "lines": {
-    "essRuntime": 2082,
-    "swarmServer": 7892,
+    "essRuntime": 2081,
+    "swarmServer": 8916,
     "swarmCli": 874,
-    "runtimeTotal": 10848,
-    "integrationTests": 8096,
-    "integrationTestFiles": 25,
+    "runtimeTotal": 11871,
+    "swarmCheck": 1927,
+    "integrationTests": 11017,
+    "integrationTestFiles": 38,
     "web": 8910,
     "specYaml": 4808
   }

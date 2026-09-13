@@ -160,7 +160,7 @@ function derive() {
     swarmServer: lines(walk(join(REPO, 'src/runtime/swarm-server/src'), rs)),
     swarmCli: lines(walk(join(REPO, 'src/runtime/swarm-cli/src'), rs)),
   };
-  const testFiles = ['ess-runtime', 'swarm-server', 'swarm-cli']
+  const testFiles = ['ess-runtime', 'swarm-server', 'swarm-cli', 'swarm-check']
     .map((crate) => join(REPO, 'src/runtime', crate, 'tests'))
     .filter((at) => existsSync(at) && statSync(at).isDirectory())
     .flatMap((at) => walk(at, rs));
@@ -182,6 +182,7 @@ function derive() {
     lines: {
       ...runtime,
       runtimeTotal: runtime.essRuntime + runtime.swarmServer + runtime.swarmCli,
+      swarmCheck: lines(walk(join(REPO, 'src/runtime/swarm-check/src'), rs)),
       integrationTests: lines(testFiles),
       integrationTestFiles: testFiles.length,
       web: lines(walk(join(REPO, 'src/web/src'), ['.vue', '.ts', '.css'])),

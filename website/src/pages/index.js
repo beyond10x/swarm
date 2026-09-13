@@ -148,11 +148,11 @@ export default function Home() {
         <section className="swarm-section">
           <SectionHeader
             id="runtime"
-            eyebrow="Three crates"
+            eyebrow="Runtime crates"
             title="What the runtime does, and how little of it there is"
             description={`${n(lines.runtimeTotal)} hand-written lines between them, against ${n(
               lines.specYaml,
-            )} lines of specification YAML. The interpreter is the smallest of the three and owns no rules of its own.`}
+            )} lines of specification YAML. The interpreter reads the model's rules from that specification.`}
           />
           <ScrollableTable label="The runtime crates">
             <thead>
@@ -195,6 +195,10 @@ export default function Home() {
               </tr>
             </tbody>
           </ScrollableTable>
+          <p>
+            The separate <code>swarm-check</code> evidence checker has {n(lines.swarmCheck)} lines
+            of Rust. It verifies a recorded demonstration without starting the runtime.
+          </p>
           <p>
             Beside them: {n(lines.integrationTests)} lines of integration tests across{' '}
             {lines.integrationTestFiles} files, and {n(lines.web)} lines of Vue for the canvas, which
