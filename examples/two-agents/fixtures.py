@@ -66,6 +66,17 @@ ASSIGNMENT_ID = "5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f"
 COORDINATOR = "coordinator"
 BUILDER = "builder"
 
+# The three things `subject` can say since `story:an-event-cannot-say-which-agent-acted` closed —
+# `ess_runtime::Issuer`, and the vocabulary the checker reads. A fourth value is a log written
+# before that, and `EventLog.append` writes one of those by duplicating the actor.
+RUNTIME = "runtime"
+OPERATOR = "operator"
+
+
+def by(agent: str) -> str:
+    """The issuer of a command one named agent instance issued."""
+    return f"agent:{agent}"
+
 # `Capped::why()` for `Bound::Agent`, verbatim in shape — `src/runtime/swarm-server/src/budget.rs`.
 AGENT_CEILING_SENTENCE = (
     "the turn cap was reached: 4 of 3, by the agent `{agent}` across every goal it works. "
@@ -83,7 +94,15 @@ class EventLog:
         self.db.executescript(SCHEMA)
         self.version = 0
 
-    def append(self, name: str, data: dict, actor: str = "system") -> None:
+    def append(self, name: str, data: dict, actor: str = "system", issuer: str | None = None) -> None:
+        """One row. `issuer` is what `store.rs` writes into `subject` since 2026-09-13.
+
+        `issuer=None` is a row written BEFORE that — and the way to write one is not to invent a
+        value but to duplicate the actor, because duplicating the actor is literally what the
+        store did: `subject: actor.unwrap_or("system")` on the line above `actor:`. Two columns,
+        one fact. A fixture that put anything else there would be testing the checker against a
+        log shape that never existed.
+        """
         self.version += 1
         at = f"2026-09-13T12:{self.version:02d}:00Z"
         self.db.execute(
@@ -98,7 +117,7 @@ class EventLog:
                 name,
                 at,
                 at,
-                SWARM_ID,
+                actor if issuer is None else issuer,
                 actor,
                 str(uuid.uuid4()),
                 str(uuid.uuid4()),
@@ -218,6 +237,11 @@ def build(
     started=True,
     human_actor=None,
     eventlog=True,
+    issuers=True,
+    taken_by_issuer=RUNTIME,
+    forged_take_first=False,
+    operator_in_window=False,
+    operator_claims=None,
 ) -> Path:
     """Write a swarm's records under `root`.
 
@@ -237,8 +261,23 @@ def build(
       spend,          clause 6 — `spend=[(1, COORDINATOR)]` names one agent; `unattributed`
       unattributed               adds rows that name none
       ceiling         clause 7 — "note" | "capped-file" | "spend-note" | None
-      started,        the unattended condition — `human_actor="timo@example.com"` is an operator
-      human_actor                reaching into the window
+      taken_by_issuer clause 2 — who ISSUED the take. `RUNTIME` is what the runtime does
+                                 (`trigger.rs` issues `TakeAssignment`, not the member);
+                                 `OPERATOR` is a curl, and `by(COORDINATOR)` is the coordinator
+                                 taking work on the member's behalf. The last two are what
+                                 clause 2 could not tell apart before 2026-09-13
+      forged_take_first          two handovers, the FIRST taken by an operator and the second
+                                 cleanly — the shape that got past a clause reading `pairs[-1]`
+      operator_claims            the string a hand puts in the request's `agent` field. `None`
+                                 is a curl that named nobody; a slug the log never spawned is the
+                                 one that used to walk past `unattended` unremarked
+      started,        the unattended condition — `human_actor="timo@example.com"` is a person's
+      human_actor,               name in the ACTOR column; `operator_in_window` is the realistic
+      operator_in_window         one: an ordinary-looking `SwarmPaused` that only the ISSUER
+                                 betrays as a hand
+      issuers         `False` writes a log from before commands recorded who issued them —
+                      `subject` duplicating `actor`, which is what `store.rs:192-193` wrote.
+                      Every clause must still be reported, and the checker must say it is coping
       eventlog        no log at all, which every clause must survive
     """
     root = Path(root)
@@ -248,16 +287,27 @@ def build(
 
     if eventlog:
         log = EventLog(root / "eventlog.sqlite3")
+
+        def issued(who: str) -> dict:
+            """The issuer keyword, or nothing at all on a log written before issuers existed."""
+            return {"issuer": who} if issuers else {}
+
         log.append(
             "swarm.manager.SwarmCreated",
             {"swarm_id": SWARM_ID, "display_name": "Two agents", "home": str(root)},
+            **issued(OPERATOR),
         )
         log.append(
             "swarm.goal.GoalSet",
             {"goal_id": GOAL_ID, "swarm_id": SWARM_ID, "text": "hand one unit of work over"},
+            **issued(OPERATOR),
         )
         if started:
-            log.append("swarm.manager.SwarmStarted", {"swarm_id": SWARM_ID})
+            # An operator's, and the window opener. A swarm is started by hand by construction,
+            # so this one command is not what "unattended" is about — see `unattended()`.
+            log.append(
+                "swarm.manager.SwarmStarted", {"swarm_id": SWARM_ID}, **issued(OPERATOR)
+            )
         for agent, role in roles:
             log.append(
                 "swarm.agent.AgentSpawned",
@@ -269,6 +319,8 @@ def build(
                     "display_name": agent,
                     "host": {},
                 },
+                # The coordinator is spawned by the runtime; everyone else by the coordinator.
+                **issued(RUNTIME if role == "Coordinator" else by(COORDINATOR)),
             )
 
         def post():
@@ -282,6 +334,7 @@ def build(
                     "artifact_ref": None,
                 },
                 actor="swarm.agent.SwarmAgent",
+                **issued(by(COORDINATOR)),
             )
             log.append(
                 "swarm.agent.AssignmentRecorded",
@@ -294,27 +347,38 @@ def build(
                     "artifact_ref": None,
                 },
                 actor="swarm.agent.SwarmAgent",
+                **issued(RUNTIME),
             )
 
-        def take():
+        def take(issuer=None):
             log.append(
                 "swarm.agent.AssignmentTaken",
                 {"agent_id": taken_by, "ref": ASSIGNMENT_ID, "msg": "taken"},
                 actor="swarm.agent.SwarmAgent",
+                **issued(issuer or taken_by_issuer),
             )
 
-        if take_before_post and taken_by:
-            take()
-        if posted_to:
+        if forged_take_first and posted_to and taken_by:
+            # Two handovers of one assignment. A curl takes it first, the member takes it after —
+            # so the LAST handover is clean and the log still holds a hand.
             post()
-        if taken_by and not take_before_post:
+            take(OPERATOR)
+            post()
             take()
+        else:
+            if take_before_post and taken_by:
+                take()
+            if posted_to:
+                post()
+            if taken_by and not take_before_post:
+                take()
 
         if finished == "assignment":
             log.append(
                 "swarm.agent.AssignmentDone",
                 {"assignment_id": ASSIGNMENT_ID, "note": "the seven are reported"},
                 actor="swarm.agent.SwarmAgent",
+                **issued(RUNTIME),
             )
         elif finished == "gate":
             log.append(
@@ -322,6 +386,7 @@ def build(
                 {"agent_id": finished_by or taken_by or BUILDER, "ref": ASSIGNMENT_ID,
                  "exit_code": 0, "msg": "python3 -m unittest: OK"},
                 actor="swarm.agent.SwarmAgent",
+                **issued(by(finished_by or taken_by or BUILDER)),
             )
 
         if ceiling == "note":
@@ -332,12 +397,29 @@ def build(
                     "msg": AGENT_CEILING_SENTENCE.format(agent=BUILDER),
                 },
                 actor="swarm.agent.SwarmAgent",
+                **issued(RUNTIME),
             )
         if human_actor:
+            # An actor the specification declares a person, in the ACTOR column, on a row the
+            # LOOP issued. Two things are held here at once. The actor column no longer decides
+            # the unattended condition — the issuer does — and the value is one the store could
+            # actually write: `eventlog_core::validate_identity` refuses a space and an `@`, so
+            # `timo@example.com` was never a row this runtime could produce and a fixture that
+            # wrote one was testing the checker against a log that cannot exist.
             log.append(
                 "swarm.agent.NoteEmitted",
                 {"agent_id": COORDINATOR, "msg": "the operator said carry on"},
                 actor=human_actor,
+                **issued(RUNTIME),
+            )
+        if operator_in_window:
+            # What an operator's hands actually look like: an ordinary lifecycle command whose
+            # actor column says nothing at all. Only the issuer says a person sent it — unless
+            # the hand names an agent, which costs it one field and is `operator_claims`.
+            log.append(
+                "swarm.manager.SwarmPaused",
+                {"swarm_id": SWARM_ID},
+                **issued(by(operator_claims) if operator_claims else OPERATOR),
             )
         log.close()
 

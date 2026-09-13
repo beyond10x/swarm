@@ -1,11 +1,15 @@
-swarm: data/swarms/two-agents-proof
+swarm: /home/timo/beyond10x/swarm/data/swarms/two-agents-proof
 
 clause 1  met      a non-Coordinator agent exists
           found:  1 of 2 spawned agent(s): `worker` (Worker)
 clause 2  met      work was handed over
           found:  1 `swarm.agent.AssignmentPosted` (to `worker`); 1 `swarm.agent.AssignmentTaken`
                   (by `worker`); posted to `worker` at seq 10 and taken by it at seq 13, an
-                  assignment the take does not name (`ref` absent)
+                  assignment the take does not name (`ref` absent), and this log does not say what
+                  issued that taking; 24 of 24 event(s) in this log name no issuer at all, so it
+                  was written before commands recorded who issued them (`store.rs` wrote the actor
+                  into both `subject` and `actor`) — this part is not checked here, and is
+                  reported rather than passed over
 clause 3  met      two transcripts, neither overwritten
           found:  3 turn file(s), 3 attributed: `coordinator` ×2 (the work directory it ran in),
                   `worker` ×1 (the work directory it ran in); 2 distinct agent(s): coordinator,
@@ -24,17 +28,14 @@ clause 7  met      the bound held with more than one agent to bound
           found:  2 spawned agent(s) to bound: coordinator, worker; refused: `coordinator`
                   (turns/capped.jsonl)
 
-unattended  UNDETERMINABLE  no operator input in the window
-          wanted: whether anybody's hands were on this swarm between its start and its last event
-                  — which this log cannot say: `store.rs:192` writes `actor.unwrap_or("system")`
-                  and `http.rs:38` makes the actor optional, so an operator's command and the
-                  loop's own are recorded identically
-          found:  UNDETERMINABLE, and reported as such rather than guessed: no actor in this log
-                  distinguishes a person from the loop. This does not count for or against the
-                  seven. 20 event(s) from seq 5, actors: swarm.agent.Worker,
-                  swarm.goal.Coordinator, swarm.goal.Operator, swarm.mailbox.SwarmAgent,
-                  swarm.manager.Operator, system; `swarm.manager.*` lifecycle events in that
-                  window: 1 — an operator and the loop can each cause one and the record names
-                  neither
+unattended  NOT MET  no operator input in the window
+          wanted: at least one event in the window from the first `swarm.manager.SwarmStarted`
+                  other than the `swarm.manager.SwarmStarted` itself, every event in that window
+                  naming who issued it, and none of them an `operator` — the command that STARTS a
+                  swarm excepted, because a person issues that one by construction
+          found:  20 of 20 event(s) in the window name no issuer at all: this log was written
+                  before commands recorded who issued them, so the absence of a hand cannot be
+                  read off it; what it does show is swarm.goal.Operator, swarm.manager.Operator in
+                  the `actor` column, an actor type the specification declares a person
 
-7 clauses: 7 met, 0 not met; the unattended condition is undeterminable and decides nothing
+7 clauses: 7 met, 0 not met; unattended NOT MET, which is reported beside them and decides nothing

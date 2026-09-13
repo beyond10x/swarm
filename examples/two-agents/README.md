@@ -32,7 +32,7 @@ condition is reported beside them and decides nothing — see below.
 | # | clause | met when |
 |---|---|---|
 | 1 | a non-Coordinator agent exists | a `swarm.agent.AgentSpawned` whose `role` is not `Coordinator` |
-| 2 | work was handed over | a `swarm.agent.AssignmentPosted` naming that agent, and a **later** `swarm.agent.AssignmentTaken` by the same agent |
+| 2 | work was handed over | a `swarm.agent.AssignmentPosted` naming that agent, a **later** `swarm.agent.AssignmentTaken` by the same agent, and an issuer on that taking that is the runtime or that agent — never an operator, another agent, or a name the log never spawned |
 | 3 | two transcripts, neither overwritten | two turn files attributable to two different agents, and a file for every attempt `spend.jsonl` claims |
 | 4 | the work was finished | an `AssignmentDone` for the assignment clause 2 matched, or a `GateGreen` **by the agent that took it** — a coordinator finishing its own goal is not this clause |
 | 5 | the confinement acted | a `tool.decided` whose decision is a denial and whose `decided_by` is `frame`. A session census is **not** this: `by_decider` counts decisions of every outcome |
@@ -50,16 +50,37 @@ Two rules the checker obeys, and a third that decides the design:
   row, a name a turn record gives itself, a name in a file name: each is a claim the log settles.
   One definition, used by attribution and by clauses 6 and 7 alike — there were two for a day, and
   they gave one set of records opposite answers about whether `ghost` was an agent.
-- **The unattended condition is UNDETERMINABLE and decides nothing.** The story asks for "no
-  operator input between the swarm starting and a verdict being recorded" — and this log cannot
-  say. `src/runtime/ess-runtime/src/store.rs:192` writes `actor.unwrap_or("system")` and
-  `src/runtime/swarm-server/src/http.rs:38` makes the actor optional, so an operator pausing a
-  swarm through the HTTP surface leaves an event indistinguishable from one the loop wrote.
-  Measured: `dsfsdf`, the swarm the story itself names as hand-driven, has 27 `swarm.manager.*`
-  lifecycle events inside its window, every one of them actor `system`. An earlier revision of
-  this checker read that as *unattended met* and let it decide the exit status. It now reports
-  the actors as information, says why it cannot answer, and answers nothing. When
-  `story:an-event-cannot-say-which-agent-acted` closes, it becomes checkable and comes back.
+- **The unattended condition needs positive evidence, and decides nothing either way.** The story
+  asks for "no operator input between the swarm starting and a verdict being recorded", and it is
+  met when every event in that window names who issued it and every one of those is the runtime or
+  an agent the log spawned. The window runs from the `swarm.manager.SwarmStarted` that opens it to
+  the last `GoalReached`/`GoalNotReached` that closes it — **to the verdict, as the story says**,
+  because an operator's next command after a run has finished is not a hand on the run. The opener
+  itself is excepted: a person starts a swarm by construction, and counting it would make the
+  condition unmeetable.
+
+- **An agent is what an `AgentSpawned` says it is — in the issuer column too.** A hand that puts
+  any string in its request's `agent` field is not thereby an agent: `agent:ghost` in a log that
+  spawned no `ghost` names nobody, and a claim with nothing behind it is not evidence that nobody
+  touched the swarm. This is not authentication, which the story excludes — nothing proves the
+  claim came from that agent. It is the difference between a record a reader can check and one
+  anybody can write about anybody.
+
+  It has been wrong twice, in opposite directions, and the rule is what is left. It **could not
+  fail** while `store.rs` wrote `actor.unwrap_or("system")` into the `subject` and `actor` columns
+  both and `http.rs` made the actor optional: `dsfsdf`, the swarm the story names as hand-driven,
+  has 27 `swarm.manager.*` lifecycle events inside its window, every one of them actor `system`,
+  and it passed. Then it **could not pass**, reporting UNDETERMINABLE — honest while the record
+  could not carry the fact, and dishonest the moment `story:an-event-cannot-say-which-agent-acted`
+  put the issuer on the envelope on 2026-09-13.
+
+- **A log written before that closed is reported as such, not read as though it answered.** Its
+  `subject` column holds a second copy of the actor type, so no event in it names an issuer.
+  Clause 2 says in its own output that it is not checking the taking's issuer; the unattended
+  condition is NOT MET, because the absence of a hand cannot be read off a record that never
+  recorded the presence of one. `data/swarms/two-agents-proof` — the demonstration's own log — is
+  one of these, and it answers *not unattended* for that reason, with `swarm.goal.Operator` and
+  `swarm.manager.Operator` in its actor column as corroboration. Its seven clauses are unchanged.
 
 ## How a turn file is attributed to an agent
 
