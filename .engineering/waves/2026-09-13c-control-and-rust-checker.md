@@ -23,7 +23,7 @@ AEP output, verbatim:
 valid
 ```
 
-Status: **approved by the operator's `ok`; both units implementing**. Coordinator: Codex leader.
+Status: **approved by the operator's `ok`; both units committed locally; adversary pass 1 running**. Coordinator: Codex leader.
 Skill `aep-drive:wave 0.8.1`; planning skill 0.8.1; installed `aep --version` reports `protocol 0.55.0`.
 Interactive run: the operator asked to see the next wave after cleanup. This proposal is the review boundary.
 The operator subsequently approved this exact proposal. The active integration branch is now `wave/2026-09-13c/integration`; owning session `wave-20260913c-leader`.
@@ -34,11 +34,25 @@ Bootstrap registers a buildable `swarm-check` shell with a deliberately failing 
 
 | unit | stage | source | target | scratch | branch/head |
 |---|---|---|---|---|---|
-| A | implementing | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-control | same source /target | /home/timo/.cache/swarm-wave-2026-09-13c/control | wave/2026-09-13c/control; base c935d85 |
-| B | implementing | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-checker | same source /target | /home/timo/.cache/swarm-wave-2026-09-13c/checker | wave/2026-09-13c/checker; base c935d85 |
+| A | adversary pass 1 | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-control | same source /target | /home/timo/.cache/swarm-wave-2026-09-13c/control | wave/2026-09-13c/control; 4098ad1 (base c935d85) |
+| B | adversary pass 1 | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-checker | same source /target | /home/timo/.cache/swarm-wave-2026-09-13c/checker | wave/2026-09-13c/checker; d0eac57 (base c935d85) |
 
 Integration target is inside `swarm-next-wave-plan-20260913/target`; integration scratch is `/home/timo/.cache/swarm-wave-2026-09-13c/integration`. All implementation builds set RUSTC_WRAPPER to `/usr/bin/sccache`, CARGO_BUILD_JOBS=2 and unit-owned TMPDIR. The primary checkout's target remains untouched.
 Base: published, clean `main` at `5331fe8e3c338d12f8fde2371f1218f6c3a551a9`.
+
+### Implementation handoff
+
+A: 4098ad1; package tests 117 → 129 executed, all green. Formatter, strict Clippy, ESS validation and emitted-field check each exited 0. The new private control module and focused integration target confirm inferred scope. Two existing cases gained Running lifecycle setup without weakening their assertions. Linux process-group cleanup is verified; intentionally escaped groups and other platforms are not claimed as verified. The host retry route is POST /swarms/{slug}/quiesce; the integration documentation names its success/refusal/error contract.
+
+B: d0eac57; Rust package 0 → 98 executed, all green: 74 behavioral cases covering 83 baseline report snapshots, nine metadata guards, and 15 compatibility tests. The original Python suite ran all 83 tests before removal. Original demonstration JSON matches exactly; text words match with wrapping differences; all 17 input hashes remain unchanged. The historical run meets seven clauses and does not establish unattended operation. Seven Python source/fixture/test modules were removed; historical exported evidence remains untouched. Inaccessible evidence fails closed without a SQLite write fallback; malformed JSON-lines retain historical skip behavior.
+
+Full implementor reports, original red outputs and per-lane runner counts are retained at:
+- /home/timo/.cache/swarm-wave-2026-09-13c/control/report.md
+- /home/timo/.cache/swarm-wave-2026-09-13c/checker/report.md
+
+Each implementor released its own lease before coordinator commits. The adversaries own separate pass-1 leases and scratch roots under each unit's adversary-1 directory. No implementation has merged into integration or main yet.
+
+Integration dependencies: src/web npm ci --offline exited 0. Website npm ci --offline exited 1 (EALLOWGIT: the environment disables Git dependency fetches). Package.json and lockfile compare exactly with primary; its existing website/node_modules was copied into integration for the isolated build. No dependency or npm policy was changed. These are installation observations, not a substitute for the final build gate.
 
 ## Recommended wave
 
@@ -106,8 +120,8 @@ A pre-flight that finds less than the disk floor or an unconfigured cache refuse
 | purpose | managed id | branch | source path | build path | scratch root | stage |
 |---|---|---|---|---|---|---|
 | integration | swarm-next-wave-plan-20260913 | wave/2026-09-13c/integration | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-next-wave-plan-20260913 | same path /target | /home/timo/.cache/swarm-wave-2026-09-13c/integration | integrating shared documentation |
-| A | swarm-wave-20260913c-control | wave/2026-09-13c/control | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-control | same path /target | /home/timo/.cache/swarm-wave-2026-09-13c/control | implementing |
-| B | swarm-wave-20260913c-checker | wave/2026-09-13c/checker | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-checker | same path /target | /home/timo/.cache/swarm-wave-2026-09-13c/checker | implementing |
+| A | swarm-wave-20260913c-control | wave/2026-09-13c/control | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-control | same path /target | /home/timo/.cache/swarm-wave-2026-09-13c/control | adversary pass 1 |
+| B | swarm-wave-20260913c-checker | wave/2026-09-13c/checker | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-checker | same path /target | /home/timo/.cache/swarm-wave-2026-09-13c/checker | adversary pass 1 |
 
 The coordinator updates each actual path, branch head and stage on transition.
 Current owning session: wave-20260913c-leader. Each implementor owns a distinct lease.
