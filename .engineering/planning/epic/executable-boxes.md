@@ -7,88 +7,43 @@ title: Boxes that do something
 summary: A drawn box runs, renders or reaches a service, and an agent can create one.
 relations:
 - serves: vision:swarm-builds-itself
-revision: 2
+revision: 3
 ---
 # Epic: Boxes that do something
 
 ## Outcome
 
-A drawn box runs, renders or reaches a service, and an agent can create one. Today every box is a
-declaration: a Tool box executes nothing, a Service box reaches nothing, an agent the coordinator
-spawns is a record that never runs. The change this delivers is that **the swarm's coordinator can
-extend the swarm itself and a person watching can see it happen and stop it** — which is
-`vision:swarm-builds-itself` narrowed to the one capability everything else waits on.
+A drawn box runs, renders or reaches a service, and an agent can create one. The coordinator can extend the swarm itself and a person watching can see it happen and stop it, serving `vision:swarm-builds-itself`.
 
-Anybody would know it had happened by reading an event log: `AssignmentTaken`, `StepDone`,
-`GateGreen` and `FinishAssignment` have fired **zero times** in this repository's history, across all
-11 swarm logs, measured 2026-09-13. The day any of them fires from work a coordinator handed to
-another agent, this epic has delivered something.
+## Current evidence — 2026-09-13
 
-## Why Now
+The historical draft predated the first two-agent run. Its statements that workers never ran, AssignmentTaken never fired, and turns used decisions observe are superseded by the evidence below; the CLI journal retains the earlier body.
 
-The operator's standing goal, 2026-09-13, is **"autonomous, sandboxed multi-agent swarm proven"** —
-recorded here verbatim because until now it existed in no artifact, which the scope critic of
-round 1 named as a defect: a set cannot be judged against a promise nobody wrote down.
+- `story:spawn-a-second-agent`, `story:a-turn-is-confined-by-a-frame`, and `story:a-recorded-run-shows-two-agents-working` are implemented in v0.2.0. A coordinator and one Worker completed one assignment under sealed frames. `verification-report:two-agents-under-a-frame-2026-09-13` records seven met clauses; exported evidence is under `examples/two-agents/evidence/2026-09-13-two-agents-proof/`.
+- The published attribution follow-up at `5331fe8` records claimed issuer identity beside actor type. The story remains draft because AGENTS.md reserves status moves for the operator; implementation evidence is already attached. Do not schedule that implementation again based on the status alone.
+- The recorded demonstration predates issuer envelopes. It cannot prove the unattended condition, and its seven-clause success must not be reported as proof of unattended operation.
+- Frame refusal is demonstrated; operating-system containment is not. Multi-agent evidence remains depth one and breadth two. Tool and Service execution remain separate open capabilities.
 
-Three of those four words are open, and one is not:
+## Why now
 
-| word | state, measured 2026-09-13 | where it is owned |
-|---|---|---|
-| **autonomous** | **already demonstrated for one agent** — 109 `GoalPursued` / 106 `GoalNotReached`; `dsfsdf` ran 38 unattended turns of real `claude-opus-5` sessions thirty seconds apart | nothing owns it; it works |
-| **multi-agent** | **never happened.** `mail-check-1789197540` spawned `reviewer`, `builder` and `tester` and all three carry role `Coordinator`, because `swarm.agent.Role` declares one variant | `story:spawn-a-second-agent` |
-| **sandboxed** | **not attempted.** Turns launch `--decisions observe`, which metaharness's own help calls "allow every call and record every call" | `story:a-turn-is-confined-by-a-frame` |
-| **proven** | **partly** — 3 `GoalReached`, one by a real turn of 16 tool calls costing $0.44 | `story:a-recorded-run-shows-two-agents-working` |
-
-What makes it now rather than later: the coordinator's default became `Launch::Metaharness` on
-2026-09-12, so a server started with no environment spends real money on every `Pursuing` goal every
-thirty seconds, with the whole native tool surface and nothing narrowing it. The 2026-09-12d wave
-bounded the spending. Nothing bounds the reach.
+The operator's recorded goal was "autonomous, sandboxed multi-agent swarm proven". Current evidence supports a narrower statement: two agents ran, a frame refused a call, usage was attributed, and a budget guard refused another turn. A fresh demonstration with issuers would be needed to establish unattended operation; containment requires a different host capability.
 
 ## Scope
 
-Three capabilities, in the order their dependencies allow:
+The demonstration slice of this epic consisted of a non-Coordinator role and worker runtime, a sealed turn frame, and a replayable evidence checker. Existing nouns are declared in `src/core/domains/agent.yaml`, `manager.yaml`, `goal.yaml` and `config.yaml`.
 
-1. **A role that is not `Coordinator`, and a runtime that runs it.** The agent domain's working half
-   — `Assign`, `TakeAssignment`, `FinishAssignment` — exists in the specification and has never
-   executed.
-2. **A turn narrowed by a frame it cannot widen.** `--frame` with `--decisions frame`, admitted
-   operations and a subject scope sealed into a digest.
-3. **A demonstration anybody can re-run**, with a checker that reads the log and reports each clause
-   by number.
-
-Surfaces: `src/core/domains/agent.yaml` and `config.yaml`; `swarm-server`'s `coordinator.rs`,
-`trigger.rs`, `swarm.rs`, `state.rs`; `examples/`; and the published prose in `README.md` and
-`AGENTS.md`.
+`story:run-a-tool-box` and `story:connectors-as-service-boxes` still own the executable-box capabilities beyond that demonstration. Immediate control and evidence maintenance is now decomposed separately under `epic:trustworthy-swarm-control`: runtime pause/stop, the Rust checker port, and visible claimed issuers.
 
 ## Out of Scope
 
-- **Kernel confinement.** `--substrate`, `--substrate-embedded` and `--cgroup-root` are **`b10x`
-  only** and metaharness refuses them by name for the `claude` arm. `AGENTS.md`'s rule — *"Nothing
-  confines a coordinator"* — is **not** retired by this epic, and no artifact under it may describe
-  its outcome as containment in the kernel sense.
-- **Agents spawning agents**, and more than two agents. Depth one, breadth two.
-- **A concurrency ceiling.** `turns_in_flight()` refuses nothing; that is a different bound and a
-  different decision, and no story here claims it.
-- **The UI box library and the Service box**, which belong to this epic's name but not to this goal.
+- Operating-system containment: the current metaharness Claude arm refuses the substrate/cgroup controls; the tool decision seam is not a sandbox boundary.
+- Agents spawning agents and evidence beyond two agents; neither is established by the retained run.
+- New aggregate spend policy or authorization rules; these require their own acceptance and review.
 
-## Risks
+## Remaining verification
 
-- **A demonstration costs real money** — two concurrent `claude-opus-5` sessions. `dsfsdf` spent 38
-  turns discovering its goal was the placeholder string `2342342`.
-- **`metaharness_argv` is thirty-five lines that two stories both need**, so two of the three cannot
-  be worked at once. Both bodies now say so.
-- **The frame is metaharness's document, not ours.** Its format, digest rule and refusals are pinned
-  to metaharness 0.7.0; a version bump can invalidate a frame the runtime writes.
-
-## Ambiguities
-
-- Whether the subject scope is a per-swarm config field or a constant the runtime derives from the
-  swarm's work directory. The second cannot be widened by a config a coordinator writes for itself,
-  which is an argument for it. Nobody has decided; marked `UNMAPPED:` in
-  `story:a-turn-is-confined-by-a-frame`.
+A fresh run using issuer-aware envelopes must earn an unattended result rather than inherit one from the old log. The existing verification report remains the evidence for the released demonstration; do not overwrite it to claim a later run.
 
 ## Done When
 
-`story:spawn-a-second-agent`, `story:a-turn-is-confined-by-a-frame` and
-`story:a-recorded-run-shows-two-agents-working` are implemented, and a `verification-report` records
-a run against the third's six numbered clauses — including the ones it failed.
+The three demonstration stories named above have implementation evidence and the verification report records every clause, including failures and limitations. This describes the delivered demonstration slice, not completion of every executable-box capability or the broad containment goal. No lifecycle move is made by this planning cleanup.

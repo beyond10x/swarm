@@ -19,7 +19,7 @@ scope:
   path: src/runtime/ess-runtime/src/store.rs
 - confidence: cited
   path: src/runtime/swarm-server/src/http.rs
-revision: 6
+revision: 7
 ---
 ## What
 
@@ -82,3 +82,9 @@ stay — this adds identity beside it rather than replacing it.
 - **Confidence:** high — every path was read by the adversary and the indistinguishability was
   measured, not argued
 - **Would collide with:** anything touching `apply.rs`, `store.rs` or `http.rs`
+
+## Current implementation and handoff
+
+The implementation is merged and published at `5331fe8`; the unit commit is `8913ba6`, and the integration gate/evidence is recorded against `77044a8`. Both old managed worktrees and merged local branches were retired after remote recovery proof was verified. The story's draft status is deliberately unchanged under AGENTS.md; it is not a request to repeat the implementation.
+
+Two follow-ups left by that wave are now governed artifacts: `story:verify-two-agent-evidence-in-rust` and `story:show-command-issuers-in-the-canvas`, under `epic:trustworthy-swarm-control`. The saved canvas patch is retained as evidence only because git apply --check rejects it as corrupt; it is not ready implementation.
