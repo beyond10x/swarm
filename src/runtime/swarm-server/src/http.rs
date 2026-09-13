@@ -116,6 +116,7 @@ impl IntoResponse for Refused {
             Self::View(_) => (StatusCode::NOT_FOUND, "view"),
             // These are ours, not the caller's.
             Self::Routing(_) => (StatusCode::INTERNAL_SERVER_ERROR, "routing"),
+            Self::Host(_) => (StatusCode::INTERNAL_SERVER_ERROR, "host"),
             Self::Store(_) => (StatusCode::INTERNAL_SERVER_ERROR, "store"),
         };
         let body = axum::Json(Problem {
@@ -129,6 +130,7 @@ impl IntoResponse for Refused {
 /// Every route this server serves.
 pub fn routes(server: Arc<Server>) -> Router {
     Router::new()
+        .route("/swarms/{slug}/quiesce", post(quiesce))
         .route("/swarms", get(list_swarms).post(create_swarm))
         .route("/swarms/{slug}", get(read_swarm).delete(remove_swarm))
         .route("/swarms/{slug}/events", get(watch_swarm))
@@ -398,4 +400,20 @@ async fn read_status(State(server): State<Arc<Server>>) -> impl IntoResponse {
 /// redeployed, which is the whole reason the interpreter reads the model at boot.
 async fn read_spec(State(server): State<Arc<Server>>) -> impl IntoResponse {
     axum::Json(server.describe())
+}
+
+/// Retries host cleanup without repeating a domain transition; Running is refused.
+async fn quiesce(
+    State(server): State<Arc<Server>>,
+    Path(slug): Path<String>,
+) -> Result<impl IntoResponse, Refused> {
+    let swarm = server.get(&slug).await?;
+    let _lifecycle = swarm.control.lifecycle.lock().await;
+    if swarm.control.running() {
+        return Err(Refused::Command(
+            "quiescence requires a non-running swarm".to_owned(),
+        ));
+    }
+    swarm.control.quiesce().await.map_err(Refused::Host)?;
+    Ok(axum::Json(serde_json::json!({"quiescent": true})))
 }

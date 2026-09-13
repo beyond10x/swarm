@@ -77,6 +77,20 @@ fn cost(usd: f64) -> Spent {
 #[tokio::test]
 async fn an_answered_turn_names_the_agent_that_spent_it() {
     let (swarm, data) = swarm("answered").await;
+    swarm.issue(None,"swarm.manager.CreateSwarm",serde_json::json!({"display_name":"answered","tmux_session":"answered","home":"/unused","created_at":"2026-09-13T10:00:00Z"}).as_object().unwrap().clone(),"create").await.unwrap();
+    let id = swarm.instances("swarm.manager.Swarm").await[0]["id"].clone();
+    swarm
+        .issue(
+            None,
+            "swarm.manager.StartSwarm",
+            serde_json::json!({"swarm_id":id,"started_at":"2026-09-13T10:00:00Z"})
+                .as_object()
+                .unwrap()
+                .clone(),
+            "start",
+        )
+        .await
+        .unwrap();
 
     // A coordinator that satisfies the contract in `examples/coordinator-manual.sh`: read the
     // question on stdin, print a verdict on stdout, and nothing else.

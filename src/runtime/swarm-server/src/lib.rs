@@ -5,6 +5,7 @@
 //! eligible to tick — and everything else is the interpreter doing what the model says.
 
 pub mod budget;
+mod control;
 pub mod coordinator;
 pub mod frame;
 pub mod http;

@@ -230,7 +230,7 @@ commands:
             started_at: input.started_at
         sets:
           started_at: input.started_at
-        summary: The session is up; a binding opens the orchestrator's run.
+        summary: Runtime-owned turns become eligible after any pending process cleanup completes; a binding opens the orchestrator's run.
       - name: wrong-state
         wrong_state: true
         error: swarm.manager.SwarmStateConflict
@@ -252,7 +252,7 @@ commands:
         payload:
           swarm.manager.SwarmPaused:
             swarm_id: input.swarm_id
-        summary: Crons are cancelled and gates are not evaluated; windows stay.
+        summary: Runtime-owned turns and their ordinary process-group descendants are cancelled and reaped before host success; gates stop, while resumable state and observed evidence stay.
       - name: wrong-state
         wrong_state: true
         error: swarm.manager.SwarmStateConflict
@@ -274,7 +274,7 @@ commands:
         payload:
           swarm.manager.SwarmResumed:
             swarm_id: input.swarm_id
-        summary: Crons are recreated and gates are evaluated again.
+        summary: After pending process cleanup completes, runtime-owned turns become eligible and gates are evaluated again.
       - name: wrong-state
         wrong_state: true
         error: swarm.manager.SwarmStateConflict
@@ -301,7 +301,7 @@ commands:
             stopped_at: input.stopped_at
         sets:
           stopped_at: input.stopped_at
-        summary: The session is torn down; records, board and event log stay on disk.
+        summary: Runtime-owned turns and their ordinary process-group descendants are cancelled and reaped before host success; records, work directories and observed evidence stay on disk.
       - name: wrong-state
         wrong_state: true
         error: swarm.manager.SwarmStateConflict
