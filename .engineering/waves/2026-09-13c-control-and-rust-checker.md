@@ -23,7 +23,7 @@ AEP output, verbatim:
 valid
 ```
 
-Status: **approved by the operator's `ok`; pass 1 found three blockers; both units correcting**. Coordinator: Codex leader.
+Status: **approved by the operator's `ok`; control final attack is green; checker final attack running**. Coordinator: Codex leader.
 Skill `aep-drive:wave 0.8.1`; planning skill 0.8.1; installed `aep --version` reports `protocol 0.55.0`.
 Interactive run: the operator asked to see the next wave after cleanup. This proposal is the review boundary.
 The operator subsequently approved this exact proposal. The active integration branch is now `wave/2026-09-13c/integration`; owning session `wave-20260913c-leader`.
@@ -34,8 +34,8 @@ Bootstrap registers a buildable `swarm-check` shell with a deliberately failing 
 
 | unit | stage | source | target | scratch | branch/head |
 |---|---|---|---|---|---|
-| A | adversary pass 2 | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-control | same source /target | /home/timo/.cache/swarm-wave-2026-09-13c/control | wave/2026-09-13c/control; 1239327 (base c935d85) |
-| B | correction 1 | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-checker | same source /target | /home/timo/.cache/swarm-wave-2026-09-13c/checker | wave/2026-09-13c/checker; d0eac57 (base c935d85) |
+| A | fixture language correction | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-control | same source /target | /home/timo/.cache/swarm-wave-2026-09-13c/control | wave/2026-09-13c/control; aa372c3 (base c935d85) |
+| B | adversary pass 2 | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-checker | same source /target | /home/timo/.cache/swarm-wave-2026-09-13c/checker | wave/2026-09-13c/checker; 8ac92f7 (base c935d85) |
 
 Integration target is inside `swarm-next-wave-plan-20260913/target`; integration scratch is `/home/timo/.cache/swarm-wave-2026-09-13c/integration`. All implementation builds set RUSTC_WRAPPER to `/usr/bin/sccache`, CARGO_BUILD_JOBS=2 and unit-owned TMPDIR. The primary checkout's target remains untouched.
 Base: published, clean `main` at `5331fe8e3c338d12f8fde2371f1218f6c3a551a9`.
@@ -71,6 +71,40 @@ The original two-pass review bound remains: correction 1 goes to adversary pass 
 A correction at 1239327 preserves the adversary's case and serializes FinishAssignment plus GoIdle against lifecycle application. Both lifecycle-first orderings (Pause/Resume and Stop/Start) are also covered. Publication exclusion is released before quiescence waits, so old claims can reject their generation and retire. This is host serialization, not an atomic database transaction across separate ESS commands.
 
 The unchanged red case reran red before correction and then green; the package grows 130 → 132 executed, all passing. Formatter and strict Clippy exit 0. The first finding has a fixed review_outcome record. Full report: /home/timo/.cache/swarm-wave-2026-09-13c/control/correction-1-report.md. Pass 2 is now running against 1239327; no merge yet.
+
+### Control final attack and checker correction
+
+A pass 2: no findings; 132 → 134 executed, all passed. New cases cover two real worker turns contending with pause/resume and stop/start. Pass-1 regression is unchanged and green. Tests are retained in aa372c3; review-result:adversary-2026-09-13c-unit-a-pass-2 records the complete report. The coordinator then noticed the pass-2 fake process used newly authored Python, contrary to the unit brief. A fixture-only correction is replacing that subprocess with a Rust test child, preserving all assertions and barrier order; it receives direct coordinator verification, not a third attack.
+
+B correction 0292605 + coordinator lock reconciliation 8ac92f7: 103 → 118 executed, all passed. The five red cases are unchanged; fourteen additional groups compare 81 saved baseline reports, and a fifteenth guard checks unchanged ordinary JSON map serialization. Source-ordered evidence values and arbitrary integer semantics stay local to the checker. New dependencies are num-bigint0.4.8, num-integer0.1.47, num-traits0.2.19, autocfg1.5.1; serde_json enables raw_value only. Root reviewed and committed the generated lock change separately. Both first-pass findings have fixed outcomes. The original demonstration differential and 17 input hashes still pass. Full correction report: /home/timo/.cache/swarm-wave-2026-09-13c/checker/correction-1-report.md. Pass 2 now attacks 8ac92f7.
+
+A findings trend, verbatim from aep plan artifact findings (exit 0):
+
+```json
+{
+  "artifact": "story:pause-and-stop-control-runtime-work",
+  "reviews": 10,
+  "from": "review-result:adversary-2026-09-13c-unit-a-pass-1",
+  "from_reviewer": "unattributed",
+  "to": "review-result:adversary-2026-09-13c-unit-a-pass-2",
+  "to_reviewer": "unattributed",
+  "carried": [],
+  "new": [],
+  "resolved": [
+    {
+      "file": "src/runtime/swarm-server/src/swarm.rs",
+      "line": 829,
+      "category": "concurrency",
+      "severity": "blocker",
+      "verdict": "NEEDS-CHANGE",
+      "origin": "introduced",
+      "message": "Pause can invalidate the worker between committed FinishAssignment and its separate GoIdle, leaving a Done assignment with a Working agent that normal resume and dispatch cannot repair."
+    }
+  ]
+}
+```
+
+Counts: carried 0, new 0, resolved 1; findings fell from 1 to 0.
 
 ## Recommended wave
 

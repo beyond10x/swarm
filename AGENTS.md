@@ -93,7 +93,8 @@ error with status 500; admission stays closed and the committed transition is no
 Retry cleanup with `POST /swarms/{slug}/quiesce`. A successful retry returns
 `{"quiescent":true}`; a Running swarm refuses that endpoint. Repeating the domain command retains
 its normal wrong-state outcome. Start and resume must finish prior cleanup before reopening
-admission. Process groups cover ordinary descendants, not intentionally escaped daemons.
+admission. Linux is the verified process host. Process groups cover ordinary descendants, not
+intentionally escaped daemons.
 
 ## The gate
 
