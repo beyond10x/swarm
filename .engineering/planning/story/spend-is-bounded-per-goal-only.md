@@ -2,7 +2,7 @@
 format: aep.planning-md/1
 id: story:spend-is-bounded-per-goal-only
 kind: story
-status: draft
+status: implemented
 title: An agent is bounded per goal, not at all
 summary: $6.00 of a $5.00 cap over two goals is refused nowhere, and no global ceiling exists.
 relations:
@@ -23,7 +23,7 @@ scope:
   path: src/runtime/swarm-server/tests/the_turn_cap_under_attack.rs
 - confidence: cited
   path: src/web/src/runtime.ts
-revision: 6
+revision: 9
 ---
 ## What
 

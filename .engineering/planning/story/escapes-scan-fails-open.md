@@ -2,7 +2,7 @@
 format: aep.planning-md/1
 id: story:escapes-scan-fails-open
 kind: story
-status: draft
+status: implemented
 title: The escape scan decides refusal by four literal spellings
 summary: A component that leaves its subtree by an unmatched spelling is inerted rather than refused.
 relations:
@@ -23,7 +23,7 @@ scope:
   path: src/web/src/components/ui/index.test.ts
 - confidence: cited
   path: src/web/src/components/ui/index.ts
-revision: 7
+revision: 10
 ---
 ## What
 

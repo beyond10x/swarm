@@ -2,11 +2,12 @@
 format: aep.planning-md/1
 id: story:coordinator-from-config
 kind: story
-status: draft
+status: implemented
 title: Read the coordinator from the swarm's config
 summary: HarnessLaunch decides which coordinator a swarm runs, not an environment variable.
 relations:
 - decomposes: epic:executable-boxes
+- serves: vision:swarm-builds-itself
 scope:
 - confidence: inferred
   path: examples/coordinator-manual.sh
@@ -24,7 +25,7 @@ scope:
   path: src/web/src/components/runtime/RuntimeBar.vue
 - confidence: inferred
   path: src/web/src/runtime.ts
-revision: 14
+revision: 17
 ---
 ## What
 

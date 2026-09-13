@@ -17,7 +17,7 @@ scope:
   path: src/runtime/swarm-server/src/state.rs
 - confidence: inferred
   path: src/runtime/swarm-server/tests/open_is_one_swarm_under_contention.rs
-revision: 4
+revision: 5
 ---
 ## What
 
@@ -74,3 +74,22 @@ Both were red at `8cabdd7`:
 - `open("../escaped")` returned `Ok(../escaped)` and created `<root>/escaped`, outside `<root>/swarms`.
 - `alias` and `./alias` gave two handles over one directory; after `CreateSwarm` on the first, the
   second saw 0 instances against 1.
+
+## Where it stands
+
+**Half of this story shipped in the 2026-09-12c wave, and the half it was filed for did not.**
+Measured 2026-09-13, on `main` at the v0.2.0 tag:
+
+- **Closed.** `state::check` (`src/runtime/swarm-server/src/state.rs:36`) refuses an empty slug, a
+  leading dot, a NUL and anything that is not one ordinary path component, and every route that
+  takes a slug passes through it. A test reads the route table out of `http.rs` and drives every
+  `{slug}` route with a traversal, so a route added without validation fails on the day it is added.
+- **Still open, and it is this story's first sentence.** `Store::open`
+  (`src/runtime/ess-runtime/src/store.rs:96`) still calls `create_dir_all` on `root/swarms/<slug>`
+  with nothing validating the slug first. The server's guard is a guard on the server's doors; the
+  store's own door is unguarded, so any other caller of `ess-runtime` — and there will be others —
+  reaches the original defect.
+
+That is why this story stays `draft` while six of its siblings moved to `implemented` on 2026-09-13.
+Its own note already said the fix "is in `ess-runtime`, which no unit of that wave owned", and that
+is still true.

@@ -2,7 +2,7 @@
 format: aep.planning-md/1
 id: story:a-turn-is-confined-by-a-frame
 kind: story
-status: draft
+status: implemented
 title: A turn runs under a frame it cannot widen
 summary: --decisions observe allows every tool call; a frame-narrowed run refuses at the decision seam.
 relations:
@@ -17,7 +17,7 @@ scope:
   path: src/runtime/swarm-server/src/frame.rs
 - confidence: cited
   path: src/web/src/runtime.ts
-revision: 16
+revision: 19
 ---
 ## What
 

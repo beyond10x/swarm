@@ -2,7 +2,7 @@
 format: aep.planning-md/1
 id: story:a-recorded-run-shows-two-agents-working
 kind: story
-status: draft
+status: implemented
 title: A reproducible demonstration, and a checker that reads the log
 summary: 'The demonstration AGENTS.md says does not exist: one log, two agents, a refusal, a finished assignment.'
 relations:
@@ -18,7 +18,7 @@ scope:
   path: AGENTS.md
 - confidence: cited
   path: README.md
-revision: 9
+revision: 12
 ---
 ## What
 

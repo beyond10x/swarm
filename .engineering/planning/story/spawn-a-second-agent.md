@@ -2,12 +2,13 @@
 format: aep.planning-md/1
 id: story:spawn-a-second-agent
 kind: story
-status: draft
+status: implemented
 title: Spawn a second agent that actually runs
 summary: A role other than Coordinator, and a spawned agent the runtime runs.
 relations:
 - decomposes: epic:executable-boxes
 - depends_on: story:a-turn-is-confined-by-a-frame
+- serves: vision:swarm-builds-itself
 scope:
 - confidence: cited
   path: src/core/domains/agent.yaml
@@ -25,7 +26,7 @@ scope:
   path: src/web/src/components/runtime/TranscriptPanel.vue
 - confidence: inferred
   path: src/web/src/runtime.ts
-revision: 14
+revision: 17
 ---
 ## What
 
