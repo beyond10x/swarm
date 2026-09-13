@@ -19,12 +19,18 @@ scope:
 - confidence: cited
   path: examples/two-agents/
 - confidence: cited
+  path: src/runtime/ess-runtime/src/store.rs
+- confidence: cited
   path: src/runtime/swarm-check/
+- confidence: cited
+  path: src/runtime/swarm-cli/tests/adversary_the_shell_default_pass_2.rs
 - confidence: cited
   path: website/scripts/spec-facts.mjs
 - confidence: cited
   path: website/src/data/spec-facts.json
-revision: 11
+- confidence: cited
+  path: website/src/pages/index.js
+revision: 13
 ---
 ## Context
 
@@ -62,13 +68,12 @@ The committed export omits SQLite and original transcripts; it cannot reproduce 
 
 ## Scope
 
-Derived 2026-09-13 by `story-scoper`. Every line is **cited** (read from the story or tree) or **inferred** (a reading that could be wrong).
+Final implementation scope, derived from the reviewed diffs on 2026-09-13. All landed surfaces below are **cited**.
 
-- **Primary implementor surface:** new crate `src/runtime/swarm-check/`, owning the Rust binary, report logic, fixture builders and regression tests — cited by the story.
-- **Replacement surface:** `examples/two-agents/`, removing its checker, fixture generator and five Python test modules; update its current usage README while preserving historical exported evidence — cited by the story and tree.
-- **Behavioral source:** `Report`, `Records`, `read_events`, `issued_by`, `agent_named_by`, clauses one through seven, `unattended`, `render`, `as_json`, and `main` in the existing checker — cited.
-- **Regression inventory:** 83 test methods: 65 checker cases, five first-round adversary cases, five second-round adversary cases, four issuer first-round cases and four issuer second-round cases; preserve their assertions and subcases, including issuer-vocabulary mutation guards — cited by the tree.
-- **Coordinator-owned integration surfaces:** `Cargo.toml`, `Cargo.lock`, `AGENTS.md`, `README.md`, `website/scripts/spec-facts.mjs`, and `website/src/data/spec-facts.json`; implementor reports required integration changes instead of editing these shared files — cited by the story.
-- **Read-only compatibility inputs:** existing kernel domain declarations and the runtime's issuer vocabulary; this story introduces no kernel entity or event format — cited by the story.
-- **Confidence:** high — the story names the replacement boundaries and coordinator ownership, and the tree contains the report, CLI and all 83 test methods — cited.
-- **Would collide with:** any unit modifying the two-agent checker, its fixtures, regression cases or current example documentation; shared workspace manifests and publication documents require coordinator sequencing — inferred.
+- `src/runtime/swarm-check/` owns the binary, seven-clause report, separate unattended verdict, read-only evidence readers, local ordered value/string parser and Rust fixtures/regression tests.
+- `examples/two-agents/` removes the seven Python implementation/fixture/test modules and documents the Rust command, original 83-case mapping and compatibility evidence. Historical exported evidence is unchanged.
+- Coordinator-owned workspace integration: `Cargo.toml` and `Cargo.lock` register the crate and dependencies. Ordinary runtime JSON ordering and request hashing remain unchanged; evidence ordering stays local to the checker.
+- Coordinator-owned command/documentation references: `AGENTS.md`, `README.md`, comments in `src/runtime/ess-runtime/src/store.rs`, and the diagnostic label in `src/runtime/swarm-cli/tests/adversary_the_shell_default_pass_2.rs`. The latter two changes alter no runtime behavior or test assertion.
+- Coordinator-owned publication surfaces: `website/scripts/spec-facts.mjs`, `website/src/data/spec-facts.json`, and `website/src/pages/index.js` derive and display the separate checker size and include its integration tests in the published inventory.
+- Existing kernel entity/event declarations and issuer vocabulary were read as compatibility inputs. This story introduces no kernel noun or event format. The parallel control story owns its separate manager descriptions and server behavior.
+- Confidence: high, from the implementation and integration diffs. The initial scoper's inferred integration needs have been resolved to these cited paths. Future checker changes collide with this crate and example documentation; workspace and publication changes require coordinator sequencing.
