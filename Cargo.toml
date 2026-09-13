@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["src/runtime/ess-runtime", "src/runtime/swarm-cli", "src/runtime/swarm-server"]
+members = ["src/runtime/ess-runtime", "src/runtime/swarm-cli", "src/runtime/swarm-server", "src/runtime/swarm-check"]
 
 [workspace.package]
 version = "0.2.0"

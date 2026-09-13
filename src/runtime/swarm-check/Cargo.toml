@@ -1,0 +1,17 @@
+[package]
+name = "swarm-check"
+description = "Checks recorded two-agent swarm evidence."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+rusqlite = "0.37"
+regex = "1"
+
+[dev-dependencies]
+tempdir = "0.3"

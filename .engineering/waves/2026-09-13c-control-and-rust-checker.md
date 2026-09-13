@@ -23,9 +23,21 @@ AEP output, verbatim:
 valid
 ```
 
-Status: **proposed; implementation has not started**. Coordinator: Codex leader.
+Status: **approved by the operator's `ok`; bootstrap underway**. Coordinator: Codex leader.
 Skill `aep-drive:wave 0.8.1`; planning skill 0.8.1; installed `aep --version` reports `protocol 0.55.0`.
 Interactive run: the operator asked to see the next wave after cleanup. This proposal is the review boundary.
+The operator subsequently approved this exact proposal. The active integration branch is now `wave/2026-09-13c/integration`; owning session `wave-20260913c-leader`.
+
+## Execution ledger
+
+Bootstrap registers a buildable `swarm-check` shell with a deliberately failing exit code, its checker dependencies, and Unix libc for process-group control. No behavior is implemented by the scaffold. Cargo metadata for the Linux host resolves the shared lockfile; unrestricted offline metadata attempted to fetch an irrelevant Fuchsia dependency, so the host-specific metadata check is used instead.
+
+| unit | stage | source | target | scratch | branch/head |
+|---|---|---|---|---|---|
+| A | awaiting dispatch | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-control | same source /target | /home/timo/.cache/swarm-wave-2026-09-13c/control | wave/2026-09-13c/control; base recorded in brief |
+| B | awaiting dispatch | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-checker | same source /target | /home/timo/.cache/swarm-wave-2026-09-13c/checker | wave/2026-09-13c/checker; base recorded in brief |
+
+Integration target is inside `swarm-next-wave-plan-20260913/target`; integration scratch is `/home/timo/.cache/swarm-wave-2026-09-13c/integration`. All implementation builds set RUSTC_WRAPPER to `/usr/bin/sccache`, CARGO_BUILD_JOBS=2 and unit-owned TMPDIR. The primary checkout's target remains untouched.
 Base: published, clean `main` at `5331fe8e3c338d12f8fde2371f1218f6c3a551a9`.
 
 ## Recommended wave

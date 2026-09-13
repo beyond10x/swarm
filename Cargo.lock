@@ -1000,6 +1000,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "regex"
+version = "1.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f020237b6c8eed93db2e2cb53c00c60a8e1bc73da7d073199a1180401450218d"
+dependencies = [
+ "aho-corasick",
+ "memchr",
+ "regex-automata",
+ "regex-syntax",
+]
+
+[[package]]
 name = "regex-automata"
 version = "0.4.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1247,6 +1259,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
+name = "swarm-check"
+version = "0.2.0"
+dependencies = [
+ "clap",
+ "regex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempdir",
+]
+
+[[package]]
 name = "swarm-cli"
 version = "0.2.0"
 dependencies = [
@@ -1264,6 +1288,7 @@ dependencies = [
  "ess-domain",
  "ess-runtime",
  "futures-core",
+ "libc",
  "serde",
  "serde_json",
  "tempdir",
