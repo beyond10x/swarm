@@ -75,8 +75,15 @@ AGENT_CEILING = re.compile(
     r"by the agent [`'\"]?(?P<agent>[^`'\"\s]+)[`'\"]? across every goal it works"
 )
 
+# `{turn:04}-{attempt:02}-{agent}-{unit-prefix}.jsonl`. The agent segment was added by the
+# 2026-09-13a wave, in the same wave that wrote this checker and on the other branch of it, so the
+# first real run of the demonstration reported clause 3 NOT MET with "0 file(s)" for every turn:
+# this pattern parsed the old three-field name and matched nothing. It is optional because a log
+# written before that wave has no agent in the name, and those runs must still be readable.
 TURN_FILE = re.compile(
-    r"^(?P<turn>\d{4})-(?P<attempt>\d{2})-(?P<goal>[0-9a-fA-F]{6,})(?:-(?P<rest>.+))?\.jsonl$"
+    r"^(?P<turn>\d{4})-(?P<attempt>\d{2})-"
+    r"(?:(?P<agent>[A-Za-z0-9_-]+?)-)?"
+    r"(?P<goal>[0-9a-fA-F]{6,})(?:-(?P<rest>.+))?\.jsonl$"
 )
 # Before 2026-09-12 the attempt was not in the name, which is how a retry came to overwrite the
 # record of what went wrong. Read, so that such a run can still be reported on.

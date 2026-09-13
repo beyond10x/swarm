@@ -1,0 +1,161 @@
+{
+  "digest": "cd33858dae96df2c460fa3ff902b7cd7661a0c444328a64788fe8fbaadc67216",
+  "entities": null,
+  "format": "metaharness.frame/1",
+  "handoff": {
+    "handoff": "none"
+  },
+  "next": [],
+  "node": {
+    "id": "pursuing"
+  },
+  "obligations": [
+    {
+      "asked_by": null,
+      "text": "end the reply with exactly one VERDICT line and nothing after it"
+    },
+    {
+      "asked_by": null,
+      "text": "do not claim the goal is met to end the loop"
+    }
+  ],
+  "operations": [
+    {
+      "op": "dir.list"
+    },
+    {
+      "op": "file.edit"
+    },
+    {
+      "op": "file.read"
+    },
+    {
+      "op": "file.write"
+    },
+    {
+      "op": "search"
+    },
+    {
+      "op": "shell"
+    },
+    {
+      "op": "skill.load"
+    }
+  ],
+  "prior": [],
+  "reaching": [
+    {
+      "asked_by": null,
+      "text": "to finish: the goal as written is met"
+    }
+  ],
+  "step": {
+    "attempt": 1,
+    "index": 2,
+    "state": "pursuing",
+    "workflow": "swarm/coordinator"
+  },
+  "subjects": {
+    "rules": [
+      {
+        "operations": [],
+        "subjects": [
+          "file:..",
+          "file:../**",
+          "file:**/..",
+          "file:**/../**"
+        ]
+      },
+      {
+        "operations": [
+          {
+            "op": "dir.list"
+          },
+          {
+            "op": "file.edit"
+          },
+          {
+            "op": "file.read"
+          },
+          {
+            "op": "file.write"
+          },
+          {
+            "op": "search"
+          },
+          {
+            "op": "shell"
+          },
+          {
+            "op": "skill.load"
+          }
+        ],
+        "subjects": [
+          "file:/home/timo/beyond10x/swarm/data/swarms/two-agents-proof/work/coordinator",
+          "file:/home/timo/beyond10x/swarm/data/swarms/two-agents-proof/work/coordinator/**"
+        ]
+      },
+      {
+        "operations": [
+          {
+            "op": "dir.list"
+          },
+          {
+            "op": "file.read"
+          },
+          {
+            "op": "search"
+          }
+        ],
+        "subjects": [
+          "file:/home/timo/beyond10x/swarm/data/swarms/two-agents-proof/work",
+          "file:/home/timo/beyond10x/swarm/data/swarms/two-agents-proof/work/**"
+        ]
+      },
+      {
+        "operations": [],
+        "subjects": [
+          "file:/**"
+        ]
+      },
+      {
+        "operations": [
+          {
+            "op": "dir.list"
+          },
+          {
+            "op": "file.edit"
+          },
+          {
+            "op": "file.read"
+          },
+          {
+            "op": "file.write"
+          },
+          {
+            "op": "search"
+          },
+          {
+            "op": "shell"
+          },
+          {
+            "op": "skill.load"
+          }
+        ],
+        "subjects": [
+          "file:**"
+        ]
+      },
+      {
+        "operations": [],
+        "subjects": [
+          "**"
+        ]
+      }
+    ]
+  },
+  "workflow": {
+    "id": "swarm/coordinator",
+    "version": "1"
+  }
+}

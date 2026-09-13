@@ -310,25 +310,34 @@ export default function Home() {
               <tr>
                 <td>A working agent swarm</td>
                 <td>
-                  <StatusBadge maturity="experimental">overstated</StatusBadge>
+                  <StatusBadge maturity="development">depth one, breadth two</StatusBadge>
                 </td>
                 <td>
-                  What works is a swarm <em>manager</em>: one coordinator per swarm, pursuing one
-                  goal in a loop. Multiple cooperating agents are <em>specified</em> —{' '}
-                  <code>swarm.agent.Spawn</code>, <code>Assign</code>, the whole mailbox domain — and
-                  not demonstrated. Spawning a second agent is still an open story.
+                  Demonstrated on 2026-09-13, and no further than it says. A coordinator was given a
+                  goal it could not meet alone, spawned a second agent, posted it an assignment and
+                  waited while the runtime ran that agent as its own session with its own work
+                  directory and transcript. The evidence is exported into the repository and a
+                  checker read the log to reach the verdict: seven clauses, seven met. <code>AssignmentTaken</code>,{' '}
+                  <code>AssignmentDone</code> and <code>GoalReached</code> had each fired zero times
+                  before that run. Still undemonstrated: agents that spawn agents, more than two at
+                  once, and a swarm that extends its own specification.
                 </td>
               </tr>
               <tr>
                 <td>Anything confines a coordinator</td>
                 <td>
-                  <StatusBadge maturity="experimental">no</StatusBadge>
+                  <StatusBadge maturity="experimental">no — but a turn is narrowed</StatusBadge>
                 </td>
                 <td>
                   A coordinator is a Claude Code run under <code>metaharness</code>, which gives
                   hermeticity and a complete event record, not containment. It runs on the host
-                  machine with the vendor&rsquo;s own tools, inside its work directory by convention
-                  rather than by force.
+                  machine with the host&rsquo;s access: no namespace, no cgroup, no network
+                  isolation, and the harness&rsquo;s own attestation says so. Since 2026-09-13 every
+                  turn does launch under a sealed frame naming the operations it admits and the one
+                  directory it may write, so a call outside that set is refused when the model
+                  attempts it — measured, 1 of 41 decided calls. That is a refusal at a decision
+                  seam, which is a weaker claim than confinement and is the reason this row still
+                  says no.
                 </td>
               </tr>
             </tbody>

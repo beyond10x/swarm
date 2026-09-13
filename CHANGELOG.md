@@ -6,6 +6,88 @@ and the versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 Every number in this file is read from a command's output. Where a claim is inferred rather than
 measured it says so.
 
+## [0.2.0] — 2026-09-13
+
+A swarm ran two agents. `swarm.agent.AssignmentTaken`, `AssignmentDone` and `AgentIdle` had each
+fired **zero times** in this repository's history, across eleven swarm logs; they fire now, in a run
+kept at `data/swarms/two-agents-proof`. Every turn also launches under a sealed frame that refuses
+what it does not admit. 30 commits since `v0.1.0`.
+
+### Added
+
+- **A second agent that the runtime runs.** `swarm.agent.Role` gained `Worker`. A coordinator spawns
+  one, posts it an assignment, and the runtime runs it as its own `metaharness` session with its own
+  work directory, transcript, mailbox and launch knobs. `ensure_coordinator` became `ensure_agent`,
+  so one door cannot express the wrong role. In-flight claims are keyed on a `Unit` — a goal or an
+  assignment — so two agents on one goal do not serialise on one claim.
+- **A sealed frame around every turn.** `src/runtime/swarm-server/src/frame.rs` builds and seals a
+  `metaharness.frame/1` document; turns launch `--decisions frame --frame <file>` and a turn with no
+  frame does not launch. `--decisions observe` — "allow every call and record every call" — appears
+  nowhere in the tree. Measured in the demonstration: **1 of 41 decided calls refused, `decided_by:
+  frame`**.
+- **A subject scope the runtime derives**, never reads from configuration: an agent's own work
+  directory in full, the swarm's shared root read-only, everything else refused. Derived rather than
+  configured because a config a coordinator writes for itself could widen its own scope. Verified
+  against metaharness's own `SubjectScope::verdict` by 17 subject probes.
+- **`turns/capped.jsonl`** — a fired ceiling is now recorded where a reader finds it after the run.
+  Before this, a refusal reached only the watch stream and the tracing log, both gone with the
+  process.
+- **`SWARM_MEMBER_MAX_TURNS`, `_BUDGET_USD`, `_MODEL`, `_EFFORT`**, with no fallback to the
+  `SWARM_COORDINATOR_*` knobs. A fallback would mean setting a coordinator's model silently bought it
+  for every member at every member's per-turn price.
+- **`examples/two-agents/`** — a checker that reads a finished swarm's `eventlog.sqlite3`, turn files
+  and `spend.jsonl` and reports seven acceptance clauses independently, by number, met or not met,
+  with what it looked for and what it found. 1,038 lines, stdlib only, **62 cases**.
+
+### Changed
+
+- `CappedGoal` and the watch stream carry `agent` and `unit`, so two agents publishing at once can be
+  told apart. `src/web/src/runtime.ts` was updated to match; the publisher and the only consumer had
+  drifted.
+- The frame states its admitted operations and its work directory **in the prompt**, because the
+  vendor's tool list is not narrowed by the frame — a model that reads the list and not the prompt
+  spends a billed turn discovering a refusal.
+- `README.md`, `AGENTS.md` and the website's honesty table: the finding that *"a working agent swarm
+  is overstated"* is retired by a recorded run and replaced with what is still overstated — one
+  coordinator, one worker, one assignment. The finding that *nothing confines a coordinator* **stands
+  unchanged**, with what did change stated beside it.
+
+### Fixed
+
+- A coordinator could draft and activate a config that **widened its own sealed frame** to
+  `subagent.spawn`, `task.todo` and `web.read`, while `config.yaml` claimed in the same commit that
+  the worst a config can do is admit less. `from_config` intersects with the admitted set now, and
+  refuses a config whose every operation is outside it.
+- Every agent of a swarm shared one work directory while both prompts told each of them to keep a
+  `NOTES.md` in it.
+- A retry's frame told the model it was a first attempt.
+- Agent ids differing only in punctuation shared one directory; slugs now carry a digest suffix.
+- A retasked member was refused at its first turn at a new assignment, under the wrong bound.
+
+### Known limits, in writing
+
+- **Depth one, breadth two.** One coordinator, one worker, one assignment. Agents spawning agents and
+  a swarm extending its own specification are undemonstrated.
+- **This is not containment.** `--substrate`, `--write-scope` and `--cgroup-root` are `b10x` only and
+  metaharness refuses them for this arm; its own attestation says a hermetic run here is not
+  network-isolated.
+- **One pinned weakness.** metaharness judges a call by the first rule any of its subjects matches,
+  so an outside path is admitted when the same call also names an admitted one. Refusing it needs
+  14,848 glob patterns per swarm. Nothing found emits such a call; two cases assert today's behaviour
+  with their inversion triggers.
+- **An event records an actor *type*, not an agent instance**, so a log cannot prove which agent
+  issued a command, and the demonstration's "unattended" condition is reported UNDETERMINABLE rather
+  than guessed. Filed as `story:an-event-cannot-say-which-agent-acted`.
+
+### The shape of it, in numbers
+
+- Rust: **10,372 lines** across three crates — `ess-runtime` 1,927, `swarm-server` 7,807,
+  `swarm-cli` 638 — against **4,808** lines of YAML specification.
+- Tests: **145 Rust cases** across 27 lanes, **71** web cases, **62** checker cases. Integration test
+  files 18 → 22, 7,210 lines.
+- Specification counts unchanged: 6 domains, 10 entities, 24 types, 53 commands, 56 events,
+  17 errors, 27 views, 12 actors, 4 bindings.
+
 ## [0.1.0] — 2026-09-12
 
 First release, and the first time this repository has been published at all. Everything below

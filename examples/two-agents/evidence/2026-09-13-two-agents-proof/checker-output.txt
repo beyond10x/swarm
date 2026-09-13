@@ -1,0 +1,40 @@
+swarm: data/swarms/two-agents-proof
+
+clause 1  met      a non-Coordinator agent exists
+          found:  1 of 2 spawned agent(s): `worker` (Worker)
+clause 2  met      work was handed over
+          found:  1 `swarm.agent.AssignmentPosted` (to `worker`); 1 `swarm.agent.AssignmentTaken`
+                  (by `worker`); posted to `worker` at seq 10 and taken by it at seq 13, an
+                  assignment the take does not name (`ref` absent)
+clause 3  met      two transcripts, neither overwritten
+          found:  3 turn file(s), 3 attributed: `coordinator` ×2 (the work directory it ran in),
+                  `worker` ×1 (the work directory it ran in); 2 distinct agent(s): coordinator,
+                  worker
+clause 4  met      the work was finished, not merely started
+          found:  `swarm.agent.AssignmentDone` at seq 18 by `worker`, which took the assignment at
+                  seq 13 — but the take names no assignment (`ref` absent), so the agent and the
+                  ordering are checked and the assignment is not
+clause 5  met      the confinement acted
+          found:  1 of 42 decided call(s) refused by the frame: `ToolSearch` () in
+                  0001-01-coordinator-f409711d.jsonl — ToolSearch is outside the operation
+                  vocabulary this step was framed with, so this step does not admit it
+clause 6  met      spend is attributed per agent
+          found:  3 row(s), 2 agent(s) named: `coordinator` ×2, `worker` ×1
+clause 7  met      the bound held with more than one agent to bound
+          found:  2 spawned agent(s) to bound: coordinator, worker; refused: `coordinator`
+                  (turns/capped.jsonl)
+
+unattended  UNDETERMINABLE  no operator input in the window
+          wanted: whether anybody's hands were on this swarm between its start and its last event
+                  — which this log cannot say: `store.rs:192` writes `actor.unwrap_or("system")`
+                  and `http.rs:38` makes the actor optional, so an operator's command and the
+                  loop's own are recorded identically
+          found:  UNDETERMINABLE, and reported as such rather than guessed: no actor in this log
+                  distinguishes a person from the loop. This does not count for or against the
+                  seven. 20 event(s) from seq 5, actors: swarm.agent.Worker,
+                  swarm.goal.Coordinator, swarm.goal.Operator, swarm.mailbox.SwarmAgent,
+                  swarm.manager.Operator, system; `swarm.manager.*` lifecycle events in that
+                  window: 1 — an operator and the loop can each cause one and the record names
+                  neither
+
+7 clauses: 7 met, 0 not met; the unattended condition is undeterminable and decides nothing

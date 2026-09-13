@@ -48,16 +48,34 @@ to start if it does not resolve — it will not limp along with a broken model. 
 server what entities exist rather than knowing in advance, so adding one to the YAML makes it appear
 on the canvas.
 
-**The multi-agent part is written down but not yet demonstrated.** This is the honest caveat and it
-is a large one. The specification describes spawning agents, assigning them work, and a full
-mailbox system for them to talk to each other — and none of that has been shown running. What works
-today is *one* coordinator per swarm, pursuing *one* goal. Getting a second agent spawned is an open
-piece of work, not a finished one. If you came here for a working multi-agent system, this is not
-that yet.
+**The multi-agent part runs, at depth one and breadth two.** Until 2026-09-13 this paragraph said it
+was written down and not demonstrated, which was true. What changed is a recorded run, not an
+opinion: a coordinator was given a goal it could not meet alone, spawned a second agent, posted it an
+assignment, and waited while the runtime ran that agent as its own session with its own work
+directory and its own transcript. The run's evidence is in the repository at
+`examples/two-agents/evidence/2026-09-13-two-agents-proof/` — the event log as CSV, the spend rows,
+the ceiling refusal and the sealed frames the turns ran under. The log itself is runtime state and
+is gitignored, which that directory says. `examples/two-agents/check-two-agents.py` is what read it,
+and it reports each of seven clauses independently —
+`AssignmentTaken`, `AssignmentDone` and `GoalReached` among them, each of which had fired zero times
+here before that run.
 
-**Nothing sandboxes the coordinator.** It runs on your machine with the same access you have. It is
-launched in a controlled, fully recorded way, which is not the same as being contained. Run it
-somewhere you would be comfortable letting an AI agent run.
+Be precise about the size of it: **one coordinator, one worker, one assignment.** Agents that spawn
+agents, more than two at once, and a swarm that extends its own specification are all still
+undemonstrated. If you came here for a swarm that grows itself, this is one step of that and not the
+whole of it.
+
+**A turn is narrowed, and the coordinator is still not sandboxed.** Both halves matter. Every turn now
+launches under a sealed frame that names which operations it admits and which directory it may write,
+so a tool call outside that set is refused when the model attempts it — measured in the run above: 1
+of 41 decided calls refused by the frame. A write outside the agent's own directory is refused too,
+and the rule is derived by the runtime rather than read from configuration, because a config an agent
+writes for itself could widen its own boundary.
+
+That is refusal at a decision seam. It is **not** containment: there is no namespace, no cgroup, no
+network isolation, and the harness's own attestation says so. The process runs on your machine with
+your access, and a refused call is a call the harness declined to make rather than one the kernel
+stopped. Run it somewhere you would be comfortable letting an AI agent run.
 
 ## The shape of it, in numbers
 

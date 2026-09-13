@@ -184,12 +184,34 @@ prose must respect them:
 
 - **"fully code-generated" is false.** No `build.rs`, no codegen step, no generated file, no marker,
   no staleness check. Say *interpreted*.
-- **"a working agent swarm" is overstated.** What works is a swarm *manager*: one coordinator per
-  swarm, one goal, one loop. Multi-agent operation — `swarm.agent.Spawn`, `Assign`, the whole
-  mailbox domain — is specified and not demonstrated; `story:spawn-a-second-agent` is open.
-- **Nothing confines a coordinator.** metaharness gives hermeticity and a complete event record, not
-  containment. Its `--substrate` flag is refused by name for this arm, because a socket configured
-  there would be accepted, never consulted, and read as containment nobody applied.
+- **Multi-agent operation is demonstrated, at depth one and breadth two.** This finding used to read
+  *"a working agent swarm is overstated"*, and it was true until 2026-09-13. It is retired by a
+  recorded run, not by a decision. The swarm was `two-agents-proof`; its evidence is exported to
+  `examples/two-agents/evidence/2026-09-13-two-agents-proof/`, because `data/swarms/*/` is runtime
+  state and gitignored. A coordinator spawned a
+  `Worker`, posted it an assignment, and waited while the runtime ran it as its own session —
+  `AssignmentTaken` at seq 13, `AssignmentDone` at seq 18, `GoalReached` at seq 23, two agents'
+  transcripts and two agents' spend rows. All three of those events had fired **zero times** in this
+  repository's history before that run.
+  `verification-report:two-agents-under-a-frame-2026-09-13` records it clause by clause, and
+  `examples/two-agents/check-two-agents.py` re-derives the verdict from the log at any time.
+  **What is still overstated:** one coordinator, one worker, one assignment. Agents spawning agents,
+  more than two agents, and a swarm that extends its own specification are all undemonstrated.
+- **Nothing confines a coordinator — and a turn is now narrowed.** metaharness gives hermeticity and
+  a complete event record, not containment. Its `--substrate` flag is refused by name for this arm,
+  because a socket configured there would be accepted, never consulted, and read as containment
+  nobody applied; `--write-scope` and `--cgroup-root` are refused for the same arm for the same
+  reason. Its own attestation says a hermetic run here is not network-isolated.
+  **What did change on 2026-09-13:** every turn launches under a sealed `metaharness.frame/1`
+  document with `--decisions frame`, so a tool call outside the admitted set is *refused at the
+  decision seam* and a write outside the agent's own work directory is refused by a subject scope the
+  runtime derives — never reads from a config, because a config a coordinator writes for itself could
+  widen its own scope. That is refusal, not containment, and the distinction is the whole of this
+  entry. Measured in the demonstration: 1 of 41 decided calls refused, `decided_by: frame`.
+  One weakness is pinned rather than fixed: metaharness judges a call by the first rule any of its
+  subjects matches, so an outside path is admitted when the same call also names an admitted one.
+  Nothing found emits such a call; `frame::scope`'s doc states the condition, and two cases assert
+  today's behaviour with their inversion triggers.
 
 No count in `website/` may be typed by hand. `website/scripts/spec-facts.mjs` derives all of them
 from the tree into `website/src/data/spec-facts.json`, and fails loudly rather than emitting a zero

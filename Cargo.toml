@@ -3,7 +3,7 @@ resolver = "3"
 members = ["src/runtime/ess-runtime", "src/runtime/swarm-cli", "src/runtime/swarm-server"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.91"
 license = "Apache-2.0"

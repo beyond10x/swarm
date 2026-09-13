@@ -1,0 +1,165 @@
+{
+  "digest": "8de6fbcb1887941c3314a39e5425bfd72dc9fc066827e9e8247df7c82673c473",
+  "entities": null,
+  "format": "metaharness.frame/1",
+  "handoff": {
+    "handoff": "none"
+  },
+  "next": [],
+  "node": {
+    "id": "working"
+  },
+  "obligations": [
+    {
+      "asked_by": null,
+      "text": "end the reply with exactly one VERDICT line and nothing after it"
+    },
+    {
+      "asked_by": null,
+      "text": "the sign-off this runs under: coordinator confirms beta.txt is present at /home/timo/beyond10x/swarm/data/swarms/two-agents-proof/work/worker/beta.txt with contents BETA"
+    },
+    {
+      "asked_by": null,
+      "text": "what it may not do: writing into any other agent work directory, in particular the coordinator directory; writing alpha.txt"
+    }
+  ],
+  "operations": [
+    {
+      "op": "dir.list"
+    },
+    {
+      "op": "file.edit"
+    },
+    {
+      "op": "file.read"
+    },
+    {
+      "op": "file.write"
+    },
+    {
+      "op": "search"
+    },
+    {
+      "op": "shell"
+    },
+    {
+      "op": "skill.load"
+    }
+  ],
+  "prior": [],
+  "reaching": [
+    {
+      "asked_by": null,
+      "text": "to finish: beta.txt exists in the worker work directory containing exactly the word BETA"
+    }
+  ],
+  "step": {
+    "attempt": 1,
+    "index": 1,
+    "state": "working",
+    "workflow": "swarm/assignment"
+  },
+  "subjects": {
+    "rules": [
+      {
+        "operations": [],
+        "subjects": [
+          "file:..",
+          "file:../**",
+          "file:**/..",
+          "file:**/../**"
+        ]
+      },
+      {
+        "operations": [
+          {
+            "op": "dir.list"
+          },
+          {
+            "op": "file.edit"
+          },
+          {
+            "op": "file.read"
+          },
+          {
+            "op": "file.write"
+          },
+          {
+            "op": "search"
+          },
+          {
+            "op": "shell"
+          },
+          {
+            "op": "skill.load"
+          }
+        ],
+        "subjects": [
+          "file:/home/timo/beyond10x/swarm/data/swarms/two-agents-proof/work/worker",
+          "file:/home/timo/beyond10x/swarm/data/swarms/two-agents-proof/work/worker/**"
+        ]
+      },
+      {
+        "operations": [
+          {
+            "op": "dir.list"
+          },
+          {
+            "op": "file.read"
+          },
+          {
+            "op": "search"
+          }
+        ],
+        "subjects": [
+          "file:/home/timo/beyond10x/swarm/data/swarms/two-agents-proof/work",
+          "file:/home/timo/beyond10x/swarm/data/swarms/two-agents-proof/work/**"
+        ]
+      },
+      {
+        "operations": [],
+        "subjects": [
+          "file:/**"
+        ]
+      },
+      {
+        "operations": [
+          {
+            "op": "dir.list"
+          },
+          {
+            "op": "file.edit"
+          },
+          {
+            "op": "file.read"
+          },
+          {
+            "op": "file.write"
+          },
+          {
+            "op": "search"
+          },
+          {
+            "op": "shell"
+          },
+          {
+            "op": "skill.load"
+          }
+        ],
+        "subjects": [
+          "file:**"
+        ]
+      },
+      {
+        "operations": [],
+        "subjects": [
+          "**"
+        ]
+      }
+    ]
+  },
+  "workflow": {
+    "id": "swarm/assignment",
+    "version": "1"
+  }
+}
