@@ -143,6 +143,34 @@ async fn post(address: std::net::SocketAddr, path: &str, input: Json) -> (u16, J
     )
 }
 
+/// Child mode of this executable, matching the original stdin/usage/socket/verdict fixture.
+#[test]
+fn publication_fixture_process() {
+    use std::io::{Read, Write};
+    if !std::env::args()
+        .collect::<Vec<_>>()
+        .windows(2)
+        .any(|args| args == ["--exact", "publication_fixture_process"])
+    {
+        return;
+    }
+    let asked: Json = serde_json::from_reader(std::io::stdin().lock()).unwrap();
+    println!("{}", json!({"event":"usage", "usage":{"input_tokens":7}}));
+    std::io::stdout().flush().unwrap();
+    let mut barrier = std::os::unix::net::UnixStream::connect(
+        std::env::var_os("SWARM_PUBLICATION_SOCKET").unwrap(),
+    )
+    .unwrap();
+    writeln!(barrier, "{}", asked["agent"].as_str().unwrap()).unwrap();
+    let mut release = [0];
+    barrier.read_exact(&mut release).unwrap();
+    assert_eq!(release, [b'x']);
+    println!("{}", json!({"reached":true, "note":"released"}));
+    std::io::stdout().flush().unwrap();
+    // Keep the verdict last: the parent must not receive the test harness's trailing summary.
+    std::process::exit(0);
+}
+
 async fn publication_contention(
     closing: &'static str,
     opening: &'static str,
@@ -150,7 +178,6 @@ async fn publication_contention(
 ) {
     use std::{
         future::{Future, poll_fn},
-        io::Write,
         task::Poll,
         time::Duration,
     };
@@ -159,24 +186,14 @@ async fn publication_contention(
     let data = tempdir::TempDir::new("pub").unwrap();
     let socket = data.path().join("p.sock");
     let listener = tokio::net::UnixListener::bind(&socket).unwrap();
-    let program = data.path().join("verdict.py");
-    let mut file = std::fs::File::create(&program).unwrap();
-    file.write_all(
-        br#"import json, socket, sys
-asked = json.load(sys.stdin)
-print(json.dumps({'event': 'usage', 'usage': {'input_tokens': 7}}), flush=True)
-barrier = socket.socket(socket.AF_UNIX)
-barrier.connect(sys.argv[1])
-barrier.sendall((asked['agent'] + '\n').encode())
-assert barrier.recv(1) == b'x'
-print(json.dumps({'reached': True, 'note': 'released'}), flush=True)
-"#,
-    )
-    .unwrap();
     unsafe {
+        std::env::set_var("SWARM_PUBLICATION_SOCKET", &socket);
         std::env::set_var(
             "SWARM_COORDINATOR",
-            format!("python3 {} {}", program.display(), socket.display()),
+            format!(
+                "{} --exact publication_fixture_process --nocapture",
+                std::env::current_exe().unwrap().display()
+            ),
         );
     }
     let (server, swarm, _, _) = a_swarm_with_a_member(&data, "race").await;
