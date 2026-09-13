@@ -29,13 +29,14 @@ clause 7  met      the bound held with more than one agent to bound
                   (turns/capped.jsonl)
 
 unattended  NOT MET  no operator input in the window
-          wanted: at least one event in the window from the first `swarm.manager.SwarmStarted`
-                  other than the `swarm.manager.SwarmStarted` itself, every event in that window
-                  naming who issued it, and none of them an `operator` — the command that STARTS a
-                  swarm excepted, because a person issues that one by construction
-          found:  20 of 20 event(s) in the window name no issuer at all: this log was written
+          wanted: at least one event between the first `swarm.manager.SwarmStarted` and the last
+                  verdict other than the `swarm.manager.SwarmStarted` itself, every event in that
+                  window naming who issued it, and every one of those the runtime or an agent this
+                  log spawned — the command that STARTS a swarm excepted, because a person issues
+                  that one by construction
+          found:  19 of 19 event(s) in the window name no issuer at all: this log was written
                   before commands recorded who issued them, so the absence of a hand cannot be
-                  read off it; what it does show is swarm.goal.Operator, swarm.manager.Operator in
-                  the `actor` column, an actor type the specification declares a person
+                  read off it; what it does show is swarm.manager.Operator in the `actor` column,
+                  an actor type the specification declares a person
 
 7 clauses: 7 met, 0 not met; unattended NOT MET, which is reported beside them and decides nothing
