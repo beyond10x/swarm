@@ -23,7 +23,7 @@ AEP output, verbatim:
 valid
 ```
 
-Status: **approved by the operator's `ok`; both units committed locally; adversary pass 1 running**. Coordinator: Codex leader.
+Status: **approved by the operator's `ok`; pass 1 found three blockers; both units correcting**. Coordinator: Codex leader.
 Skill `aep-drive:wave 0.8.1`; planning skill 0.8.1; installed `aep --version` reports `protocol 0.55.0`.
 Interactive run: the operator asked to see the next wave after cleanup. This proposal is the review boundary.
 The operator subsequently approved this exact proposal. The active integration branch is now `wave/2026-09-13c/integration`; owning session `wave-20260913c-leader`.
@@ -34,8 +34,8 @@ Bootstrap registers a buildable `swarm-check` shell with a deliberately failing 
 
 | unit | stage | source | target | scratch | branch/head |
 |---|---|---|---|---|---|
-| A | adversary pass 1 | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-control | same source /target | /home/timo/.cache/swarm-wave-2026-09-13c/control | wave/2026-09-13c/control; 4098ad1 (base c935d85) |
-| B | adversary pass 1 | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-checker | same source /target | /home/timo/.cache/swarm-wave-2026-09-13c/checker | wave/2026-09-13c/checker; d0eac57 (base c935d85) |
+| A | correction 1 | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-control | same source /target | /home/timo/.cache/swarm-wave-2026-09-13c/control | wave/2026-09-13c/control; 4098ad1 (base c935d85) |
+| B | correction 1 | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-checker | same source /target | /home/timo/.cache/swarm-wave-2026-09-13c/checker | wave/2026-09-13c/checker; d0eac57 (base c935d85) |
 
 Integration target is inside `swarm-next-wave-plan-20260913/target`; integration scratch is `/home/timo/.cache/swarm-wave-2026-09-13c/integration`. All implementation builds set RUSTC_WRAPPER to `/usr/bin/sccache`, CARGO_BUILD_JOBS=2 and unit-owned TMPDIR. The primary checkout's target remains untouched.
 Base: published, clean `main` at `5331fe8e3c338d12f8fde2371f1218f6c3a551a9`.
@@ -53,6 +53,18 @@ Full implementor reports, original red outputs and per-lane runner counts are re
 Each implementor released its own lease before coordinator commits. The adversaries own separate pass-1 leases and scratch roots under each unit's adversary-1 directory. No implementation has merged into integration or main yet.
 
 Integration dependencies: src/web npm ci --offline exited 0. Website npm ci --offline exited 1 (EALLOWGIT: the environment disables Git dependency fetches). Package.json and lockfile compare exactly with primary; its existing website/node_modules was copied into integration for the isolated build. No dependency or npm policy was changed. These are installation observations, not a substitute for the final build gate.
+
+### Adversary pass 1 and correction routing
+
+Both reviews are recorded verbatim in review-result:adversary-2026-09-13c-unit-{a,b}-pass-1, with machine-readable findings. Their leases were released before implementors resumed.
+
+A: 129 → 130 executed, one new red case. Pause can invalidate a worker after FinishAssignment commits and before GoIdle, leaving Done work with a Working agent after resume. The correction must make the logical multi-command result indivisible with respect to lifecycle cancellation, while releasing publication exclusion before waiting for quiescence. Existing tests remain unchanged.
+
+B: 98 → 103 executed, five new red cases, two compatibility findings. Python integer-instance and numeric equality behavior differ from the port for boolean, integral-float and large unsigned iterations; non-string denial reasons differ in truthiness and rendering. Most malformed shapes have no runtime emitter; the measured failure is the explicit readable-file CLI parity contract. All 83 original names/subcases and baseline cases passed the mapping audit.
+
+The checker correction must preserve object ordering locally. Enabling serde_json preserve_order was declined because Cargo feature unification could change server JSON maps and pinned eventlog request_hash hashes raw serde_json serialization. No global map-order feature or event-log hash behavior change is authorized by this port.
+
+The original two-pass review bound remains: correction 1 goes to adversary pass 2, with any remaining blockers reported explicitly. No unit has merged, and no review outcome is marked fixed before the correction is verified.
 
 ## Recommended wave
 
@@ -120,8 +132,8 @@ A pre-flight that finds less than the disk floor or an unconfigured cache refuse
 | purpose | managed id | branch | source path | build path | scratch root | stage |
 |---|---|---|---|---|---|---|
 | integration | swarm-next-wave-plan-20260913 | wave/2026-09-13c/integration | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-next-wave-plan-20260913 | same path /target | /home/timo/.cache/swarm-wave-2026-09-13c/integration | integrating shared documentation |
-| A | swarm-wave-20260913c-control | wave/2026-09-13c/control | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-control | same path /target | /home/timo/.cache/swarm-wave-2026-09-13c/control | adversary pass 1 |
-| B | swarm-wave-20260913c-checker | wave/2026-09-13c/checker | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-checker | same path /target | /home/timo/.cache/swarm-wave-2026-09-13c/checker | adversary pass 1 |
+| A | swarm-wave-20260913c-control | wave/2026-09-13c/control | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-control | same path /target | /home/timo/.cache/swarm-wave-2026-09-13c/control | correction 1 |
+| B | swarm-wave-20260913c-checker | wave/2026-09-13c/checker | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-checker | same path /target | /home/timo/.cache/swarm-wave-2026-09-13c/checker | correction 1 |
 
 The coordinator updates each actual path, branch head and stage on transition.
 Current owning session: wave-20260913c-leader. Each implementor owns a distinct lease.
