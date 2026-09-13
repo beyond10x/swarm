@@ -23,7 +23,7 @@ AEP output, verbatim:
 valid
 ```
 
-Status: **approved by the operator's `ok`; control final attack is green; checker final attack running**. Coordinator: Codex leader.
+Status: **approved by the operator's `ok`; control integrated; checker final correction underway**. Coordinator: Codex leader.
 Skill `aep-drive:wave 0.8.1`; planning skill 0.8.1; installed `aep --version` reports `protocol 0.55.0`.
 Interactive run: the operator asked to see the next wave after cleanup. This proposal is the review boundary.
 The operator subsequently approved this exact proposal. The active integration branch is now `wave/2026-09-13c/integration`; owning session `wave-20260913c-leader`.
@@ -34,8 +34,8 @@ Bootstrap registers a buildable `swarm-check` shell with a deliberately failing 
 
 | unit | stage | source | target | scratch | branch/head |
 |---|---|---|---|---|---|
-| A | fixture language correction | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-control | same source /target | /home/timo/.cache/swarm-wave-2026-09-13c/control | wave/2026-09-13c/control; aa372c3 (base c935d85) |
-| B | adversary pass 2 | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-checker | same source /target | /home/timo/.cache/swarm-wave-2026-09-13c/checker | wave/2026-09-13c/checker; 8ac92f7 (base c935d85) |
+| A | integrated bb44d5b | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-control | same source /target | /home/timo/.cache/swarm-wave-2026-09-13c/control | wave/2026-09-13c/control; 6d84959 (base c935d85) |
+| B | correction 2 | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-checker | same source /target | /home/timo/.cache/swarm-wave-2026-09-13c/checker | wave/2026-09-13c/checker; 8ac92f7 (base c935d85) |
 
 Integration target is inside `swarm-next-wave-plan-20260913/target`; integration scratch is `/home/timo/.cache/swarm-wave-2026-09-13c/integration`. All implementation builds set RUSTC_WRAPPER to `/usr/bin/sccache`, CARGO_BUILD_JOBS=2 and unit-owned TMPDIR. The primary checkout's target remains untouched.
 Base: published, clean `main` at `5331fe8e3c338d12f8fde2371f1218f6c3a551a9`.
@@ -105,6 +105,70 @@ A findings trend, verbatim from aep plan artifact findings (exit 0):
 ```
 
 Counts: carried 0, new 0, resolved 1; findings fell from 1 to 0.
+
+### Control integration and checker final correction
+
+The coordinator reviewed the Rust fixture-only replacement: exact assertions/barrier/timeout body unchanged, both behavioral cases rerun green, package 134 → 135 passing because one child-entrypoint test was added. Formatter and strict Clippy passed. Commit 6d84959 is merged into integration at bb44d5b. No new Python remains in the control tests. The pre-merge merge-tree dry run for both unit heads exited0 and produced c3d1278efcea14c154b0cabad8cb13ac50c6f760 with no conflict. Typed and prose scopes now reflect actual control.rs/lib/test/manifest changes; state.rs was inspected but did not change.
+
+B final attack against 8ac92f7: 118 → 123 executed, 120 green and three red. All pass-1 cases and81 correction snapshots remain green. Two reported findings: printable combining marks are over-escaped in recursive repr; legacy-readable NaN and escaped lone surrogate reasons are rejected by the local parser. Ordinary runtime map/wide-number behavior and duplicate-object member ordering probes passed. No actual runtime emitter was established for the unusual reason shapes; the failure is the explicit legacy-reader compatibility contract.
+
+Both findings return to the same implementor: no prior case failed again. Correction2 will be reviewed directly by the coordinator, including assertion preservation, as wave SKILL.md lines580–583 require. The two-attack budget is exhausted; there is no third attack. Only a green corrected unit may merge.
+
+B findings trend, verbatim from the CLI (exit0):
+
+```json
+{
+  "artifact": "story:verify-two-agent-evidence-in-rust",
+  "reviews": 10,
+  "from": "review-result:adversary-2026-09-13c-unit-b-pass-1",
+  "from_reviewer": "unattributed",
+  "to": "review-result:adversary-2026-09-13c-unit-b-pass-2",
+  "to_reviewer": "unattributed",
+  "carried": [],
+  "new": [
+    {
+      "file": "src/runtime/swarm-check/src/evidence.rs",
+      "line": 270,
+      "category": "contract-drift",
+      "severity": "blocker",
+      "verdict": "NEEDS-CHANGE",
+      "origin": "introduced",
+      "message": "Recursive evidence representation escapes printable combining characters that Python preserves, changing parsed report reason strings."
+    },
+    {
+      "file": "src/runtime/swarm-check/src/evidence.rs",
+      "line": 26,
+      "category": "acceptance",
+      "severity": "blocker",
+      "verdict": "NEEDS-CHANGE",
+      "origin": "introduced",
+      "message": "Legacy-readable NaN and escaped lone-surrogate reason values are rejected and their decision rows dropped, changing clause-five and CLI verdicts."
+    }
+  ],
+  "resolved": [
+    {
+      "file": "src/runtime/swarm-check/src/clauses.rs",
+      "line": 273,
+      "category": "acceptance",
+      "severity": "blocker",
+      "verdict": "NEEDS-CHANGE",
+      "origin": "introduced",
+      "message": "Numeric spend compatibility is narrower than the legacy reader, reversing clause-three and CLI verdicts for boolean, integral-float, and large unsigned iteration inputs."
+    },
+    {
+      "file": "src/runtime/swarm-check/src/clauses.rs",
+      "line": 529,
+      "category": "contract-drift",
+      "severity": "blocker",
+      "verdict": "NEEDS-CHANGE",
+      "origin": "introduced",
+      "message": "Non-string denial reasons change the clause-five found field through different truthiness and composite-value rendering."
+    }
+  ]
+}
+```
+
+Signature counts: carried0/new2/resolved2, findings2 → 2. Semantically one new signature continues the rendering class at a new file/line; the parser-acceptance finding is new ground. The signature ledger is preserved without relabeling it by judgement.
 
 ## Recommended wave
 

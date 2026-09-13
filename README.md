@@ -81,7 +81,7 @@ stopped. Run it somewhere you would be comfortable letting an AI agent run.
 ## The shape of it, in numbers
 
 Six domains. Fifty-three commands. Twenty-seven views. About 4,800 lines of YAML describing what the
-system is — against roughly 10,800 lines of runtime in the interpreter and swarm host. The interpreter
+system is — against roughly 11,900 lines of runtime in the interpreter and swarm host. The interpreter
 knows nothing about swarms in particular and can execute a different specification.
 
 That ratio is the point of the project. The interesting part of the system is the part you can read.

@@ -12,23 +12,31 @@ scope:
   path: src/core/domains/manager.yaml
 - confidence: cited
   path: src/runtime/swarm-server
-- confidence: inferred
+- confidence: cited
   path: src/runtime/swarm-server/Cargo.toml
+- confidence: cited
+  path: src/runtime/swarm-server/src/control.rs
 - confidence: cited
   path: src/runtime/swarm-server/src/coordinator.rs
 - confidence: cited
   path: src/runtime/swarm-server/src/http.rs
-- confidence: inferred
-  path: src/runtime/swarm-server/src/lib.rs
 - confidence: cited
-  path: src/runtime/swarm-server/src/state.rs
+  path: src/runtime/swarm-server/src/lib.rs
 - confidence: cited
   path: src/runtime/swarm-server/src/swarm.rs
 - confidence: cited
   path: src/runtime/swarm-server/src/trigger.rs
-- confidence: inferred
+- confidence: cited
+  path: src/runtime/swarm-server/tests/adversary_control_pass_1.rs
+- confidence: cited
+  path: src/runtime/swarm-server/tests/adversary_control_pass_2.rs
+- confidence: cited
   path: src/runtime/swarm-server/tests/pause_and_stop_control_runtime_work.rs
-revision: 12
+- confidence: cited
+  path: src/runtime/swarm-server/tests/the_cascade_of_a_caused_command.rs
+- confidence: cited
+  path: src/runtime/swarm-server/tests/the_turn_cap_under_attack.rs
+revision: 15
 ---
 ## Context
 
@@ -70,19 +78,22 @@ The specification transition may already be committed when termination fails. Ke
 
 ## Scope
 
-Derived 2026-09-13 by `story-scoper`. Every line is **cited** (read from the story or the tree) or **inferred** (a reading that could be wrong).
+Final scope confirmed against unit 6d84959 and integration merge bb44d5b.
 
-- **Primary surface:** `src/runtime/swarm-server` — cited; runtime dispatch, turn processes, claims and HTTP command completion live here.
-- **Files:** `src/runtime/swarm-server/src/trigger.rs` — cited; coordinator and assignment dispatch claim work without checking the swarm lifecycle, and spawn detached turn tasks.
-- **Files:** `src/runtime/swarm-server/src/coordinator.rs` — cited; `run_turn` owns process launch, streaming evidence and usage, child waiting and verdict parsing; `take_a_turn` and `work_an_assignment` publish final domain commands.
-- **Files:** `src/runtime/swarm-server/src/state.rs` — cited; `Server::claim`, `release` and `turns_in_flight` currently track unit keys without cancellation or a lifecycle generation.
-- **Files:** `src/runtime/swarm-server/src/swarm.rs` — cited; `Swarm::issue_as` serializes domain command application and persistence; lifecycle admission and late-result rejection must agree with its state changes.
-- **Files:** `src/runtime/swarm-server/src/http.rs` — cited; `issue_command` currently returns immediately after `issue_as`, so successful host completion needs a termination/reaping barrier.
-- **Files:** `src/core/domains/manager.yaml` — cited; PauseSwarm and ResumeSwarm describe crons/windows, while StopSwarm describes session teardown; the story explicitly requires aligning these descriptions without changing states or events.
-- **Tests:** `src/runtime/swarm-server/tests/pause_and_stop_control_runtime_work.rs` — inferred; proposed focused HTTP and fake-process integration target for dispatch races, cancellation, continuation, evidence retention and swarm isolation.
-- **Also likely:** `src/runtime/swarm-server/src/lib.rs` — inferred; an optional server-local cancellation module needs a module declaration.
-- **Also likely:** `src/runtime/swarm-server/Cargo.toml` — inferred; process-group termination may require a server-local signal dependency; the existing manifest has Tokio process support but no direct signal-management dependency.
-- **Symbols:** `trigger::ask_the_coordinator`, `trigger::work_the_assignments`, `trigger::one_turn`, `trigger::one_assignment`, `coordinator::run_turn`, `coordinator::take_a_turn`, `coordinator::work_an_assignment`, `Server::claim`, `Server::release`, `Swarm::issue_as`, `http::issue_command` — cited.
-- **Documents:** manager command descriptions are the only implementor-owned prose explicitly requested; README, AGENTS.md and derived website facts belong to integration — cited.
-- **Confidence:** high — cited; the story identifies the defect sites and reading the implementation confirms the missing admission, cancellation and result-publication barriers.
-- **Would collide with:** other changes to server dispatch, claims, process execution, command application or the HTTP command handler, and manager lifecycle descriptions — inferred.
+- Cited implementation surfaces: src/runtime/swarm-server/src/{control,coordinator,http,lib,swarm,trigger}.rs and manager.yaml host descriptions. Cancellation admission, process ownership, result publication and HTTP acknowledgement are host behavior; the kernel's entities/events remain unchanged.
+- Planning inferred a new module declaration and focused HTTP/process target. Confirmed: control.rs, lib.rs and tests/pause_and_stop_control_runtime_work.rs now exist in the diff. Pass-1 and pass-2 adversary targets are retained as tests/adversary_control_pass_{1,2}.rs.
+- Planning inferred a signal dependency. Confirmed at coordinator bootstrap c935d85: Unix libc was added to the server manifest before dispatch. The implementor needed no further manifest change.
+- state.rs was inspected as a possible ownership surface but did not change; authoritative cancellation registration lives on Swarm. Its existing scheduling counter remains intact. It is removed from the landed typed scope, preserving this correction to the original inference.
+- Two existing fixtures in the_cascade_of_a_caused_command.rs and the_turn_cap_under_attack.rs gained valid Running setup; their assertions remain intact.
+- Coordinator-owned integration surfaces are AGENTS.md, README.md, root lock/workspace wiring and website derived facts. No generic ESS runtime behavior changed for this story.
+- All declared landed paths are cited from the final diff. Linux is the verified process host; ordinary process-group descendants are included, intentionally escaped groups and other platforms are not asserted as verified.
+
+## Implementation evidence
+
+Implemented locally in wave/2026-09-13c/control through 6d84959; merged into the integration branch at bb44d5b. Main publication and the full integration gate are still pending. Do not implement this story again merely because its lifecycle remains draft; only the operator moves it.
+
+Pause/stop acknowledgement waits for runtime-owned turns and ordinary descendants to quiesce. Host failure is HTTP500 kind host with closed admission; POST /swarms/{slug}/quiesce retries cleanup without repeating a domain transition. Running refuses that retry route. Start/resume finish old cleanup before reopening. Result generation checks prevent old verdicts from reaching a resumed generation. Worker FinishAssignment and GoIdle share lifecycle exclusion, without claiming a database transaction across both commands.
+
+Final unit package: 135 passed (including three child-process entrypoint tests); formatting and strict Clippy passed. Original specification checks passed after the manager summary edits. Adversary finding trend: 1 → 0, carried0/new0/resolved1. Reports are review-result:adversary-2026-09-13c-unit-a-pass-{1,2}; the one finding has a fixed outcome. The final adversary's Python fake process was replaced by a Rust child fixture; the coordinator inspected the exact fixture-only diff, and the behavioral body, assertions and queue order compare byte-for-byte unchanged. Both contention tests and the package reran green. No third attack occurred.
+
+Retained logs/reports: /home/timo/.cache/swarm-wave-2026-09-13c/control/{report.md,correction-1-report.md,fixture-correction-report.md,adversary-1/report.md,adversary-2/report.md}. Wave notes: .engineering/waves/2026-09-13c-control-and-rust-checker.md.
