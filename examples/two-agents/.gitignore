@@ -1,0 +1,4 @@
+# Left behind by `python3 -m unittest discover -s examples/two-agents`. The repository root
+# .gitignore has no rule for it, and a checker whose own test run dirties the tree is a checker
+# somebody will commit bytecode from.
+__pycache__/
