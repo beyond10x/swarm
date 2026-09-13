@@ -55,8 +55,9 @@ assignment, and waited while the runtime ran that agent as its own session with 
 directory and its own transcript. The run's evidence is in the repository at
 `examples/two-agents/evidence/2026-09-13-two-agents-proof/` — the event log as CSV, the spend rows,
 the ceiling refusal and the sealed frames the turns ran under. The log itself is runtime state and
-is gitignored, which that directory says. `examples/two-agents/check-two-agents.py` is what read it,
-and it reports each of seven clauses independently —
+is gitignored, which that directory says. Run
+`cargo run -p swarm-check -- data/swarms/two-agents-proof` to check the retained runtime records.
+The checker reports each of seven clauses independently —
 `AssignmentTaken`, `AssignmentDone` and `GoalReached` among them, each of which had fired zero times
 here before that run.
 
@@ -80,8 +81,8 @@ stopped. Run it somewhere you would be comfortable letting an AI agent run.
 ## The shape of it, in numbers
 
 Six domains. Fifty-three commands. Twenty-seven views. About 4,800 lines of YAML describing what the
-system is — against roughly 10,800 lines of runtime that knows nothing about swarms in particular and
-would happily execute a different specification.
+system is — against roughly 10,800 lines of runtime in the interpreter and swarm host. The interpreter
+knows nothing about swarms in particular and can execute a different specification.
 
 That ratio is the point of the project. The interesting part of the system is the part you can read.
 

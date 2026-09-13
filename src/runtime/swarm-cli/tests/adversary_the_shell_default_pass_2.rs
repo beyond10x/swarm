@@ -160,7 +160,7 @@ fn a_shell_with_no_settings_file_does_not_issue_as_the_coordinator() {
         "a shell with no settings file named no agent, so the request must name none and the \
          runtime must record `operator`. It carries {} instead, which is a real member of every \
          swarm this runtime runs — so an operator's hand at the CLI is recorded as the \
-         coordinator's own command, and `check-two-agents.py`'s unattended condition reports `no \
+         coordinator's own command, and `swarm-check`'s unattended condition reports `no \
          operator input in the window` over it. Whole body: {body}",
         body.get("agent")
             .map_or("nothing".to_owned(), Json::to_string)

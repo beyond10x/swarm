@@ -2,7 +2,7 @@
 
 ## Planning verification
 
-This change edits planning and wave notes only. No runtime implementation or dependency change is included. Whitespace validation, cargo fmt --all --check, ESS validation, AEP validation and the website facts check each exited 0. The full compilation/test/build gate belongs to the implementation wave and was not rerun for this proposal.
+The original proposal commit (4d9e07b) edits planning and wave notes only; this paragraph records its checks. Implementation and dependency changes began after approval. Whitespace validation, cargo fmt --all --check, ESS validation, AEP validation and the website facts check each exited 0. The full compilation/test/build gate belongs to the implementation wave and was not rerun for this proposal.
 
 AEP output, verbatim:
 
@@ -23,7 +23,7 @@ AEP output, verbatim:
 valid
 ```
 
-Status: **approved by the operator's `ok`; bootstrap underway**. Coordinator: Codex leader.
+Status: **approved by the operator's `ok`; both units implementing**. Coordinator: Codex leader.
 Skill `aep-drive:wave 0.8.1`; planning skill 0.8.1; installed `aep --version` reports `protocol 0.55.0`.
 Interactive run: the operator asked to see the next wave after cleanup. This proposal is the review boundary.
 The operator subsequently approved this exact proposal. The active integration branch is now `wave/2026-09-13c/integration`; owning session `wave-20260913c-leader`.
@@ -34,8 +34,8 @@ Bootstrap registers a buildable `swarm-check` shell with a deliberately failing 
 
 | unit | stage | source | target | scratch | branch/head |
 |---|---|---|---|---|---|
-| A | awaiting dispatch | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-control | same source /target | /home/timo/.cache/swarm-wave-2026-09-13c/control | wave/2026-09-13c/control; base recorded in brief |
-| B | awaiting dispatch | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-checker | same source /target | /home/timo/.cache/swarm-wave-2026-09-13c/checker | wave/2026-09-13c/checker; base recorded in brief |
+| A | implementing | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-control | same source /target | /home/timo/.cache/swarm-wave-2026-09-13c/control | wave/2026-09-13c/control; base c935d85 |
+| B | implementing | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-checker | same source /target | /home/timo/.cache/swarm-wave-2026-09-13c/checker | wave/2026-09-13c/checker; base c935d85 |
 
 Integration target is inside `swarm-next-wave-plan-20260913/target`; integration scratch is `/home/timo/.cache/swarm-wave-2026-09-13c/integration`. All implementation builds set RUSTC_WRAPPER to `/usr/bin/sccache`, CARGO_BUILD_JOBS=2 and unit-owned TMPDIR. The primary checkout's target remains untouched.
 Base: published, clean `main` at `5331fe8e3c338d12f8fde2371f1218f6c3a551a9`.
@@ -105,13 +105,15 @@ A pre-flight that finds less than the disk floor or an unconfigured cache refuse
 
 | purpose | managed id | branch | source path | build path | scratch root | stage |
 |---|---|---|---|---|---|---|
-| planning / future integration | swarm-next-wave-plan-20260913 | plan/2026-09-13c; rename to wave/2026-09-13c/integration after approval | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-next-wave-plan-20260913 | same path /target (not created) | /home/timo/.cache/swarm-next-wave-plan-20260913 | proposal only |
-| A | swarm-wave-20260913c-control (planned) | wave/2026-09-13c/control | manager-returned path, expected /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-control | that checkout /target | /home/timo/.cache/swarm-wave-2026-09-13c/control | not created |
-| B | swarm-wave-20260913c-checker (planned) | wave/2026-09-13c/checker | manager-returned path, expected /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-checker | that checkout /target | /home/timo/.cache/swarm-wave-2026-09-13c/checker | not created |
+| integration | swarm-next-wave-plan-20260913 | wave/2026-09-13c/integration | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-next-wave-plan-20260913 | same path /target | /home/timo/.cache/swarm-wave-2026-09-13c/integration | integrating shared documentation |
+| A | swarm-wave-20260913c-control | wave/2026-09-13c/control | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-control | same path /target | /home/timo/.cache/swarm-wave-2026-09-13c/control | implementing |
+| B | swarm-wave-20260913c-checker | wave/2026-09-13c/checker | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-checker | same path /target | /home/timo/.cache/swarm-wave-2026-09-13c/checker | implementing |
 
-The coordinator updates each actual path, branch head and stage on creation/transition.
-Current owning session: next-wave-leader; release its planning lease on handoff and reacquire before edits.
-The planning branch is local and deliberately retained for the operator to review; the next owner is this leader after approval. No source implementation is stranded elsewhere.
+The coordinator updates each actual path, branch head and stage on transition.
+Current owning session: wave-20260913c-leader. Each implementor owns a distinct lease.
+Both units forked bootstrap c935d85; their assigned scratch roots contain brief.md.
+Planning evidence remains at /home/timo/.cache/swarm-next-wave-plan-20260913.
+All new commits are local until a publication decision; source trees remain retained.
 
 ## Original demonstration input
 

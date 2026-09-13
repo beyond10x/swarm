@@ -81,9 +81,8 @@ const PAGE: usize = 500;
 /// will now read as the runtime's. Nothing can be done about that row; what can be done is not
 /// claim it is impossible.
 ///
-/// `examples/two-agents/check-two-agents.py` is the reader that tells them apart. There is no
-/// parser on this side because nothing in Rust reads the column back, and a second parser with no
-/// caller is a second vocabulary waiting to drift from this one.
+/// `swarm-check` is the reader that tells them apart. This storage module only writes the column;
+/// its vocabulary is checked against the evidence reader by the checker's tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Issuer {
     /// The runtime issuing to itself: a binding, the pump, the trigger, a turn's own bookkeeping.
@@ -125,7 +124,7 @@ const AGENT: &str = "agent:";
 /// failure [`Issuer::UnnameableAgent`] exists to avoid.
 ///
 /// What makes the collision harmless is that **no reader decides by the prefix**. An agent is what
-/// a `swarm.agent.AgentSpawned` says it is, and `check-two-agents.py`'s `agent_named_by` asks the
+/// a `swarm.agent.AgentSpawned` says it is, and `swarm-check` asks the
 /// log: a slug it spawned is that agent whatever it starts with, and a string it did not spawn is
 /// not an agent whether it is a mark or an invention.
 ///

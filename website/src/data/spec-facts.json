@@ -95,10 +95,11 @@
     "cliVerbs": 10
   },
   "lines": {
-    "essRuntime": 2082,
+    "essRuntime": 2081,
     "swarmServer": 7892,
     "swarmCli": 874,
-    "runtimeTotal": 10848,
+    "runtimeTotal": 10847,
+    "swarmCheck": 4,
     "integrationTests": 8096,
     "integrationTestFiles": 25,
     "web": 8910,
