@@ -26,8 +26,10 @@
 // These cases assert that no component the contract lists as an emitter does either, because
 // `UiBox.vue` renders every one of them behind nothing but that attribute.
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { test } from 'node:test'
+
+import { escapingComponents } from '../ui/escapes.guard.ts'
 
 const contract = new URL('../ui/index.ts', import.meta.url)
 const source = readFileSync(contract, 'utf8')
@@ -66,15 +68,32 @@ function objectLiteral(text: string, name: string): string {
   throw new Error(`${name} is not closed`)
 }
 
-function componentSource(name: string): string {
-  return readFileSync(new URL(`../ui/${name}.vue`, import.meta.url), 'utf8')
+// Both cases below asked their question of the CHARACTERS of a component: `/<Teleport\b/` for the
+// first, `/\b(?:document|window)\.addEventListener\b|\bdocument\.body\b/` for the second. A
+// component escaping in another spelling — `globalThis.document`, an aliased `const doc =
+// document`, a composable one call away — answered "no" to both, and "no" here means "safe to
+// render inert on the canvas". So the reach is now decided by `../ui/escapes.guard.ts`, which
+// allows what a component may name and reports everything else, and the two cases read its reasons
+// rather than a regex of their own. One predicate, in one file, for the contract and for this.
+const UI = new URL('../ui/', import.meta.url)
+const reach = await escapingComponents(
+  Object.fromEntries(
+    readdirSync(UI)
+      .filter((name) => !name.endsWith('.test.ts'))
+      .map((name) => [name, readFileSync(new URL(name, UI), 'utf8')]),
+  ),
+)
+
+/** Why `name` leaves its own subtree; empty when it does not. */
+function reasons(name: string): string[] {
+  return reach[`${name}.vue`] ?? []
 }
 
 test('a component UiBox renders inert keeps its markup inside the inert subtree', () => {
   // `inert` is scoped to the div `UiBox.vue` puts it on. A component that teleports its content to
   // `document.body` renders that content outside the div, where the attribute does not reach it,
   // so its controls stay clickable and focusable and everything it emits is discarded in silence.
-  const teleporting = emitters.filter((name) => /<Teleport\b/.test(componentSource(name)))
+  const teleporting = emitters.filter((name) => reasons(name).some((why) => why.includes('Teleport')))
   assert.deepEqual(
     teleporting,
     [],
@@ -86,11 +105,9 @@ test('a component UiBox renders inert takes no input `inert` cannot stop', () =>
   // A document- or window-level listener, and a write to `document.body`, are not inside any
   // subtree, so the attribute cannot disable them. A keydown handler on `document` keeps taking
   // Tab and Escape from the whole application while the panel is on the canvas.
-  const escaping = emitters.filter((name) =>
-    /\b(?:document|window)\.addEventListener\b|\bdocument\.body\b/.test(componentSource(name)),
-  )
+  const escaping = emitters.filter((name) => reasons(name).length > 0)
   assert.deepEqual(
-    escaping,
+    escaping.map((name) => `${name}: ${reasons(name).join('; ')}`),
     [],
     'these components act outside their own subtree, which `:inert` cannot reach',
   )

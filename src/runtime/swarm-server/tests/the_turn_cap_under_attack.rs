@@ -16,7 +16,7 @@
 //!   `&Server` to `Caps`.
 //! * The story's `## Acceptance` has four clauses. The fourth — "a ceiling exists that does not
 //!   depend on which goal an agent is working" — is unmet, and
-//!   `an_agents_spend_is_not_bounded_across_the_goals_it_works` PINS THAT ABSENCE: it asserts what
+//!   `an_agents_spend_is_bounded_across_the_goals_it_works` PINS THAT ABSENCE: it asserts what
 //!   the crate does today, so it goes red the moment the ceiling lands and somebody has to come
 //!   back and turn it into the assertion it wants to be.
 
@@ -142,37 +142,33 @@ fn a_negative_spend_cap_is_not_a_lifted_spend_cap() {
     );
 }
 
-/// The story's fourth acceptance clause, PINNED AT ITS CURRENT — WRONG — ANSWER.
+/// The story's fourth acceptance clause, NO LONGER PINNED.
 ///
-/// `story:the-turn-cap-did-not-hold` asks for "a ceiling exists that does not depend on which goal
-/// an agent is working". There is none, and this case asserts that there is none. It is not
-/// `#[ignore]`d, because a case that pre-excuses its own red is one nobody reads again; and it is
-/// not left failing, because `cargo test` reads one exit status and a single deliberate red deletes
-/// every result after it — nine other lanes stop reporting anything.
+/// `story:spend-is-bounded-per-goal-only` (carried from
+/// `story:the-turn-cap-did-not-hold`) asks for "a ceiling exists that does not depend on which goal
+/// an agent is working". It exists now, and this case asserts that it refuses.
 ///
-/// **So it is red-when-fixed rather than red-now.** The moment a ceiling refuses this agent, the
-/// assertion below flips and whoever landed it is sent here.
+/// # What moved, and why the pin's own instructions were not enough
 ///
-/// # What to change when the ceiling lands
-///
-/// The ceiling belongs in `state.rs` — `turns_in_flight()` (`state.rs:201`) is the only
-/// server-wide count of anything an agent is doing, and it reports to the UI and refuses nothing.
-/// A ceiling reading `Swarm::spend_by` across every goal is the missing half. When it exists:
-/// rename this case back to `an_agents_spend_is_bounded_across_the_goals_it_works`, and change
-/// `assert!(!refused, ...)` to `assert!(refused, ...)`. Nothing else in it needs to move.
+/// The pinned version said: rename this case and flip `assert!(!refused, ...)` to
+/// `assert!(refused, ...)`, and "nothing else in it needs to move". That was measured and is
+/// FALSE. `refused` was computed by this case itself, from `Swarm::spend_on` folded per goal, and
+/// no ceiling anywhere can make that fold refuse — each goal holds 3 turns and $3.00, both inside
+/// the defaults, whatever the crate does. The two named edits alone leave the case red for ever.
+/// So the fold below is the real guard, `trigger::capped`, which is what `fire` and
+/// `ask_the_coordinator` call; the per-goal fold is kept beside it as the evidence that per-goal
+/// measurement still refuses nowhere, which is the defect this ceiling is not allowed to hide.
 ///
 /// # What it measures
 ///
 /// One agent, two goals, three turns and $1.00 each: **6 turns and $6.00 against a $5.00 cap**.
-/// Every goal is comfortably inside both bounds on its own, so the only refusal surface the crate
-/// has — `Caps::exceeded` folded over `spend_on`, which is exactly what `trigger::capped` folds —
-/// never fires. Attribution was added in the 2026-09-12c wave and nothing reads it to refuse:
-/// `spend_by` needs a goal to be given, so there is no per-agent total to bound.
+/// Every goal is comfortably inside both bounds on its own, so a cap keyed on a goal never fires.
+/// The agent-wide ceiling reads the same rows without keying on the goal, and does.
 ///
 /// What reaches it: a swarm with more than one goal. `fire` iterates every row of the AWAITING
-/// view, and each is capped alone.
+/// view, and each is capped alone — plus, now, capped on the agent's whole record.
 #[tokio::test]
-async fn an_agents_spend_is_not_bounded_across_the_goals_it_works() {
+async fn an_agents_spend_is_bounded_across_the_goals_it_works() {
     let (swarm, _data) = swarm("across-goals").await;
     let goals = ["77fc1fcc-goal-one", "77fc1fcc-goal-two"];
     let agent = "worker-a";
@@ -183,7 +179,7 @@ async fn an_agents_spend_is_not_bounded_across_the_goals_it_works() {
         }
     }
 
-    // The agent's own figure, which attribution now makes readable — and which nothing reads.
+    // The agent's own figure, which attribution made readable.
     let (spent, turns) = goals.iter().fold((0.0, 0), |(usd, count), goal| {
         let (spent, turns) = swarm.spend_by(goal, agent);
         (usd + spent.cost_usd.unwrap_or_default(), count + turns)
@@ -191,22 +187,40 @@ async fn an_agents_spend_is_not_bounded_across_the_goals_it_works() {
     assert_eq!(turns, 6, "the agent took six turns");
     assert!((spent - 6.00).abs() < 1e-9, "and spent $6.00: {spent}");
 
-    // The refusal surface: the default caps, folded per goal exactly as `trigger::capped` folds
-    // them. Nothing here is over a cap, because no cap is measured on the agent.
     let caps = Caps::default();
     let cap = caps.max_spend_usd.unwrap_or_default();
     let goal_count = goals.len();
-    let refused = goals.iter().any(|goal| {
+
+    // A cap keyed on a goal still refuses nowhere here, and that is not a regression: it is the
+    // reason a ceiling that is not keyed on a goal has to exist.
+    let refused_per_goal = goals.iter().any(|goal| {
         let (spent, attempts) = swarm.spend_on(goal);
         caps.exceeded(attempts, spent.cost_usd).is_some()
     });
     assert!(
-        !refused,
-        "THIS ASSERTION IS THE BUG, PINNED, AND IT HAS JUST STOPPED BEING TRUE. An agent that \
-         spent ${spent:.2} of a ${cap:.2} cap over {turns} turns, spread across {goal_count} \
-         goals, was refused NOWHERE when this case was written — that absence is the unmet fourth \
-         acceptance clause of story:the-turn-cap-did-not-hold, and the ceiling that fixes it \
-         belongs in state.rs. Something now refuses, so the clause is met: rename this case to \
-         an_agents_spend_is_bounded_across_the_goals_it_works and flip `!refused` to `refused`."
+        !refused_per_goal,
+        "a cap keyed on a goal cannot see this agent: each goal holds 3 turns and $3.00"
+    );
+
+    // The guard the runtime actually fires, at both of its call sites.
+    let refused = goals
+        .iter()
+        .any(|goal| swarm_server::trigger::capped(caps, &swarm, agent, goal, 1).is_some());
+    assert!(
+        refused,
+        "an agent that spent ${spent:.2} of a ${cap:.2} cap over {turns} turns, spread across \
+         {goal_count} goals, must be refused: the ceiling does not depend on which goal it works"
+    );
+
+    // And the ceiling is the reason, not the per-goal fold: lifting both caps refuses nothing.
+    let lifted = Caps {
+        max_turns: None,
+        max_spend_usd: None,
+    };
+    assert!(
+        !goals
+            .iter()
+            .any(|goal| swarm_server::trigger::capped(lifted, &swarm, agent, goal, 1).is_some()),
+        "lifted caps bound nothing, per goal or per agent"
     );
 }
