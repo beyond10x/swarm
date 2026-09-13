@@ -148,8 +148,65 @@ struct Config {
 struct Settings {
     url: String,
     swarm: String,
-    agent: String,
+    /// Which agent instance this process is, when it is one.
+    ///
+    /// `Option`, and that is the whole of `story:an-event-cannot-say-which-agent-acted` at this
+    /// door. It used to default to `"coordinator"`, so a shell with no `.swarm/config.json` —
+    /// `cargo run -p swarm-cli -- --swarm <slug> do <command>`, the invocation `AGENTS.md` itself
+    /// documents — issued every one of the fifty-three commands as a real member of every swarm
+    /// this runtime runs. An operator's hand and the coordinator's own command were the same
+    /// record again, which is the sentence this story exists to make false.
+    ///
+    /// `None` is a person at a terminal. The runtime records that as `operator`, because the
+    /// record saying "somebody, and not this swarm's coordinator" is worth more than a name
+    /// invented at the edge.
+    agent: Option<String>,
 }
+
+impl Settings {
+    /// The agent this process is acting as, or a refusal that names both ways to supply one.
+    ///
+    /// Used by the verbs that ACT AS an agent — posting, reading and acking mail, opening a
+    /// mailbox — where the identity is a payload field the specification requires and there is no
+    /// honest default for it. Refusing is not an authorisation decision and this binary makes
+    /// none: it is the refusal to invent a name, which is the same rule the `Option` above is.
+    ///
+    /// `do`, `canvas`, `views`, `spec` and `log` need no identity and keep working without one.
+    fn acting_as(&self) -> Result<&str, String> {
+        self.agent.as_deref().ok_or_else(|| {
+            "this verb acts as an agent and no agent is named. Pass --agent, or run where \
+             .swarm/config.json names one. A person may post mail to a swarm and may not read or \
+             ack on a member's behalf — `swarm.mailbox.Operator` may `PostMessage` and nothing \
+             else (src/core/domains/mailbox.yaml)"
+                .to_owned()
+        })
+    }
+
+    /// Who a message SAYS it is from. Unlike [`Settings::acting_as`] this never refuses, because
+    /// the specification says a person may post: `swarm.mailbox.Operator` `may: PostMessage`, and
+    /// its comment is *"A person may write to a running swarm — that is the whole point of an
+    /// inbox a human can reach."*
+    ///
+    /// The word for a person is [`HUMAN`], and it is the canvas's already rather than a second
+    /// one invented here.
+    fn posting_as(&self) -> &str {
+        self.agent.as_deref().unwrap_or(HUMAN)
+    }
+}
+
+/// The sender a person writes as, verbatim from the canvas's own compose box
+/// (`src/web/src/components/runtime/MailPanel.vue`): *"The sender a person writes as. No agent
+/// holds this role slug, so it is never ambiguous."*
+///
+/// Taken rather than coined. Two human-facing doors with two words for one thing is how a reader
+/// comes to believe there are two kinds of sender, and this file already spent a correction round
+/// on a name invented at the edge.
+///
+/// It is a claim in the PAYLOAD and the envelope does not rest on it: a shell with no agent sends
+/// no `agent` field, so the runtime records the issuer `operator` whatever `sender_id` says. If a
+/// swarm ever spawned a member called `you`, the two would still be told apart there — which is
+/// the whole reason the envelope carries a second column.
+const HUMAN: &str = "you";
 
 fn main() {
     let cli = Cli::parse();
@@ -162,9 +219,14 @@ fn main() {
     }
 }
 
-fn run(cli: &Cli) -> Result<(), String> {
-    let found = read_config();
-    let settings = Settings {
+/// The flags and the config file, resolved into what a request needs.
+///
+/// Separate from [`run`] so it can be driven by a case. The version of this that lived inline was
+/// covered by a case that built a `Settings` BY HAND, which is how `agent` came to default to
+/// `"coordinator"` while a case asserted the opposite about a value `run` could not produce — a
+/// test that agrees with a fixture and not with the code.
+fn settings_for(cli: &Cli, found: Config) -> Result<Settings, String> {
+    Ok(Settings {
         url: cli
             .url
             .clone()
@@ -175,12 +237,14 @@ fn run(cli: &Cli) -> Result<(), String> {
             .clone()
             .or(found.swarm)
             .ok_or("no swarm named. Pass --swarm, or run where .swarm/config.json is")?,
-        agent: cli
-            .agent
-            .clone()
-            .or(found.agent)
-            .unwrap_or_else(|| "coordinator".to_owned()),
-    };
+        // No default. There is no name to give a shell nobody configured, and the last one this
+        // invented belonged to a real member of every swarm.
+        agent: cli.agent.clone().or(found.agent),
+    })
+}
+
+fn run(cli: &Cli) -> Result<(), String> {
+    let settings = settings_for(cli, read_config())?;
 
     match &cli.command {
         Verb::Inbox { all } => inbox(&settings, *all, cli.json),
@@ -194,14 +258,14 @@ fn run(cli: &Cli) -> Result<(), String> {
         } => mail(
             &settings,
             json!({
-                "to": to, "sender": settings.agent, "subject": subject, "body": body,
+                "to": to, "sender": settings.posting_as(), "subject": subject, "body": body,
                 "reply_to": reply_to
             }),
             cli.json,
         ),
         Verb::Broadcast { subject, body } => mail(
             &settings,
-            json!({ "sender": settings.agent, "subject": subject, "body": body }),
+            json!({ "sender": settings.posting_as(), "subject": subject, "body": body }),
             cli.json,
         ),
         Verb::Mailbox { name } => open_mailbox(&settings, name, cli.json),
@@ -245,10 +309,17 @@ fn inbox(settings: &Settings, all: bool, raw: bool) -> Result<(), String> {
         "{}/swarms/{}/views/swarm.mailbox.UnreadMessages",
         settings.url, settings.swarm
     ))?;
+    // "Mine" needs somebody to be. `--all` is the same read with no identity in it, so a shell
+    // with no agent is told about the flag rather than shown one agent's mail chosen at random.
+    let me = if all {
+        None
+    } else {
+        Some(settings.acting_as()?)
+    };
     let mine: Vec<&Map<String, Json>> = rows
         .iter()
         .filter(|row| {
-            all || row.get("recipient_id").and_then(Json::as_str) == Some(settings.agent.as_str())
+            me.is_none_or(|me| row.get("recipient_id").and_then(Json::as_str) == Some(me))
         })
         .collect();
 
@@ -312,7 +383,7 @@ fn read_message(settings: &Settings, id: &str, peek: bool, raw: bool) -> Result<
         issue(
             settings,
             "swarm.mailbox.MarkRead",
-            json!({ "message_id": full, "read_by": settings.agent, "read_at": stamp() }),
+            json!({ "message_id": full, "read_by": settings.acting_as()?, "read_at": stamp() }),
         )?;
     }
     Ok(())
@@ -323,7 +394,8 @@ fn ack(settings: &Settings, id: &str, note: Option<&str>, raw: bool) -> Result<(
         settings,
         "swarm.mailbox.AckMessage",
         json!({
-            "message_id": id, "acked_by": settings.agent, "acked_at": stamp(), "ack_note": note
+            "message_id": id, "acked_by": settings.acting_as()?, "acked_at": stamp(),
+            "ack_note": note
         }),
     )?;
     if raw {
@@ -335,7 +407,14 @@ fn ack(settings: &Settings, id: &str, note: Option<&str>, raw: bool) -> Result<(
 }
 
 /// Posts a message. The runtime resolves the address, because only it can look a mailbox up.
-fn mail(settings: &Settings, body: Json, raw: bool) -> Result<(), String> {
+///
+/// `sender` is already in the body and is what the message says about itself; `agent` is who is
+/// posting it. Mail is the second door that writes events, so it names its issuer for the same
+/// reason `issue` does — an operator can `curl` this route exactly as an agent can.
+fn mail(settings: &Settings, mut body: Json, raw: bool) -> Result<(), String> {
+    if let Some(agent) = issuing(settings) {
+        body["agent"] = json!(agent);
+    }
     let posted: Json = post(
         &format!("{}/swarms/{}/mail", settings.url, settings.swarm),
         body,
@@ -370,13 +449,14 @@ fn open_mailbox(settings: &Settings, name: &str, raw: bool) -> Result<(), String
         settings,
         "swarm.mailbox.OpenMailbox",
         json!({
-            "swarm_id": swarm_id, "agent_id": settings.agent, "name": name, "created_at": stamp()
+            "swarm_id": swarm_id, "agent_id": settings.acting_as()?, "name": name,
+            "created_at": stamp()
         }),
     )?;
     if raw {
         println!("{issued:#}");
     } else {
-        println!("{}/{name} is open", settings.agent);
+        println!("{}/{name} is open", settings.acting_as()?);
     }
     Ok(())
 }
@@ -483,7 +563,7 @@ fn issue(settings: &Settings, command: &str, input: Json) -> Result<Json, String
             "{}/swarms/{}/commands/{command}",
             settings.url, settings.swarm
         ),
-        json!({ "input": input, "actor": actor_for(command, &settings.agent) }),
+        body_for(command, input, issuing(settings)),
     )?;
     // A refusal the specification declares comes back as an outcome with an error, not as a
     // transport failure. Saying so here beats printing a success-shaped object that refused.
@@ -493,15 +573,58 @@ fn issue(settings: &Settings, command: &str, input: Json) -> Result<Json, String
     Ok(issued)
 }
 
-/// Which actor to issue as.
+/// Which agent instance this binary is running as, when it is running as one.
+///
+/// `settings.agent` comes from `--agent` or from the `.swarm/config.json` the runtime writes into
+/// each agent's work directory (`coordinator.rs`'s `write_settings`), so it is the runtime's own
+/// word for whose process this is. `None` means neither supplied one — a shell a person is typing
+/// into, which the record calls an operator rather than inventing a name for.
+///
+/// This used to filter the EMPTY STRING, against a field that was never empty because `run` gave
+/// it `"coordinator"` when nothing else did. The doc above was already right and the code was
+/// not; the fix was to the type, so the two cannot disagree again.
+fn issuing(settings: &Settings) -> Option<&str> {
+    settings.agent.as_deref()
+}
+
+/// The request body one command goes out in.
+///
+/// TWO facts, and they are different questions. `actor` is the specification's actor TYPE, which
+/// is what `permitted` matches; `agent` is which instance is issuing it. Until 2026-09-13 only the
+/// first went out, and the slug reached this file and was thrown away one line before the wire —
+/// `actor_for(command, _agent)` took the agent and discarded it. That discard is the whole of why
+/// an `AssignmentTaken` naming a member read the same in the log whoever issued it.
+fn body_for(command: &str, input: Json, agent: Option<&str>) -> Json {
+    let mut body = json!({ "input": input, "actor": actor_for(command, agent) });
+    if let Some(agent) = agent {
+        body["agent"] = json!(agent);
+    }
+    body
+}
+
+/// Which actor TYPE to issue as.
 ///
 /// The specification decides what an actor may do, and a swarm's own agent is the `SwarmAgent` of
 /// whichever domain it is acting in. Where a domain declares no such actor the command is issued
 /// as the system, which skips the actor check — the runtime's own behaviour, not a widening
 /// invented here.
-fn actor_for(command: &str, _agent: &str) -> Option<String> {
+///
+/// The agent slug is not an input to this and never was — an actor type is a property of the
+/// command's domain, and the pass-1 correction that removed the slug from here was right about
+/// that. **Whether there is one at all is a different question**, and the mailbox domain declares
+/// two actors for exactly it: `swarm.mailbox.SwarmAgent` may open, post, read and ack; a person
+/// is `swarm.mailbox.Operator` and `may: PostMessage` and nothing else, because *"an ack the
+/// recipient did not perform is the one lie this domain exists to prevent"*
+/// (`src/core/domains/mailbox.yaml`).
+///
+/// So a shell with no agent issues mailbox commands as the Operator, and `apply`'s `permitted`
+/// refuses it `MarkRead` and `AckMessage` at the runtime — the specification's answer, arrived at
+/// by naming the right actor rather than by a rule written here. `Settings::acting_as` refuses
+/// the same two a round trip earlier and says the same thing.
+fn actor_for(command: &str, agent: Option<&str>) -> Option<String> {
     match command.split('.').nth(1) {
-        Some("mailbox") => Some("swarm.mailbox.SwarmAgent".to_owned()),
+        Some("mailbox") if agent.is_some() => Some("swarm.mailbox.SwarmAgent".to_owned()),
+        Some("mailbox") => Some("swarm.mailbox.Operator".to_owned()),
         _ => None,
     }
 }
@@ -620,14 +743,127 @@ mod tests {
     }
 
     #[test]
-    fn a_mailbox_command_is_issued_as_the_domains_agent() {
+    fn a_mailbox_command_is_issued_as_the_domains_agent_or_as_the_operator() {
         assert_eq!(
-            actor_for("swarm.mailbox.PostMessage", "coordinator").as_deref(),
+            actor_for("swarm.mailbox.PostMessage", Some("worker")).as_deref(),
             Some("swarm.mailbox.SwarmAgent")
+        );
+        // A person is the domain's other actor, and the specification permits it `PostMessage`
+        // and nothing else — so `permitted` refuses a person `MarkRead` and `AckMessage` at the
+        // runtime, rather than this binary deciding it.
+        assert_eq!(
+            actor_for("swarm.mailbox.PostMessage", None).as_deref(),
+            Some("swarm.mailbox.Operator")
+        );
+        assert_eq!(
+            actor_for("swarm.mailbox.AckMessage", None).as_deref(),
+            Some("swarm.mailbox.Operator")
         );
         // No actor is declared for these, and inventing one would be this binary deciding what the
         // specification is silent about.
-        assert_eq!(actor_for("swarm.agent.Spawn", "coordinator"), None);
+        assert_eq!(actor_for("swarm.agent.Spawn", Some("worker")), None);
+        assert_eq!(actor_for("swarm.agent.Spawn", None), None);
+    }
+
+    #[test]
+    fn a_command_goes_out_naming_the_agent_that_issued_it() {
+        let body = body_for(
+            "swarm.agent.TakeAssignment",
+            json!({"agent_id": "worker"}),
+            Some("worker"),
+        );
+        assert_eq!(body["agent"], json!("worker"));
+        // And the actor type beside it, unchanged and still the specification's question.
+        assert_eq!(body["actor"], Json::Null);
+        assert_eq!(body["input"]["agent_id"], json!("worker"));
+    }
+
+    /// The settings a real invocation resolves to, driven through the code `run` uses.
+    ///
+    /// `Cli::parse_from` rather than a hand-built struct, and `settings_for` rather than a
+    /// `Settings` literal, because the version of this case that built both by hand asserted the
+    /// right thing about a state `run` could not produce: `run` filled `agent` with
+    /// `"coordinator"` and the case never went near that line. Correction round 2, finding F1.
+    fn resolved(arguments: &[&str], found: Config) -> Settings {
+        let cli = Cli::parse_from(arguments);
+        settings_for(&cli, found).expect("these arguments resolve")
+    }
+
+    #[test]
+    fn a_shell_with_no_settings_names_no_agent_rather_than_the_coordinator() {
+        // The invocation `AGENTS.md` documents, from a directory with no `.swarm/config.json`.
+        let bare = resolved(
+            &[
+                "swarm",
+                "--swarm",
+                "a-swarm",
+                "do",
+                "swarm.manager.PauseSwarm",
+            ],
+            Config::default(),
+        );
+        assert_eq!(bare.agent, None, "no agent was named anywhere");
+        assert_eq!(issuing(&bare), None);
+        // And so nothing goes on the wire for the runtime to read as an agent. Absent is what it
+        // records as `operator`; `"coordinator"` is a real member of every swarm this runtime
+        // runs, and naming it here made an operator's hand indistinguishable from that member's
+        // own command — the thing this whole story is about.
+        let body = body_for("swarm.manager.PauseSwarm", json!({}), issuing(&bare));
+        assert_eq!(body.get("agent"), None, "{body}");
+    }
+
+    #[test]
+    fn the_flag_and_the_config_file_each_name_the_agent_and_the_flag_wins() {
+        let flagged = resolved(
+            &["swarm", "--swarm", "s", "--agent", "worker", "do", "x"],
+            Config::default(),
+        );
+        assert_eq!(issuing(&flagged), Some("worker"));
+        assert_eq!(
+            body_for("x", json!({}), issuing(&flagged))["agent"],
+            json!("worker")
+        );
+
+        let configured = Config {
+            agent: Some("builder".to_owned()),
+            ..Config::default()
+        };
+        assert_eq!(
+            issuing(&resolved(&["swarm", "--swarm", "s", "do", "x"], configured)),
+            Some("builder"),
+            "the file names one when the flag does not"
+        );
+
+        let both = Config {
+            agent: Some("builder".to_owned()),
+            ..Config::default()
+        };
+        assert_eq!(
+            issuing(&resolved(
+                &["swarm", "--swarm", "s", "--agent", "worker", "do", "x"],
+                both
+            )),
+            Some("worker"),
+            "the flag overrides the file, as its own help says"
+        );
+    }
+
+    #[test]
+    fn a_verb_that_acts_as_an_agent_refuses_rather_than_inventing_one() {
+        // Mail is posted BY somebody, read BY somebody and acked BY somebody: `sender`,
+        // `read_by` and `acked_by` are payload fields the specification requires, and there is no
+        // honest default for any of them. Refusing names both ways to supply one; inventing a
+        // name is what was wrong here in the first place.
+        let bare = resolved(&["swarm", "--swarm", "s", "do", "x"], Config::default());
+        let refused = bare.acting_as().expect_err("no agent is named");
+        assert!(refused.contains("--agent"), "{refused}");
+        assert!(refused.contains(CONFIG), "{refused}");
+
+        let named = resolved(
+            &["swarm", "--swarm", "s", "--agent", "worker", "do", "x"],
+            Config::default(),
+        );
+        assert_eq!(named.acting_as().expect("an agent is named"), "worker");
     }
 
     #[test]

@@ -9,7 +9,9 @@ not an affordable report.
 
 What it reads, all of it under `data/swarms/<slug>/`:
 
-    eventlog.sqlite3      table `swarm_events` — the record. State is a fold over this.
+    eventlog.sqlite3      table `swarm_events` — the record. State is a fold over this. The
+                          `actor` column is the specification's actor TYPE; the `subject` column
+                          is who ISSUED the command, since 2026-09-13 — see `issued_by`.
     turns/*.jsonl         the metaharness event records, one file per turn ATTEMPT
     turns/spend.jsonl     one JSON object per attempt, carrying the agent since 2026-09-12
     turns/capped.jsonl    if the runtime ever writes one — see clause 7
@@ -19,11 +21,11 @@ Usage:
     examples/two-agents/check-two-agents.py data/swarms/<slug>
     examples/two-agents/check-two-agents.py <slug> [--data data/swarms] [--json]
 
-Exit 0 when every one of the seven is met; exit 1 otherwise. The story's "unattended"
-condition is reported beside them and decides nothing, because this runtime's log cannot
-settle it either way — see `unattended()`.
+Exit 0 when every one of the seven is met; exit 1 otherwise. The story's "unattended" condition is
+reported beside them, says met or NOT MET, and decides nothing either way — it is not one of the
+seven. See `unattended()`.
 
-Two rules this obeys, both of them load-bearing:
+Three rules this obeys, all of them load-bearing:
 
 **A clause it cannot evaluate is NOT MET, never skipped.** An absent event log, an unreadable turn
 file, a missing spend record — each of those is a clause that has not been shown, and a report that
@@ -33,6 +35,13 @@ stayed silent about it would read as a clause that passed.
 repository's history, so an empty result is the default state of the world and not evidence of
 anything. Every clause below is met only by a positive count, and `test_nothing_passes_by_finding_
 nothing` walks every clause over an empty log to keep it that way.
+
+**A log written before commands recorded who issued them is coped with, out loud.** Eleven are on
+disk under `data/swarms/`, one of them the demonstration's own, and in every one `subject` holds a
+second copy of `actor`. Clause 2 says in its own output that the taking's issuer is not being
+checked; `unattended` is NOT MET, because the absence of a hand cannot be read off a record that
+never recorded the presence of one. Neither is passed over in silence — a check that was not made
+and a check that passed look identical in a report that stays quiet about the difference.
 
 Testing it needs no swarm: `fixtures.py` writes the records a run would leave, and
 `test_checker.py` exercises every clause both ways. See that file for the command.
@@ -57,6 +66,25 @@ RECORDED = "swarm.agent.AssignmentRecorded"
 TAKEN = "swarm.agent.AssignmentTaken"
 STARTED = "swarm.manager.SwarmStarted"
 
+# The issuer vocabulary — `ess_runtime::Issuer`, as it reaches the log's `subject` column since
+# `story:an-event-cannot-say-which-agent-acted` closed on 2026-09-13. Four values and no others:
+# the runtime issuing to itself, a hand at the HTTP surface that named nobody, one named agent
+# instance, and an agent whose name the envelope's identity column cannot hold.
+#
+# The last two are PREFIXES: `agent:` carries the slug, and `agent:?` carries a digest of a claim
+# the column could not hold verbatim — one digest per name, so two such members are two records.
+# `test_checker.TheIssuerVocabulary` derives these four off `Issuer::label` rather than trusting
+# this comment.
+#
+# `UNNAMEABLE_AGENT` is NOT how a mark is told from a slug, and reading it that way is what made a
+# member called `?worker` fail clause 2. `agent_named_by` asks the log instead: a slug it spawned
+# is an agent whatever it starts with. The prefix is a thing a reader may see, not a thing it
+# decides by.
+RUNTIME = "runtime"
+OPERATOR = "operator"
+AGENT = "agent:"
+UNNAMEABLE_AGENT = "agent:?"
+
 # What `swarm.agent.FinishAssignment` emits, and what `swarm.agent.ReportGate`'s `green` outcome
 # emits. The command names are accepted too, for a log that ever records one.
 FINISHED = (
@@ -64,6 +92,12 @@ FINISHED = (
     "swarm.agent.GateGreen",
     "swarm.agent.FinishAssignment",
 )
+
+# What `swarm.goal.Evaluate` emits: the swarm's verdict on its goal, either way. The LAST of these
+# closes the unattended window — see `unattended`. `GoalNotReached` is in here because it is a
+# verdict the loop records every turn it is not done, and closing at the FIRST one would end the
+# window before the run did.
+VERDICT = ("swarm.goal.GoalReached", "swarm.goal.GoalNotReached")
 
 # A decision word that means the call did not happen. `tool.decided` carries either
 # `{"decision": {"decision": "deny", ...}}` or a bare string, depending on the adapter.
@@ -104,10 +138,12 @@ TITLES = {
 class Clause:
     """One acceptance clause, and the evidence for the answer.
 
-    `determinable` is False for a condition the records cannot settle either way. Such a thing is
-    never `met` — an answer nobody can check is not a clause that passed — but it is not a failed
-    clause either, so it does not decide the exit status. Today the unattended condition is the
-    only one, for the reason its own `found` gives.
+    There is no third state, and the absence of one is the design. A `determinable` flag lived
+    here until 2026-09-13 so that the unattended condition could say "I cannot tell" — which was
+    true while `store.rs` wrote one string into `subject` and `actor` both, and stopped being true
+    when `story:an-event-cannot-say-which-agent-acted` closed. Nothing sets such a flag now, and a
+    field nothing sets is an invitation to go back to skipping a clause that is inconvenient. A
+    clause the records cannot settle is NOT MET, and its `found` says why.
     """
 
     number: int
@@ -115,16 +151,67 @@ class Clause:
     met: bool
     looked_for: str
     found: str
-    determinable: bool = True
 
 
 @dataclass
 class Event:
     seq: int
     name: str
+    #: The specification's actor TYPE, which is what `apply.rs`'s `permitted` matched.
     actor: str
+    #: The `subject` column: who ISSUED the command, or — on a log written before 2026-09-13 — a
+    #: second copy of `actor`, because `store.rs:192-193` wrote one string into both. Read it with
+    #: `issued_by`, never directly.
+    issuer: str
     at: str
     data: dict
+
+
+def issued_by(event: Event):
+    """What the record says issued this command, or `None` when it does not say.
+
+    `None` is not "nobody": it is a row written before commands recorded who issued them, and it
+    is what every event in the eleven logs already under `data/swarms/` answers. The way to cope
+    with one of those is to ask, be told nothing, and report that — never to read the actor type
+    sitting in that column as though it were an agent called `swarm.agent.Worker`.
+    """
+    said = event.issuer
+    if said in (RUNTIME, OPERATOR) or said.startswith(AGENT):
+        return said
+    return None
+
+
+def agent_named_by(issuer, spawned):
+    """The agent instance an issuer names, when the LOG says there is such an agent.
+
+    `spawned` is `Records.spawned` — `swarm.agent.AgentSpawned`, and nothing else. This file has
+    said since 2026-09-13 that "an agent is what an `AgentSpawned` says it is, and nothing else
+    says it", and the issuer column was the last place not obeying it. Correction round 2 closed
+    two findings with the one rule, and they pull in opposite directions, which is why one rule
+    that answers both is worth more than two that each answer one:
+
+    * **J2.** `agent:<anything>` was an agent, so a hand that added one field to its request —
+      `{"agent": "ghost"}` — was not a hand. The condition the whole story exists to make
+      checkable was defeated by a string. A name the log never spawned is a claim with nothing
+      behind it, and it names nobody.
+    * **F4.** `agent:?…` was read as a DIGEST whatever followed it, so a member whose slug begins
+      with `?` — nameable, recorded verbatim, spawned like any other — had its own taking read as
+      an unreadable mark. Measured cost: clause 2 NOT MET and the demonstration exiting 1, not the
+      "one wrong attribution" the code that accepted the collision estimated.
+
+    Both answers fall out of asking the log. A slug it spawned is that agent whatever it starts
+    with; a string it did not spawn is not an agent, whether it is a mark or an invention. The
+    prefix stops being load-bearing, which is what makes the residual `agent:?` collision harmless
+    rather than narrow.
+
+    Note this is NOT authentication, which the story excludes: nothing here proves the claim came
+    from that agent. It checks a claim against the log's own rows, which is the difference between
+    a record that can be read and one that can be written by anybody about anybody.
+    """
+    if not isinstance(issuer, str) or not issuer.startswith(AGENT):
+        return None
+    said = issuer[len(AGENT):]
+    return said if said in spawned else None
 
 
 @dataclass
@@ -153,12 +240,15 @@ class Report:
         """The seven clauses, and nothing else.
 
         The unattended condition used to be folded in here, and that was wrong in the one
-        direction that matters: it could not fail. `store.rs:192` writes `actor.unwrap_or("system")`
-        and `http.rs:38` makes the actor optional, so an operator driving a swarm by hand through
-        the HTTP surface is recorded exactly as the loop is. `dsfsdf` — the swarm the story names
-        as hand-driven — passed it with 26 operator commands inside its window. A condition that
-        cannot fail is not evidence, and a condition that cannot fail deciding an exit status is
-        worse than not checking it, so it no longer does. See `unattended()`.
+        direction that matters: it could not fail. `store.rs:192` wrote `actor.unwrap_or("system")`
+        and `http.rs:38` made the actor optional, so an operator driving a swarm by hand through
+        the HTTP surface was recorded exactly as the loop was. `dsfsdf` — the swarm the story names
+        as hand-driven — passed it with 26 operator commands inside its window.
+
+        It can fail now, and pass: the issuer is on the envelope since 2026-09-13. It still does
+        not decide this, because the seven are the demonstration story's acceptance and the
+        unattended condition is a condition reported beside them, not an eighth clause. Whose
+        question it answers did not change when the record learned to answer it.
         """
         return all(clause.met for clause in self.clauses)
 
@@ -252,12 +342,12 @@ def read_events(log: Path) -> list:
         db = sqlite3.connect(str(log))
     with db:
         rows = db.execute(
-            "select global_seq, event_name, actor, occurred_at, data "
+            "select global_seq, event_name, actor, subject, occurred_at, data "
             "from swarm_events order by global_seq"
         ).fetchall()
     db.close()
     events = []
-    for seq, name, actor, at, data in rows:
+    for seq, name, actor, issuer, at, data in rows:
         try:
             payload = json.loads(data)
         except (TypeError, ValueError):
@@ -267,6 +357,7 @@ def read_events(log: Path) -> list:
                 seq=seq,
                 name=name,
                 actor=actor or "",
+                issuer=issuer or "",
                 at=at or "",
                 data=payload if isinstance(payload, dict) else {},
             )
@@ -408,16 +499,57 @@ def handovers(records: Records):
     return out
 
 
+def who_took_it(handover: Handover, records: Records):
+    """Whether the taking was issued by something entitled to take that work, and why.
+
+    The clause used to say in its own `looked_for` that it "cannot establish who issued the
+    command", and that was true: `permitted` matched the actor against the specification's actor
+    TYPES, so the member's own take and a `curl` issuing one in its name were the same record.
+    `story:an-event-cannot-say-which-agent-acted` put the issuer on the envelope beside the actor
+    type, and this is what reads it.
+
+    Four answers, and the middle two are the ones the story was filed about:
+
+    * the **member itself** — `agent:<the agent that took it>`;
+    * the **runtime** — which is what a real run leaves, because `trigger.rs` issues
+      `TakeAssignment` on the member's behalf and the member never does;
+    * an **operator** — a hand at `POST /swarms/{slug}/commands/...` that named nobody;
+    * **another agent** — the coordinator taking a member's work in its name.
+
+    A log written before 2026-09-13 answers none of them, and the answer to that is to say so.
+    """
+    issuer = issued_by(handover.take)
+    if issuer is None:
+        return True, "and this log does not say what issued that taking"
+    if issuer == OPERATOR:
+        return False, f"and an `{OPERATOR}` issued that taking — a hand, not the member"
+    if issuer == RUNTIME:
+        return True, f"and the `{RUNTIME}` issued that taking, on the member's behalf"
+    named = agent_named_by(issuer, records.spawned)
+    if named == handover.agent:
+        return True, f"and `{handover.agent}` issued that taking itself"
+    if named is None:
+        return False, (
+            f"and the taking was issued by `{issuer}`, which this log spawned no agent for — a "
+            "mark for a name the envelope cannot hold, or a claim with nothing behind it. Either "
+            "way it cannot be shown to be the member"
+        )
+    return False, (
+        f"and `{named}` issued that taking, not `{handover.agent}` — one agent taking another's "
+        "work in its name is exactly what this clause could not see before"
+    )
+
+
 def clause_two(records: Records) -> Clause:
     looked = (
-        f"a `{POSTED}` naming a non-Coordinator agent, and a later `{TAKEN}` whose `agent_id` "
-        "is that same agent. This establishes that the RECORD SAYS that agent took it; it "
-        "cannot establish who issued the command, because no actor in this log names a "
-        "person or an agent — see the unattended note"
+        f"a `{POSTED}` naming a non-Coordinator agent, a later `{TAKEN}` whose `agent_id` is that "
+        "same agent, and a record of WHO ISSUED that taking that is not an operator's hand and "
+        "not some other agent acting in its name"
     )
     posts = records.named(POSTED)
     takes = records.named(TAKEN)
     pairs = handovers(records)
+    met = bool(pairs)
     if records.log_error:
         found = records.log_error
     else:
@@ -436,20 +568,56 @@ def clause_two(records: Records) -> Clause:
             ),
         ]
         if pairs:
-            # The LAST handover, not the first: `[0]` was the oldest post crossed with the
+            # The LAST handover is the one REPORTED: `[0]` was the oldest post crossed with the
             # oldest later take, so a post-fault-repost-take sequence cited the posting that
             # was abandoned and sent a re-run to the wrong seq.
-            parts.append(pairs[-1].describe())
+            #
+            # But EVERY handover's taking is read, which is a different thing and was got wrong
+            # once. Reading only the reported one let a `curl` forge a taking and the real one
+            # land after it: the clause stayed met and the forgery was never printed, so a reader
+            # of the report would not learn a hand had been on the work. Correction round 1,
+            # finding 6.
+            issued, why = who_took_it(pairs[-1], records)
+            parts.append(pairs[-1].describe() + ", " + why)
             if len(pairs) > 1:
                 parts.append(
                     f"{len(pairs)} handover(s) in all; this is the one in flight last"
                 )
+            forged = [
+                (handover, reason)
+                for handover in pairs[:-1]
+                for ok, reason in [who_took_it(handover, records)]
+                if not ok
+            ]
+            met = met and issued and not forged
+            for handover, reason in forged:
+                parts.append(
+                    f"an EARLIER handover is not clean: taken at seq {handover.take.seq}, {reason}"
+                )
+            if any(issued_by(handover.take) is None for handover in pairs):
+                parts.append(coping(records))
         elif posts and takes:
             parts.append(
                 "no posting is answered by a later taking from the same non-Coordinator agent"
             )
         found = "; ".join(parts)
-    return Clause(2, TITLES[2], bool(pairs), looked, found)
+    return Clause(2, TITLES[2], met, looked, found)
+
+
+def coping(records: Records) -> str:
+    """What a reader is told when it meets a log written before issuers existed.
+
+    Said out loud rather than passed over. A check that was not made and a check that passed look
+    identical in a report that stays quiet about the difference, and eleven such logs are on disk
+    — one of them the demonstration's own, exported to `examples/two-agents/evidence/`.
+    """
+    silent = sum(1 for event in records.events if issued_by(event) is None)
+    return (
+        f"{silent} of {len(records.events)} event(s) in this log name no issuer at all, so it was "
+        "written before commands recorded who issued them (`store.rs` wrote the actor into both "
+        "`subject` and `actor`) — this part is not checked here, and is reported rather than "
+        "passed over"
+    )
 
 
 def agent_of(turn: Turn, records: Records):
@@ -894,57 +1062,145 @@ def clause_seven(records: Records) -> Clause:
 
 
 def unattended(records: Records) -> Clause:
-    """The story's unattended condition — **undeterminable from this runtime's log**.
+    """The story's unattended condition: no operator input between the swarm starting and its last
+    event.
 
-    "No operator input between the swarm starting and a verdict being recorded" is a fact about
-    whose hands were on the swarm, and this log does not record that. `store.rs:192` writes
-    `actor.unwrap_or("system")` and `http.rs:38` makes `actor` an optional field of the command
-    request body, so an operator who pauses a swarm through the HTTP surface leaves an event
-    indistinguishable from one the loop wrote.
+    It has been wrong twice, in opposite directions, and both are why it reads the way it does.
 
-    Measured rather than argued: `data/swarms/dsfsdf` is the swarm the story itself names as
-    hand-driven, and inside its window it carries 8 `SwarmPaused`, 4 `SwarmResumed`, 7
-    `SwarmStopped` and 6 further `SwarmStarted`, **every one of them actor `system`**. An earlier
-    revision of this function read that as unattended and let it decide the exit status.
+    **It could not fail.** The first version read a window of machine actors as unattended.
+    `store.rs:192` wrote `actor.unwrap_or("system")` and `http.rs:38` made the actor optional, so
+    an operator pausing a swarm through the HTTP surface left an event indistinguishable from the
+    loop's own. Measured: `data/swarms/dsfsdf`, the swarm the story itself names as hand-driven,
+    carries 8 `SwarmPaused`, 4 `SwarmResumed`, 7 `SwarmStopped` and 6 further `SwarmStarted`
+    inside its window, **every one of them actor `system`** — and it passed.
 
-    So the answer is not a better rule, it is an honest refusal: never met, never counted against
-    the seven, and the actors are reported as information rather than as a verdict. When
-    `story:an-event-cannot-say-which-agent-acted` closes, this becomes checkable and comes back.
+    **Then it could not pass.** The answer was to report UNDETERMINABLE and decide nothing, which
+    was honest while the record could not carry the fact, and became dishonest the moment it could:
+    `story:an-event-cannot-say-which-agent-acted` put the issuer on the envelope on 2026-09-13.
+
+    So the rule is POSITIVE EVIDENCE, and it can go both ways. Every event in the window names an
+    issuer, and none of those is an operator. Two things follow and both are deliberate:
+
+    * a log written before issuers existed is **not met**, whatever its actors look like. The
+      absence of a hand cannot be read off a record that never recorded the presence of one, and
+      reading it as unattended would be the first defect again, exactly;
+    * the `SwarmStarted` that OPENS the window does not count against it. A person starts a swarm
+      by construction, so counting it would make the condition unmeetable — the mirror of the
+      defect where it could not fail. The story's own word is "between the swarm starting and a
+      verdict being recorded";
+    * the window CLOSES at the last verdict, not at the last event in the log. The story says
+      "between the swarm starting and a verdict being recorded", and running to the end of the log
+      instead reads an operator's next command as a hand on the run that already finished.
+      `data/swarms/two-agents-proof` is that shape on disk — `GoalReached` at seq 23 and an
+      operator's `GoalSet` at seq 24 — so the next run like it would have answered NOT MET for a
+      run nobody touched while it ran. Correction round 2, finding F2;
+    * an issuer naming an agent the log never spawned is not evidence of no hands either. It is a
+      claim with nothing behind it, and a hand that writes one costs itself one field — see
+      `agent_named_by`. Correction round 2, finding J2;
+    * and a window holding NOTHING BUT that opener is not met. "Nothing passes by finding nothing"
+      is the rule this whole file is built on, and this is the one condition here that makes a
+      positive claim about whose hands were on a swarm — so it is the one place where finding
+      nothing is most tempting to read as an answer. A swarm started and then abandoned answers
+      "no operator input" only in the sense that there was no input at all; three of the eleven
+      logs under `data/swarms/` — `cost-check`, `demo`, `test` — are swarms stopped at exactly
+      that point. Correction round 1, finding 3.
+
+    It still does not decide the exit status. The demonstration story's acceptance is seven
+    clauses and this is not one of them.
     """
     looked = (
-        "whether anybody's hands were on this swarm between its start and its last event — which "
-        "this log cannot say: `store.rs:192` writes `actor.unwrap_or(\"system\")` and "
-        "`http.rs:38` makes the actor optional, so an operator's command and the loop's own are "
-        "recorded identically"
-    )
-    why = (
-        "UNDETERMINABLE, and reported as such rather than guessed: no actor in this log "
-        "distinguishes a person from the loop. This does not count for or against the seven"
+        "at least one event between the first `" + STARTED + "` and the last verdict other than "
+        "the `" + STARTED + "` itself, every event in that window naming who issued it, and every "
+        "one of those the runtime or an agent this log spawned — the command that STARTS a swarm "
+        "excepted, because a person issues that one by construction"
     )
     if records.log_error:
-        return Clause(0, "unattended", False, looked, f"{why}; {records.log_error}", False)
+        return Clause(0, "unattended", False, looked, records.log_error)
+
     starts = records.named(STARTED)
-    window = (
-        [event for event in records.events if event.seq >= starts[0].seq] if starts else []
-    )
     if not starts:
-        seen = f"no `{STARTED}` in {len(records.events)} event(s), so there is no window to read"
-    else:
-        # Operator-issued commands, if any were, are in here somewhere — this is what a reader
-        # gets instead of an answer: the actors, and the manager events a person usually causes.
-        by_hand = [
-            event
-            for event in window
-            if event.name.startswith("swarm.manager.")
-            and event.name != "swarm.manager.SwarmCreated"
-        ]
-        seen = (
-            f"{len(window)} event(s) from seq {starts[0].seq}, actors: "
-            + listed(sorted({event.actor for event in window}))
-            + f"; `swarm.manager.*` lifecycle events in that window: {len(by_hand)} — an "
-            "operator and the loop can each cause one and the record names neither"
+        return Clause(
+            0,
+            "unattended",
+            False,
+            looked,
+            f"no `{STARTED}` in {len(records.events)} event(s), so there is no window to read",
         )
-    return Clause(0, "unattended", False, looked, f"{why}. {seen}", False)
+
+    opener = starts[0]
+    # Closed at the LAST verdict the log records, and at the end of the log when it records none.
+    # A swarm that never reached a verdict has no "between" to read, and running to the end is
+    # what that degrades to rather than a second rule.
+    verdicts = [event for event in records.named(*VERDICT) if event.seq >= opener.seq]
+    closes = verdicts[-1].seq if verdicts else records.events[-1].seq
+    window = [
+        event for event in records.events if opener.seq <= event.seq <= closes
+    ]
+    silent = [event for event in window if issued_by(event) is None]
+    if silent:
+        # An actor type the specification calls `Operator` is the most an old log can say, and it
+        # is said as corroboration for a verdict the missing column already decided — never as the
+        # verdict itself, which is the mistake this whole docstring is about.
+        named_operators = sorted(
+            {event.actor for event in window if event.actor.rsplit(".", 1)[-1] == "Operator"}
+        )
+        corroboration = (
+            "; what it does show is " + listed(named_operators) + " in the `actor` column, an "
+            "actor type the specification declares a person"
+            if named_operators
+            else ""
+        )
+        return Clause(
+            0,
+            "unattended",
+            False,
+            looked,
+            f"{len(silent)} of {len(window)} event(s) in the window name no issuer at all: this "
+            "log was written before commands recorded who issued them, so the absence of a hand "
+            f"cannot be read off it{corroboration}",
+        )
+
+    after = [event for event in window if event.seq != opener.seq]
+    if not after:
+        return Clause(
+            0,
+            "unattended",
+            False,
+            looked,
+            f"the window holds one event, the `{STARTED}` at seq {opener.seq} that opens it and "
+            "that a person issues by construction. A swarm that was started and then did nothing "
+            "is not evidence that nobody touched it — there is nothing here either way",
+        )
+
+    spawned = records.spawned
+    hands = [
+        event
+        for event in after
+        if issued_by(event) != RUNTIME and agent_named_by(issued_by(event), spawned) is None
+    ]
+    if hands:
+        return Clause(
+            0,
+            "unattended",
+            False,
+            looked,
+            f"{len(hands)} of {len(window)} event(s) in the window were issued by neither the "
+            f"`{RUNTIME}` nor an agent this log spawned: "
+            + listed(
+                f"`{event.name}` at seq {event.seq} by `{issued_by(event)}`" for event in hands
+            ),
+        )
+    return Clause(
+        0,
+        "unattended",
+        True,
+        looked,
+        f"{len(window)} event(s) from seq {opener.seq} to seq {closes}"
+        + (f", the `{verdicts[-1].name}` that closes it" if verdicts else ", the end of the log")
+        + ", every one naming its issuer and every one of them the runtime or an agent this log "
+        "spawned; issuers: "
+        + listed(sorted({issued_by(event) for event in window})),
+    )
 
 
 def check(root) -> Report:
@@ -982,7 +1238,10 @@ def render(report: Report) -> str:
             lines.append(wrapped("wanted:", clause.looked_for))
         lines.append(wrapped("found: ", clause.found))
     lines.append("")
-    lines.append("unattended  UNDETERMINABLE  no operator input in the window")
+    lines.append(
+        f"unattended  {'met    ' if report.unattended.met else 'NOT MET'}  "
+        "no operator input in the window"
+    )
     lines.append(wrapped("wanted:", report.unattended.looked_for))
     lines.append(wrapped("found: ", report.unattended.found))
     lines.append("")
@@ -990,7 +1249,11 @@ def render(report: Report) -> str:
     summary = f"7 clauses: {7 - len(missed)} met, {len(missed)} not met"
     if missed:
         summary += " — " + ", ".join(f"clause {number}" for number in missed)
-    summary += "; the unattended condition is undeterminable and decides nothing"
+    summary += (
+        "; unattended "
+        + ("met" if report.unattended.met else "NOT MET")
+        + ", which is reported beside them and decides nothing"
+    )
     lines.append(summary)
     return "\n".join(lines)
 

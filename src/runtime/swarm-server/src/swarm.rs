@@ -36,7 +36,7 @@ use crate::budget::Reached;
 use crate::coordinator::Spent;
 use ess_runtime::apply::Emitted;
 use ess_runtime::{
-    Recorded, Spec, Store, World, apply, pump, route::Occurrence, route::Routed,
+    Issuer, Recorded, Spec, Store, World, apply, pump, route::Occurrence, route::Routed,
     route::needs_redelivery, route::tick, view,
 };
 
@@ -213,11 +213,16 @@ pub struct CappedRecord<'a> {
 pub struct Outgoing<'a> {
     /// `agent` or `agent/mailbox`. Ignored by a broadcast.
     pub to: &'a str,
+    /// Who the message SAYS it is from. A claim in the payload, like `TakeAssignment`'s
+    /// `agent_id`, and free to disagree with `issuer` — which is the point of having both.
     pub sender: &'a str,
     pub subject: &'a str,
     pub body: &'a str,
     /// The message this answers, when it answers one.
     pub reply_to: Option<&'a str>,
+    /// Who issued it. Mail is the second door that writes events, and an operator can reach it
+    /// exactly as an agent can, so it names its issuer for the same reason the command door does.
+    pub issuer: Issuer,
 }
 
 /// What posting produced.
@@ -759,13 +764,37 @@ impl Swarm {
         }
     }
 
+    /// Applies one command the runtime issued to itself.
+    ///
+    /// **Every in-process caller of this is the runtime**, and that is what the record now says:
+    /// the trigger, the turn machinery, `ensure_agent`, `reload`. A command from outside arrives
+    /// through a door, and a door calls [`Swarm::issue_as`] with what the caller said about
+    /// itself — the command door, and the mail door through [`Swarm::deliver`]. There is no third
+    /// way in.
+    pub async fn issue(
+        &self,
+        actor: Option<&str>,
+        command: &str,
+        input: Map<String, Json>,
+        request: &str,
+    ) -> Result<Issued, Refused> {
+        self.issue_as(&Issuer::Runtime, actor, command, input, request)
+            .await
+    }
+
     /// Applies one command, appends what it produced, and runs the bindings it set off.
     ///
     /// The lock is held across the whole of it on purpose. Applying reads the world, deciding the
     /// outcome depends on what it read, and the append records that decision — a reader that got in
     /// between would see a world no command had produced.
-    pub async fn issue(
+    ///
+    /// `issuer` is who is issuing it; `actor` is which of the specification's actor types they are
+    /// claiming to act as. Both go in the record and neither replaces the other: the actor type is
+    /// what `permitted` checks, and it cannot tell two members of a swarm apart because it was
+    /// never asked to.
+    pub async fn issue_as(
         &self,
+        issuer: &Issuer,
         actor: Option<&str>,
         command: &str,
         input: Map<String, Json>,
@@ -784,7 +813,7 @@ impl Swarm {
         .map_err(|why| Refused::Command(why.to_string()))?;
 
         self.store
-            .commit(&done, actor, request)
+            .commit(&done, actor, issuer, request)
             .await
             .map_err(|why| Refused::Store(why.to_string()))?;
 
@@ -863,7 +892,12 @@ impl Swarm {
                 Ok(applied) => {
                     match self
                         .store
-                        .commit(applied, None, &self.delivery_key(request, &routed.binding))
+                        .commit(
+                            applied,
+                            None,
+                            &Issuer::Runtime,
+                            &self.delivery_key(request, &routed.binding),
+                        )
                         .await
                     {
                         Ok(()) => {
@@ -1040,7 +1074,11 @@ impl Swarm {
                 // The command applied and the log would not take it. Keeping the delivery is the
                 // only answer that does not lose the write, and the world is left untouched so that
                 // what is in memory still matches what is on disk.
-                if let Err(why) = self.store.commit(&applied, None, &delivery.request).await {
+                if let Err(why) = self
+                    .store
+                    .commit(&applied, None, &Issuer::Runtime, &delivery.request)
+                    .await
+                {
                     self.defer_or_give_up(&mut delivery, why.to_string(), now, &mut keep);
                     continue;
                 }
@@ -1146,7 +1184,7 @@ impl Swarm {
         match &turned.result {
             Ok(applied) => {
                 self.store
-                    .commit(applied, None, &request)
+                    .commit(applied, None, &Issuer::Runtime, &request)
                     .await
                     .map_err(|why| Refused::Store(why.to_string()))?;
                 self.announce(What::Ticked {
@@ -1395,10 +1433,21 @@ impl Swarm {
             input.insert("broadcast_id".into(), Json::String(broadcast));
         }
 
+        // Which of the mailbox domain's TWO actors this is. `swarm.mailbox.SwarmAgent` may open,
+        // post, read and ack; `swarm.mailbox.Operator` `may: PostMessage` and nothing else,
+        // because "a person may write to a running swarm" and "an ack the recipient did not
+        // perform is the one lie this domain exists to prevent" (`src/core/domains/mailbox.yaml`).
+        // A hand at this door is the second, and saying otherwise would put a claim to membership
+        // in the actor column of every message a person ever sent.
+        let actor = match mail.issuer {
+            Issuer::Operator => "swarm.mailbox.Operator",
+            _ => "swarm.mailbox.SwarmAgent",
+        };
         let request = format!("mail:{}", mint());
         let issued = self
-            .issue(
-                Some("swarm.mailbox.SwarmAgent"),
+            .issue_as(
+                &mail.issuer,
+                Some(actor),
                 "swarm.mailbox.PostMessage",
                 input,
                 &request,

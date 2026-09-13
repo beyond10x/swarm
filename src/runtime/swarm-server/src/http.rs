@@ -24,6 +24,8 @@ use serde_json::{Map, Value};
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
 
+use ess_runtime::Issuer;
+
 use crate::state::{Removal, Removed, Server};
 use crate::swarm::{Outgoing, Refused};
 
@@ -33,9 +35,27 @@ pub struct Issue {
     /// The command's input, as the specification declares it.
     #[serde(default)]
     pub input: Map<String, Value>,
-    /// Who is issuing it. `None` means the system itself, which skips the actor check.
+    /// Which of the specification's ACTOR TYPES the caller is acting as. `None` skips the actor
+    /// check, which is `apply.rs`'s own behaviour for a command issued with no actor.
+    ///
+    /// This is not who the caller is, and reading it as such is the defect
+    /// `story:an-event-cannot-say-which-agent-acted` was filed for: `permitted` matches this
+    /// string against declared actor types, so every member of a swarm sends the same word. Who
+    /// the caller is, is [`Issue::agent`].
     #[serde(default)]
     pub actor: Option<String>,
+    /// Which agent INSTANCE is issuing it, if one is.
+    ///
+    /// Absent means nobody said, and nobody said is recorded as `operator` — because this is the
+    /// outside of the runtime, and the runtime does not reach itself through a socket. That is
+    /// what makes "no operator touched this swarm" a claim a reader can check rather than guess:
+    /// before it, an operator's `curl` and the loop's own command were both the word `system`.
+    ///
+    /// It is a CLAIM and nothing checks it. Authentication is a different problem, deliberately
+    /// out of this story's scope, and it is worth nothing without this one — a credential proves
+    /// who sent a request to a record that has nowhere to put the answer.
+    #[serde(default)]
+    pub agent: Option<String>,
     /// The key this request commits under. It guards the APPEND, and it does not make re-issuing
     /// the command harmless.
     ///
@@ -234,7 +254,13 @@ async fn issue_command(
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
     let issued = swarm
-        .issue(body.actor.as_deref(), &command, body.input, &request)
+        .issue_as(
+            &Issuer::claimed(body.agent.as_deref()),
+            body.actor.as_deref(),
+            &command,
+            body.input,
+            &request,
+        )
         .await?;
     Ok(axum::Json(issued))
 }
@@ -301,11 +327,20 @@ pub struct Mail {
     /// `agent` or `agent/mailbox`. Absent means broadcast.
     #[serde(default)]
     pub to: Option<String>,
+    /// Who the message says it is from. A claim in the payload; see [`Mail::agent`].
     pub sender: String,
     pub subject: String,
     pub body: String,
     #[serde(default)]
     pub reply_to: Option<String>,
+    /// Which agent instance is posting it, if one is. Absent is an operator, exactly as at the
+    /// command door — mail is the other route that writes events, and a hand on it is a hand.
+    ///
+    /// Separate from `sender` on purpose: `sender` is what the message says about itself and is
+    /// what its recipient reads, and the two are allowed to disagree. A record in which they
+    /// cannot disagree cannot report that they did.
+    #[serde(default)]
+    pub agent: Option<String>,
 }
 
 /// Posts a message, to one mailbox or to every open one.
@@ -324,6 +359,7 @@ async fn send_mail(
         subject: &body.subject,
         body: &body.body,
         reply_to: body.reply_to.as_deref(),
+        issuer: Issuer::claimed(body.agent.as_deref()),
     };
     let posted = match body.to.as_deref() {
         Some(_) => swarm.post(mail).await?,

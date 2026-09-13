@@ -63,17 +63,23 @@ class Adversarial(unittest.TestCase):
 
 
 class TheUnattendedConditionAgainstARealLog(Adversarial):
-    """The condition that decides the exit status, against the actors a real log carries.
+    """The condition against the actors a real log carries.
 
-    `src/runtime/ess-runtime/src/store.rs:192` writes `actor.unwrap_or("system")`, and
-    `src/runtime/swarm-server/src/http.rs:38` makes `actor` an OPTIONAL field of the command
-    request body. So an operator who pauses, resumes or stops a swarm through the HTTP surface
-    leaves events whose actor is `system` — which `check-two-agents.py:712` counts as a machine.
+    The finding this case was written for: `store.rs:192` wrote `actor.unwrap_or("system")` and
+    `http.rs:38` made `actor` an OPTIONAL field of the command request body, so an operator who
+    paused, resumed or stopped a swarm through the HTTP surface left events whose actor was
+    `system` — which the checker counted as a machine, and let decide the exit status.
 
     Measured on `data/swarms/dsfsdf/eventlog.sqlite3`, the swarm the story itself names as the
     one the operator hand-drove: inside the window from the first `SwarmStarted` there are 8
     `swarm.manager.SwarmPaused`, 4 `swarm.manager.SwarmResumed`, 7 `swarm.manager.SwarmStopped`
     and 6 further `SwarmStarted`, every one of them actor `system`.
+
+    `story:an-event-cannot-say-which-agent-acted` closed on 2026-09-13, and the issuer is on the
+    envelope now — but this case's log is written the OLD way on purpose, because `dsfsdf` and ten
+    other logs are still on disk exactly like it. What holds it to the right answer is no longer a
+    reading of its actors: it is that a record which never recorded a hand cannot be read as
+    showing the absence of one. The same case, the same verdict, a reason that cannot rot.
     """
 
     def test_an_operator_pausing_and_resuming_by_hand_is_not_unattended(self) -> None:
