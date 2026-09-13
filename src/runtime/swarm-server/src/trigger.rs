@@ -128,7 +128,10 @@ pub async fn run(server: Arc<Server>) {
 /// Each turn runs as its own task. A coordinator that thinks for three minutes must not hold the
 /// trigger for three minutes, and `overlap: serial_per_instance` is kept by the claim on the goal
 /// rather than by running everything in one line.
-async fn ask_the_coordinator(server: &Arc<Server>, swarm: &Arc<Swarm>) {
+pub async fn ask_the_coordinator(server: &Arc<Server>, swarm: &Arc<Swarm>) {
+    if !swarm.control.running() {
+        return;
+    }
     // The coordinator is a record before it is a process, so it can be addressed, drawn and
     // written to. Idempotent; a swarm made before this existed gets one here.
     if let Err(why) = swarm
@@ -146,6 +149,12 @@ async fn ask_the_coordinator(server: &Arc<Server>, swarm: &Arc<Swarm>) {
             continue;
         };
         let unit = Unit::goal(id);
+        let Some(claim) = swarm
+            .control
+            .admit(format!("{}:{}", unit.kind(), unit.id()))
+        else {
+            continue;
+        };
         if !server.claim(swarm.slug(), &unit) {
             continue;
         }
@@ -190,10 +199,10 @@ async fn ask_the_coordinator(server: &Arc<Server>, swarm: &Arc<Swarm>) {
         let server = Arc::clone(server);
         let swarm = Arc::clone(swarm);
         let id = id.to_owned();
-        tokio::spawn(async move {
+        tokio::spawn(claim.scope(async move {
             one_turn(&swarm, COORDINATOR, &id, &goal, iterations).await;
             server.release(swarm.slug(), &unit);
-        });
+        }));
     }
 }
 
@@ -210,6 +219,9 @@ async fn ask_the_coordinator(server: &Arc<Server>, swarm: &Arc<Swarm>) {
 /// The coordinator's own slug is skipped. It has a loop already — the goal — and a coordinator that
 /// posted itself an assignment would be run twice a period, once at each.
 pub async fn work_the_assignments(server: &Arc<Server>, swarm: &Arc<Swarm>) {
+    if !swarm.control.running() {
+        return;
+    }
     let open = match swarm.view(OPEN_ASSIGNMENTS).await {
         Ok(rows) => rows,
         Err(why) => {
@@ -229,6 +241,12 @@ pub async fn work_the_assignments(server: &Arc<Server>, swarm: &Arc<Swarm>) {
             continue;
         }
         let unit = Unit::assignment(&assignment.assignment_id);
+        let Some(claim) = swarm
+            .control
+            .admit(format!("{}:{}", unit.kind(), unit.id()))
+        else {
+            continue;
+        };
         if !server.claim(swarm.slug(), &unit) {
             continue;
         }
@@ -254,10 +272,10 @@ pub async fn work_the_assignments(server: &Arc<Server>, swarm: &Arc<Swarm>) {
 
         let server = Arc::clone(server);
         let swarm = Arc::clone(swarm);
-        tokio::spawn(async move {
+        tokio::spawn(claim.scope(async move {
             one_assignment(&swarm, &assignment, attempts + 1).await;
             server.release(swarm.slug(), &unit);
-        });
+        }));
     }
 }
 
@@ -307,7 +325,9 @@ async fn one_assignment(swarm: &Arc<Swarm>, assignment: &coordinator::Assignment
             tracing::warn!(swarm = %swarm.slug(), agent = %assignment.agent_id,
                            assignment = %assignment.assignment_id, error = %why,
                            "a member's turn could not be finished");
-            if let Some(spent) = why.spent() {
+            if !matches!(why, coordinator::Unfinished::Unreportable { .. })
+                && let Some(spent) = why.spent()
+            {
                 swarm.record_spend(
                     &assignment.agent_id,
                     &assignment.assignment_id,
@@ -435,7 +455,9 @@ async fn one_turn(swarm: &Arc<Swarm>, actor: &str, id: &str, goal: &str, iterati
             // A turn that failed still ran and still cost money. Recording it is what makes the
             // caps able to see a coordinator that never answers; without this, the goal stays at
             // the same turn number for ever and both caps read zero while the money goes out.
-            if let Some(spent) = why.spent() {
+            if !matches!(why, coordinator::Unfinished::Unreportable { .. })
+                && let Some(spent) = why.spent()
+            {
                 swarm.record_spend(actor, id, iterations, spent, None, Some(&why.to_string()));
             }
             swarm.announce(What::Turn {

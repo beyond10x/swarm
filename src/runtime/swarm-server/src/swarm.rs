@@ -313,6 +313,8 @@ pub enum Refused {
     Store(String),
     /// No such view.
     View(String),
+    /// The domain may have committed, but process-host cleanup failed.
+    Host(String),
 }
 
 impl std::error::Error for Refused {}
@@ -326,9 +328,11 @@ impl From<ess_runtime::LoadError> for Refused {
 impl std::fmt::Display for Refused {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Command(why) | Self::Routing(why) | Self::Store(why) | Self::View(why) => {
-                f.write_str(why)
-            }
+            Self::Command(why)
+            | Self::Routing(why)
+            | Self::Store(why)
+            | Self::View(why)
+            | Self::Host(why) => f.write_str(why),
         }
     }
 }
@@ -392,6 +396,7 @@ pub struct Delivery {
 
 /// One swarm, running.
 pub struct Swarm {
+    pub(crate) control: Arc<crate::control::Control>,
     spec: Arc<Spec>,
     store: Store,
     world: Mutex<World>,
@@ -429,6 +434,11 @@ impl Swarm {
         Ok(Self {
             spec,
             store,
+            control: crate::control::Control::new(
+                world
+                    .values()
+                    .any(|i| i.entity == "swarm.manager.Swarm" && i.state == "Running"),
+            ),
             world: Mutex::new(world),
             changes,
             slug: slug.to_owned(),
@@ -800,9 +810,25 @@ impl Swarm {
         input: Map<String, Json>,
         request: &str,
     ) -> Result<Issued, Refused> {
+        #[cfg(test)]
+        if crate::control::Control::in_turn()
+            && matches!(
+                command,
+                "swarm.goal.Evaluate" | "swarm.agent.FinishAssignment"
+            )
+        {
+            self.control.before_result().await;
+        }
+        let lifecycle = command.starts_with("swarm.manager.");
+        let _lifecycle = if lifecycle {
+            Some(self.control.lifecycle.lock().await)
+        } else {
+            None
+        };
         let mut world = self.world.lock().await;
+        self.control.check().map_err(Refused::Command)?;
 
-        let done = apply(
+        let mut done = apply(
             self.spec.ir(),
             &world,
             actor,
@@ -812,6 +838,26 @@ impl Swarm {
         )
         .map_err(|why| Refused::Command(why.to_string()))?;
 
+        if lifecycle
+            && matches!(done.outcome.as_str(), "started" | "resumed")
+            && !self.control.running()
+        {
+            // Only a valid opening transition retries cleanup. Wrong-state stays the domain's
+            // answer even while an earlier cancellation is waiting for a cleanup retry.
+            drop(world);
+            self.control.quiesce().await.map_err(Refused::Host)?;
+            world = self.world.lock().await;
+            done = apply(
+                self.spec.ir(),
+                &world,
+                actor,
+                command,
+                &input,
+                Some(&mint()),
+            )
+            .map_err(|why| Refused::Command(why.to_string()))?;
+        }
+        let opening = matches!(done.outcome.as_str(), "started" | "resumed") && lifecycle;
         self.store
             .commit(&done, actor, issuer, request)
             .await
@@ -821,6 +867,14 @@ impl Swarm {
             world.insert((instance.entity.clone(), instance.id.clone()), instance);
         }
 
+        let closing =
+            lifecycle && matches!(done.outcome.as_str(), "paused" | "stopped" | "deleted");
+        if closing {
+            self.control.close();
+        }
+        if opening {
+            self.control.open();
+        }
         let mut appended: Vec<Record> = done.events.iter().map(Record::from).collect();
         self.announce(What::Applied {
             command: command.to_owned(),
@@ -844,6 +898,10 @@ impl Swarm {
 
         appended.extend(self.commit_caused(&caused, request).await?);
 
+        drop(world);
+        if closing {
+            self.control.quiesce().await.map_err(Refused::Host)?;
+        }
         Ok(Issued {
             outcome: done.outcome,
             error: done.error,
@@ -1162,6 +1220,9 @@ impl Swarm {
     /// does not turn its loop, and that is a quiet non-event rather than a refusal.
     pub async fn tick(&self, occurrence: Occurrence) -> Result<bool, Refused> {
         let mut world = self.world.lock().await;
+        if !self.control.running() {
+            return Ok(false);
+        }
         let goal = occurrence
             .context
             .get("goal_id")
