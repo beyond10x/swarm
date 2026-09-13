@@ -65,3 +65,85 @@ and the merge into `main` once the gate is green. Not a push, not a tag, not a r
 |---|---|---|
 | A | not started | — |
 | B | not started | — |
+
+---
+
+## The close
+
+**Status: closed 2026-09-13. Both units merged; the 11-step gate plus the checker's own lane are
+green on the integration branch, each step's own exit status read separately.**
+
+| step | exit | what it said |
+|---|---|---|
+| `cargo fmt --all --check` | 0 | — |
+| `cargo clippy --all-targets` | 0 | — |
+| `cargo test --no-fail-fast` | 0 | 27 result lines, **145 cases passed** |
+| `ess specify validate --path src/core` | 0 | `swarm v1 — 9 file(s), valid` |
+| `check-sets-are-emitted.py` | 0 | — |
+| `aep plan artifact validate` | 0 | valid |
+| `python3 -m unittest discover -s examples/two-agents` | 0 | **62 cases** |
+| `npm test` in `src/web` | 0 | `# tests 71 # pass 71 # fail 0` |
+| `npx vue-tsc --noEmit` · `npx vite build` | 0 · 0 | — |
+| `npm run build` in `website` | 0 | — |
+| `npm run spec:check` | 0 | README.md and AGENTS.md agree |
+
+Rust cases 108 → **145**. Web 71 → 71. Checker 0 → **62**.
+
+### What this wave produced
+
+**`swarm.agent.AssignmentTaken` fired**, for the first time in this repository's history. Across
+eleven swarm logs it had fired zero times, and the working half of `agent.yaml` had never executed.
+
+**Every turn is now framed.** `--decisions observe` — "allow every call and record every call" —
+appears nowhere, and a turn with no frame does not launch.
+
+### The ledger
+
+| unit | pass 1 | pass 2 | rounds | carried |
+|---|---|---|---|---|
+| A | 7 | 9 | 2 corrections + 1 instructed re-pin | 0 |
+| B | 7 | 5 | 2 corrections | 0 |
+
+Twenty-eight findings across four passes, zero carried. Four were not the units': two were defects in
+this coordinator's own story text, one was an artefact of the branch split, one was `src/web` that no
+unit owned.
+
+### What the attacks bought, beyond the fixes
+
+- **2,517 inputs through a hand-written SHA-256 against `sha2`, 0 mismatches.** Declining the
+  dependency was measured, not argued.
+- **Frame clause 3 moved from "partly met" to measured** — 17 subject probes through metaharness's
+  own `SubjectScope::verdict`, no paid run.
+- **A coordinator could widen its own sealed frame** with a config it drafts and activates itself,
+  while `config.yaml` claimed in the same commit that the worst a config can do is admit less. That
+  is the defect the whole story exists to deny, and it survived one full attack pass.
+- **The checker could not fail on the thing it existed to check.** Its unattended condition counted
+  bare actor `system` as a machine while the runtime writes `system` for every operator command, so
+  the swarm the story names as hand-driven reported unattended met — and that verdict decided the
+  exit status.
+
+### Three things this wave did not do, in writing
+
+1. **The demonstration has not been run.** Every clause is now *meetable*; none is *met*. Clause 5
+   and 7 became possible only with this merge.
+2. **This is not containment.** `--substrate`, `--write-scope` and `--cgroup-root` are `b10x` only
+   and metaharness refuses them for the claude arm. `AGENTS.md`'s rule stands unchanged.
+3. **One defect is pinned, not fixed.** metaharness judges a call by the first rule any subject
+   matches, so an outside path is admitted when the same call also names an admitted one. Refusing
+   that needs 14,848 glob patterns per swarm. Nothing found reaches it; two cases assert today's
+   behaviour with their inversion triggers.
+
+### Filed rather than folded in
+
+`story:an-event-cannot-say-which-agent-acted` — `apply.rs` permits actors by specification actor
+*type*, not instance, and `TakeAssignment`'s `agent_id` is caller-supplied, so an `AssignmentTaken`
+naming an agent is indistinguishable from anyone issuing it on that agent's behalf. Until it closes,
+a single-agent swarm can write a log a reader cannot tell from a two-agent one, and the
+demonstration's unattended condition is undeterminable.
+
+### Stage
+
+| unit | stage | branch head |
+|---|---|---|
+| A | **merged** at `88605fa` | `4ab977d` |
+| B | **merged** at `b86e3a1` | `4335170` |

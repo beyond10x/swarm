@@ -109,6 +109,10 @@ export type Change = { at: string } & (
     }
   | {
       kind: "turn";
+      /** Whose turn it is. Two members work at once, and without this a reader cannot tell
+       *  whose events are whose — the same defect `turn_file` had while a swarm had one agent. */
+      agent: string;
+      /** The unit of work — a goal id, or an assignment id. */
       goal: string;
       iterations: number;
       phase: "asking" | "answered" | "unfinished";
@@ -120,6 +124,9 @@ export type Change = { at: string } & (
     }
   | {
       kind: "agent";
+      /** Whose session this event is from. */
+      agent: string;
+      /** The unit of work — a goal id, or an assignment id. */
       goal: string;
       iterations: number;
       seq: number;
@@ -128,6 +135,12 @@ export type Change = { at: string } & (
     }
   | {
       kind: "capped";
+      /** Whose turn was refused. */
+      agent: string;
+      /** Which kind of unit `goal` identifies: `"goal"` or `"assignment"`. */
+      unit: string;
+      /** The unit of work — a goal id, or an assignment id. Still called `goal` because this
+       *  field has carried that name since before a swarm had more than one kind of unit. */
       goal: string;
       turns: number;
       spent_usd: number | null;
@@ -177,9 +190,14 @@ export interface Caps {
   max_spend_usd: number | null;
 }
 
-/** One goal the loop has stopped asking about. */
+/** One unit of work the loop has stopped asking about. */
 export interface CappedGoal {
   swarm: string;
+  /** Whose turn was refused. */
+  agent: string;
+  /** Which kind of unit `goal` identifies: `"goal"` or `"assignment"`. */
+  unit: string;
+  /** The unit of work — a goal id, or an assignment id. */
   goal: string;
   turns: number;
   spent_usd: number | null;
