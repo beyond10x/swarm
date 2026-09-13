@@ -14,10 +14,16 @@ scope:
 - confidence: cited
   path: src/web/src/components/canvas/uibox.inert.test.ts
 - confidence: cited
+  path: src/web/src/components/ui/escapes.guard.adversary.test.ts
+- confidence: cited
+  path: src/web/src/components/ui/escapes.guard.adversary2.test.ts
+- confidence: cited
+  path: src/web/src/components/ui/escapes.guard.ts
+- confidence: cited
   path: src/web/src/components/ui/index.test.ts
 - confidence: cited
   path: src/web/src/components/ui/index.ts
-revision: 3
+revision: 7
 ---
 ## What
 
@@ -58,9 +64,27 @@ between them is the first work in this story.
 
 ## Scope
 
-- **Files:** `src/web/src/components/ui/index.test.ts:157` (`ESCAPES`) — cited, quoted by the unit
-- **Files:** `src/web/src/components/canvas/uibox.inert.test.ts:53`, `:65` (the twin scans) — cited
-- **Files:** `src/web/src/components/ui/index.ts` (`uiRefused`, which these decide) — cited
-- **Also likely:** `src/web/package.json` and an eslint configuration — inferred, conditional on which of the two mechanisms is chosen
-- **Confidence:** high for the three cited files, which the unit read and reported line by line; the mechanism is undecided
-- **Would collide with:** any unit touching the `components/ui/` contract or the canvas inert rule
+Derived 2026-09-12 by `story-scoper`, **corrected 2026-09-13 from unit B's confirmation table** after
+the wave of 2026-09-12d implemented it. Corrections are shown, not deleted — the next wave selects on
+overlap by reading this section.
+
+- **Primary surface:** `src/web/src/components/ui/` — cited.
+- **`src/web/src/components/ui/escapes.guard.ts`** — **new file, 375 lines**, created by this wave.
+  The whole mechanism lives here. It was not in the original scope, because the original scope
+  assumed the fix would be a change to the existing scans.
+- **`src/web/src/components/ui/index.test.ts`** — cited, confirmed. **Line number was stale:**
+  `ESCAPES` is at `:171`, not `:157`; `:157` is prose.
+- **`src/web/src/components/canvas/uibox.inert.test.ts`** — cited, confirmed. **Both line numbers
+  were wrong:** the twin scans are at `:77` and `:90`, not `:53` and `:65`; `:53` is
+  `objectLiteral(` and `:65` is a closing brace.
+- **`src/web/src/components/ui/index.ts`** — cited, confirmed. `uiRefused` stays `['UiModal']`; what
+  changed is that a fail-closed check now decides it.
+- **`src/web/src/components/ui/escapes.guard.adversary.test.ts`** and
+  **`escapes.guard.adversary2.test.ts`** — new, the two adversary passes' cases.
+- **`src/web/package.json` plus an eslint configuration** — was `inferred`. **Wrong, and it would
+  have been wrong to add:** there is no eslint in this tree, the mechanism chosen needs none, and
+  `@vue/compiler-sfc` was already a declared devDependency. `package.json` is unchanged.
+- **Confidence:** high for the four cited files; the mechanism was undecided at scoping time and is
+  now decided.
+- **Would collide with:** any unit touching the `components/ui/` contract or the canvas inert rule.
+  Measured this wave: no collision with anything under `src/runtime/`.
