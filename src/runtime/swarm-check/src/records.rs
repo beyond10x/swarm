@@ -49,11 +49,9 @@ pub struct Turn {
 }
 impl Turn {
     pub fn name(&self) -> String {
-        self.path
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .into_owned()
+        crate::text::Text::scalar(&self.path.file_name().unwrap_or_default().to_string_lossy())
+            .encoded()
+            .to_owned()
     }
 }
 #[derive(Default, Debug)]
@@ -125,6 +123,19 @@ pub fn py(v: &Value) -> String {
 }
 
 pub fn read(root: &Path) -> Records {
+    let mut r = read_raw(root);
+    // Errors originate in filesystem/SQLite libraries rather than the evidence parser.
+    // Escape them once at this boundary, including all early returns from read_raw.
+    for error in [&mut r.log_error, &mut r.spend_error, &mut r.capped_error]
+        .into_iter()
+        .chain(r.turns.iter_mut().map(|turn| &mut turn.read_error))
+        .flatten()
+    {
+        *error = crate::text::Text::scalar(error).encoded().to_owned();
+    }
+    r
+}
+fn read_raw(root: &Path) -> Records {
     let mut r = Records {
         root: root.into(),
         ..Records::default()
@@ -200,14 +211,22 @@ fn read_events(path: &Path) -> rusqlite::Result<Vec<Event>> {
     stmt.query_map([], |row| {
         let raw: Option<String> = row.get(5)?;
         let data = raw
-            .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+            .and_then(|raw| Value::parse(&raw).ok())
             .filter(Value::is_object)
             .unwrap_or_else(|| Value::Object(vec![]));
         Ok(Event {
             seq: row.get(0)?,
-            name: row.get(1)?,
-            actor: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
-            issuer: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
+            name: crate::text::Text::scalar(&row.get::<_, String>(1)?)
+                .encoded()
+                .to_owned(),
+            actor: crate::text::Text::scalar(&row.get::<_, Option<String>>(2)?.unwrap_or_default())
+                .encoded()
+                .to_owned(),
+            issuer: crate::text::Text::scalar(
+                &row.get::<_, Option<String>>(3)?.unwrap_or_default(),
+            )
+            .encoded()
+            .to_owned(),
             data,
         })
     })?
@@ -237,7 +256,7 @@ pub fn read_jsonl(path: &Path) -> (Vec<Value>, Option<String>, bool) {
     };
     let rows: Vec<_> = String::from_utf8_lossy(&bytes)
         .lines()
-        .filter_map(|line| serde_json::from_str::<Value>(line.trim()).ok())
+        .filter_map(|line| Value::parse(line.trim()).ok())
         .filter(Value::is_object)
         .collect();
     let error = rows
@@ -258,7 +277,7 @@ fn read_turn(path: &Path) -> Turn {
     let field = |name| {
         caps.as_ref()
             .and_then(|c| c.name(name))
-            .map(|m| m.as_str().to_string())
+            .map(|m| crate::text::Text::scalar(m.as_str()).encoded().to_owned())
     };
     let (records, error, inaccessible) = read_jsonl(path);
     Turn {

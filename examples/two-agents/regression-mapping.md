@@ -92,3 +92,11 @@ The port's first adversary review added five unchanged parity cases in
 `adversary_port_parity.rs`. [Evidence value compatibility](value-semantics.md) enumerates the
 subsequent class correction, its 81 baseline report scenarios, and the invariant protecting
 ordinary runtime JSON serialization.
+
+The final review's five cases in `adversary_value_boundaries.rs` retain all behavioral assertions;
+formatting follows the package formatter.
+`unicode_parser.rs` adds 11 groups comparing 88 captured baseline JSON/text reports and exits,
+covering Unicode representation, permissive legacy values, strict malformed grammar, SQLite
+text boundaries and deep readable evidence. One parser unit test checks deeply incomplete inputs
+without recursive stack growth. The compatibility document above records their scope and the
+environment-dependent resource boundary that is not emulated.

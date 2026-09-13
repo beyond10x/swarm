@@ -1,5 +1,5 @@
 use clap::Parser;
-use std::{path::PathBuf, process::ExitCode};
+use std::{io::Write, path::PathBuf, process::ExitCode};
 #[derive(Parser)]
 #[command(
     about = "Report the seven acceptance clauses of story:a-recorded-run-shows-two-agents-working against a finished swarm's records."
@@ -24,13 +24,22 @@ fn main() -> ExitCode {
         }
     }
     let report = swarm_check::check(&root);
-    println!(
-        "{}",
-        if args.json {
-            serde_json::to_string_pretty(&report).expect("serializable report")
-        } else {
-            report.render()
+    let output = if args.json {
+        Ok(serde_json::to_vec_pretty(&report).expect("serializable report"))
+    } else {
+        report.render()
+    };
+    let mut output = match output {
+        Ok(output) => output,
+        Err(error) => {
+            eprintln!("{error}");
+            return ExitCode::from(1);
         }
-    );
+    };
+    output.push(b'\n');
+    if let Err(error) = std::io::stdout().lock().write_all(&output) {
+        eprintln!("{error}");
+        return ExitCode::from(1);
+    }
     ExitCode::from(u8::from(!report.ok))
 }

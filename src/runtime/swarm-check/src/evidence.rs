@@ -2,24 +2,24 @@
 //!
 //! Ordinary `serde_json::Value` remains unchanged: its map order participates in persisted
 //! runtime request hashes. This local value retains evidence member order and integer precision.
+use crate::text::Text;
 use num_bigint::BigInt;
-use serde::{
-    Deserialize, Deserializer,
-    de::{self, MapAccess, Visitor},
-};
+use regex::Regex;
+use serde::{Deserialize, Deserializer, de};
 use serde_json::value::RawValue;
-use std::{fmt, ops::Index};
+use std::ops::Index;
+use std::sync::LazyLock;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 pub enum Value {
     #[default]
     Null,
     Bool(bool),
     Integer(BigInt),
     Float(f64),
-    String(String),
+    String(Text),
     Array(Vec<Value>),
-    Object(Vec<(String, Value)>),
+    Object(Vec<(Text, Value)>),
 }
 impl<'de> Deserialize<'de> for Value {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
@@ -27,56 +27,13 @@ impl<'de> Deserialize<'de> for Value {
         Self::parse(raw.get()).map_err(de::Error::custom)
     }
 }
-struct ObjectVisitor;
-impl<'de> Visitor<'de> for ObjectVisitor {
-    type Value = Value;
-    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("an evidence object")
-    }
-    fn visit_map<M: MapAccess<'de>>(self, mut map: M) -> Result<Value, M::Error> {
-        let mut entries: Vec<(String, Value)> = vec![];
-        while let Some((key, value)) = map.next_entry::<String, Value>()? {
-            // Python keeps a duplicate key's original position and replaces its value.
-            if let Some((_, old)) = entries.iter_mut().find(|(k, _)| *k == key) {
-                *old = value;
-            } else {
-                entries.push((key, value));
-            }
-        }
-        Ok(Value::Object(entries))
-    }
-}
 impl Value {
-    fn parse(raw: &str) -> Result<Self, String> {
-        let raw = raw.trim();
-        match raw.as_bytes().first() {
-            Some(b'{') => {
-                let mut deserializer = serde_json::Deserializer::from_str(raw);
-                serde::Deserializer::deserialize_map(&mut deserializer, ObjectVisitor)
-                    .map_err(|e| e.to_string())
-            }
-            Some(b'[') => serde_json::from_str(raw)
-                .map(Self::Array)
-                .map_err(|e| e.to_string()),
-            Some(b'"') => serde_json::from_str(raw)
-                .map(Self::String)
-                .map_err(|e| e.to_string()),
-            Some(b't') => Ok(Self::Bool(true)),
-            Some(b'f') => Ok(Self::Bool(false)),
-            Some(b'n') => Ok(Self::Null),
-            _ if raw.contains(['.', 'e', 'E']) => raw
-                .parse()
-                .map(Self::Float)
-                .map_err(|e: std::num::ParseFloatError| e.to_string()),
-            _ => raw
-                .parse()
-                .map(Self::Integer)
-                .map_err(|e: num_bigint::ParseBigIntError| e.to_string()),
-        }
+    pub(crate) fn parse(raw: &str) -> Result<Self, String> {
+        crate::evidence_parser::parse(raw)
     }
     pub fn as_str(&self) -> Option<&str> {
         if let Self::String(s) = self {
-            Some(s)
+            Some(s.encoded())
         } else {
             None
         }
@@ -115,88 +72,139 @@ impl Value {
             Self::Bool(b) => *b,
             Self::Integer(i) => *i != BigInt::from(0),
             Self::Float(f) => *f != 0.0,
-            Self::String(s) => !s.is_empty(),
+            Self::String(s) => !s.encoded().is_empty(),
             Self::Array(a) => !a.is_empty(),
             Self::Object(o) => !o.is_empty(),
         }
     }
     pub fn python(&self) -> String {
         if let Self::String(s) = self {
-            s.clone()
+            s.encoded().to_owned()
         } else {
             self.repr()
         }
     }
     fn repr(&self) -> String {
-        match self {
-            Self::Null => "None".into(),
-            Self::Bool(true) => "True".into(),
-            Self::Bool(false) => "False".into(),
-            Self::Integer(i) => i.to_string(),
-            Self::Float(f) => python_float(*f),
-            Self::String(s) => python_quote(s),
-            Self::Array(a) => format!(
-                "[{}]",
-                a.iter().map(Self::repr).collect::<Vec<_>>().join(", ")
-            ),
-            Self::Object(o) => format!(
-                "{{{}}}",
-                o.iter()
-                    .map(|(k, v)| format!("{}: {}", python_quote(k), v.repr()))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ),
-        }
+        self.render_value(false)
     }
     /// Python's list conversion before `listed`: arrays yield values, objects yield keys,
     /// strings yield characters. Falsy values are replaced by an empty list at the call site.
     pub fn listed_items(&self) -> Vec<String> {
         match self {
             Self::Array(a) => a.iter().map(Self::python).collect(),
-            Self::Object(o) => o.iter().map(|(k, _)| k.clone()).collect(),
-            Self::String(s) => s.chars().map(|c| c.to_string()).collect(),
+            Self::Object(o) => o.iter().map(|(k, _)| k.encoded().to_owned()).collect(),
+            Self::String(s) => s.characters(),
             _ => vec![],
         }
     }
     /// The old ceiling reader searched `json.dumps(event.data)`, not a Python repr.
     pub fn json(&self) -> String {
-        match self {
-            Self::Null => "null".into(),
-            Self::Bool(b) => b.to_string(),
-            Self::Integer(i) => i.to_string(),
-            Self::Float(f) if f.is_infinite() => {
-                if f.is_sign_negative() {
-                    "-Infinity".into()
-                } else {
-                    "Infinity".into()
+        self.render_value(true)
+    }
+    fn render_value(&self, json: bool) -> String {
+        enum Piece<'a> {
+            Value(&'a Value),
+            Key(&'a Text),
+            Token(&'static str),
+        }
+        let mut pending = vec![Piece::Value(self)];
+        let mut out = String::new();
+        while let Some(piece) = pending.pop() {
+            let value = match piece {
+                Piece::Token(token) => {
+                    out.push_str(token);
+                    continue;
+                }
+                Piece::Key(key) => {
+                    out.push_str(&if json {
+                        json_quote(key)
+                    } else {
+                        python_quote(key)
+                    });
+                    continue;
+                }
+                Piece::Value(value) => value,
+            };
+            match value {
+                Self::Array(items) => {
+                    out.push('[');
+                    pending.push(Piece::Token("]"));
+                    for (index, item) in items.iter().enumerate().rev() {
+                        pending.push(Piece::Value(item));
+                        if index > 0 {
+                            pending.push(Piece::Token(", "));
+                        }
+                    }
+                }
+                Self::Object(items) => {
+                    out.push('{');
+                    pending.push(Piece::Token("}"));
+                    for (index, (key, value)) in items.iter().enumerate().rev() {
+                        pending.push(Piece::Value(value));
+                        pending.push(Piece::Token(": "));
+                        pending.push(Piece::Key(key));
+                        if index > 0 {
+                            pending.push(Piece::Token(", "));
+                        }
+                    }
+                }
+                Self::Null => out.push_str(if json { "null" } else { "None" }),
+                Self::Bool(true) => out.push_str(if json { "true" } else { "True" }),
+                Self::Bool(false) => out.push_str(if json { "false" } else { "False" }),
+                Self::Integer(i) => out.push_str(&i.to_string()),
+                Self::Float(f) if json && f.is_infinite() => {
+                    out.push_str(if f.is_sign_negative() {
+                        "-Infinity"
+                    } else {
+                        "Infinity"
+                    })
+                }
+                Self::Float(f) if json && f.is_nan() => out.push_str("NaN"),
+                Self::Float(f) => out.push_str(&python_float(*f)),
+                Self::String(s) => {
+                    out.push_str(&if json { json_quote(s) } else { python_quote(s) })
                 }
             }
-            Self::Float(f) => python_float(*f),
-            Self::String(s) => json_quote(s),
-            Self::Array(a) => format!(
-                "[{}]",
-                a.iter().map(Self::json).collect::<Vec<_>>().join(", ")
-            ),
-            Self::Object(o) => format!(
-                "{{{}}}",
-                o.iter()
-                    .map(|(k, v)| format!("{}: {}", json_quote(k), v.json()))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ),
+        }
+        out
+    }
+}
+// Evidence may have tens of thousands of nested containers. Parsing, rendering, cloning and
+// destruction all avoid the call stack. The canonical local JSON preserves every value variant.
+impl Clone for Value {
+    fn clone(&self) -> Self {
+        Self::parse(&self.json()).expect("locally rendered evidence parses")
+    }
+}
+impl Drop for Value {
+    fn drop(&mut self) {
+        fn children(value: &mut Value, pending: &mut Vec<Value>) {
+            match value {
+                Value::Array(items) => pending.append(items),
+                Value::Object(items) => {
+                    pending.extend(std::mem::take(items).into_iter().map(|(_, v)| v))
+                }
+                _ => {}
+            }
+        }
+        let mut pending = vec![];
+        children(self, &mut pending);
+        while let Some(mut child) = pending.pop() {
+            children(&mut child, &mut pending);
         }
     }
 }
 impl Index<&str> for Value {
     type Output = Self;
     fn index(&self, key: &str) -> &Self {
+        static NULL: Value = Value::Null;
         if let Self::Object(o) = self {
             o.iter()
-                .find(|(k, _)| k == key)
+                .find(|(k, _)| k.encoded() == key)
                 .map(|(_, v)| v)
-                .unwrap_or(&Self::Null)
+                .unwrap_or(&NULL)
         } else {
-            &Self::Null
+            &NULL
         }
     }
 }
@@ -242,6 +250,9 @@ fn float_integer(f: f64) -> Option<BigInt> {
     Some(if f.is_sign_negative() { -value } else { value })
 }
 fn python_float(f: f64) -> String {
+    if f.is_nan() {
+        return "nan".into();
+    }
     let text = format!("{f:?}");
     if let Some((mantissa, exponent)) = text.split_once('e') {
         let exponent: i32 = exponent.parse().expect("Rust formats a numeric exponent");
@@ -250,50 +261,44 @@ fn python_float(f: f64) -> String {
         text
     }
 }
-fn python_quote(s: &str) -> String {
-    let quote = if s.contains('\'') && !s.contains('"') {
+static NONPRINTABLE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[\p{C}\p{Z}]").unwrap());
+fn python_quote(s: &Text) -> String {
+    let points: Vec<_> = s.points().collect();
+    let quote = if points.contains(&0x27) && !points.contains(&0x22) {
         '"'
     } else {
         '\''
     };
     let mut out = String::from(quote);
-    for c in s.chars() {
-        match c {
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if c == quote => {
+    for point in points {
+        match point {
+            0x5c => out.push_str("\\\\"),
+            10 => out.push_str("\\n"),
+            13 => out.push_str("\\r"),
+            9 => out.push_str("\\t"),
+            point if point == quote as u32 => {
                 out.push('\\');
-                out.push(c);
+                out.push(quote);
             }
-            c if c.is_control() || c.escape_debug().to_string().starts_with("\\u{") => {
-                let n = c as u32;
-                if n <= 0xff {
-                    out.push_str(&format!("\\x{n:02x}"));
-                } else if n <= 0xffff {
-                    out.push_str(&format!("\\u{n:04x}"));
+            0x20 => out.push(' '),
+            point => {
+                let printable = char::from_u32(point)
+                    .is_some_and(|c| !NONPRINTABLE.is_match(c.encode_utf8(&mut [0; 4])));
+                if printable {
+                    out.push(char::from_u32(point).unwrap());
+                } else if point <= 0xff {
+                    out.push_str(&format!("\\x{point:02x}"));
+                } else if point <= 0xffff {
+                    out.push_str(&format!("\\u{point:04x}"));
                 } else {
-                    out.push_str(&format!("\\U{n:08x}"));
+                    out.push_str(&format!("\\U{point:08x}"));
                 }
             }
-            c => out.push(c),
         }
     }
     out.push(quote);
     out
 }
-fn json_quote(s: &str) -> String {
-    let quoted = serde_json::to_string(s).expect("a string serializes");
-    let mut out = String::new();
-    for c in quoted.chars() {
-        if c as u32 >= 0x7f {
-            for unit in c.encode_utf16(&mut [0; 2]) {
-                out.push_str(&format!("\\u{unit:04x}"));
-            }
-        } else {
-            out.push(c);
-        }
-    }
-    out
+fn json_quote(s: &Text) -> String {
+    s.json()
 }

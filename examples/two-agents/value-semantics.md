@@ -40,3 +40,36 @@ and compare the full parsed report and CLI exit against 81 captured baseline rep
 
 The five original port-adversary tests remain unchanged. These corrections concern readable
 inputs; the documented read-only SQLite and inaccessible-file behavior remains in force.
+
+The final review added five more regressions, whose assertions are preserved. `unicode_parser.rs` compares complete
+JSON reports, text bytes and both exit codes against 88 saved baseline scenarios. These inputs
+exercise the same representation call sites above, with the following additional boundaries:
+
+| Regression group | Cases | Boundary |
+|---|---:|---|
+| `unicode_printable_categories` | 10 | Letters, marks, numbers, punctuation and symbols remain printable, including combining marks and both quote choices |
+| `unicode_other_and_separator_categories` | 15 | Unicode Other and Separator categories are escaped in nested representation |
+| `ascii_space_stays_printable` | 1 | ASCII space is the printable separator exception |
+| `legacy_nonfinite_constants` | 8 | NaN, Infinity, -Infinity and overflow exponents remain readable locally |
+| `nested_unpaired_surrogates` | 9 | Nested values and object keys escape lone surrogates; literal backslashes and NULs remain distinct |
+| `top_level_surrogates_distinguish_json_and_text` | 6 | JSON preserves escaped surrogates; text encoding fails before stdout for unencodable lone surrogates |
+| `surrogateescape_text_bytes` | 3 | Top-level U+DC80 through U+DCFF use the baseline stdout surrogateescape policy |
+| `valid_surrogate_pairs` | 3 | Valid escaped pairs decode to the corresponding scalar |
+| `ordinary_malformed_grammar_remains_rejected` | 18 | Trailing data/commas, raw controls, invalid escapes and incomplete structures remain rejected |
+| `sqlite_text_transport_boundaries` | 12 | SQLite name, actor, issuer and payload text distinguish literal NUL markers from escaped surrogate evidence |
+| `deep_legacy_readable_evidence` | 3 | 150, 512 and 30,000 nested arrays preserve the measured baseline report |
+
+The parser accepts the legacy nonfinite constants and lone escaped surrogates without changing
+ordinary workspace serde behavior. A local lossless string representation carries unpaired
+surrogates through report formatting. It escapes every literal input NUL, including SQLite
+metadata and library error strings; report serialization decodes the representation explicitly.
+Filesystem names and displayed paths enter as scalar strings. Text output reproduces the measured
+UTF-8/surrogateescape stdout behavior; the error message for an unencodable surrogate is a concise
+diagnostic rather than the original Python traceback.
+
+Parsing, rendering, cloning and destruction use heap work lists. A separate unit test rejects
+100,000-level incomplete arrays and objects without recursive stack growth. There is no fixed
+128-level acceptance limit. The saved Python 3.14 baseline accepts 30,000 nested arrays but fails
+at larger depths through environment-dependent stack exhaustion; the Rust reader does not emulate
+that host stack threshold. These checks establish the stated accepted inputs and bounded call-stack
+use, not parity for every possible memory-exhaustion boundary.

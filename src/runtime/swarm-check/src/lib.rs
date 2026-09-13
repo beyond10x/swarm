@@ -1,8 +1,10 @@
 //! Evidence verdicts for recorded two-agent runs. Seven clauses decide success; unattended is separate.
 mod clauses;
 pub mod evidence;
+mod evidence_parser;
 mod language;
 pub mod records;
+pub mod text;
 use serde::Serialize;
 use std::path::Path;
 
@@ -12,7 +14,7 @@ pub struct Clause {
     pub title: &'static str,
     pub met: bool,
     pub looked_for: &'static str,
-    pub found: String,
+    pub found: text::Text,
 }
 impl Clause {
     fn new(number: usize, met: bool, found: String) -> Self {
@@ -22,7 +24,7 @@ impl Clause {
             title,
             met,
             looked_for,
-            found,
+            found: text::Text::from_encoded(found),
         }
     }
 }
@@ -57,9 +59,12 @@ pub fn check(root: &Path) -> Report {
     }
 }
 impl Report {
-    pub fn render(&self) -> String {
+    pub fn render(&self) -> Result<Vec<u8>, String> {
         let state = |met| if met { "met    " } else { "NOT MET" };
-        let mut lines = vec![format!("swarm: {}", self.swarm), String::new()];
+        let mut lines = vec![
+            format!("swarm: {}", text::Text::scalar(&self.swarm)),
+            String::new(),
+        ];
         for c in &self.clauses {
             lines.push(format!(
                 "clause {}  {}  {}",
@@ -101,6 +106,6 @@ impl Report {
             }
         ));
         lines.push(summary);
-        lines.join("\n")
+        text::Text::from_encoded(lines.join("\n")).stdout_bytes()
     }
 }
