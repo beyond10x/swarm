@@ -34,7 +34,7 @@ Bootstrap registers a buildable `swarm-check` shell with a deliberately failing 
 
 | unit | stage | source | target | scratch | branch/head |
 |---|---|---|---|---|---|
-| A | correction 1 | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-control | same source /target | /home/timo/.cache/swarm-wave-2026-09-13c/control | wave/2026-09-13c/control; 4098ad1 (base c935d85) |
+| A | adversary pass 2 | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-control | same source /target | /home/timo/.cache/swarm-wave-2026-09-13c/control | wave/2026-09-13c/control; 1239327 (base c935d85) |
 | B | correction 1 | /home/timo/.local/state/worktree/trees/b10x/swarm/swarm-wave-20260913c-checker | same source /target | /home/timo/.cache/swarm-wave-2026-09-13c/checker | wave/2026-09-13c/checker; d0eac57 (base c935d85) |
 
 Integration target is inside `swarm-next-wave-plan-20260913/target`; integration scratch is `/home/timo/.cache/swarm-wave-2026-09-13c/integration`. All implementation builds set RUSTC_WRAPPER to `/usr/bin/sccache`, CARGO_BUILD_JOBS=2 and unit-owned TMPDIR. The primary checkout's target remains untouched.
@@ -65,6 +65,12 @@ B: 98 → 103 executed, five new red cases, two compatibility findings. Python i
 The checker correction must preserve object ordering locally. Enabling serde_json preserve_order was declined because Cargo feature unification could change server JSON maps and pinned eventlog request_hash hashes raw serde_json serialization. No global map-order feature or event-log hash behavior change is authorized by this port.
 
 The original two-pass review bound remains: correction 1 goes to adversary pass 2, with any remaining blockers reported explicitly. No unit has merged, and no review outcome is marked fixed before the correction is verified.
+
+### Control correction 1
+
+A correction at 1239327 preserves the adversary's case and serializes FinishAssignment plus GoIdle against lifecycle application. Both lifecycle-first orderings (Pause/Resume and Stop/Start) are also covered. Publication exclusion is released before quiescence waits, so old claims can reject their generation and retire. This is host serialization, not an atomic database transaction across separate ESS commands.
+
+The unchanged red case reran red before correction and then green; the package grows 130 → 132 executed, all passing. Formatter and strict Clippy exit 0. The first finding has a fixed review_outcome record. Full report: /home/timo/.cache/swarm-wave-2026-09-13c/control/correction-1-report.md. Pass 2 is now running against 1239327; no merge yet.
 
 ## Recommended wave
 
