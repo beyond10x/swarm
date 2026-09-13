@@ -1462,6 +1462,20 @@ async fn work_an_assignment_claimed(
     // assignment Assigned and the member Working, so the next period continues it rather than
     // taking it again — which is what `TakeAssignment`'s own `wrong-state` branch would refuse.
     if answer.verdict.reached {
+        #[cfg(test)]
+        swarm.control.before_result().await;
+        // Finishing the assignment and returning its worker to Idle are one logical result.
+        // Pause/stop must precede both commands or follow both; a Done assignment is no longer
+        // eligible for dispatch and cannot repair a worker stranded between these writes.
+        let _publication =
+            swarm
+                .control
+                .publish()
+                .await
+                .map_err(|why| Unfinished::Unreportable {
+                    why,
+                    spent: answer.spent.clone(),
+                })?;
         let input = json!({"assignment_id": assignment.assignment_id,
                            "note": answer.verdict.note})
         .as_object()

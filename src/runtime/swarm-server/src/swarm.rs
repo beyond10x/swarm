@@ -811,17 +811,17 @@ impl Swarm {
         request: &str,
     ) -> Result<Issued, Refused> {
         #[cfg(test)]
-        if crate::control::Control::in_turn()
-            && matches!(
-                command,
-                "swarm.goal.Evaluate" | "swarm.agent.FinishAssignment"
-            )
-        {
+        if crate::control::Control::in_turn() && command == "swarm.goal.Evaluate" {
             self.control.before_result().await;
         }
         let lifecycle = command.starts_with("swarm.manager.");
         let _lifecycle = if lifecycle {
             Some(self.control.lifecycle.lock().await)
+        } else {
+            None
+        };
+        let mut publication = if lifecycle {
+            Some(self.control.publication.lock().await)
         } else {
             None
         };
@@ -845,7 +845,11 @@ impl Swarm {
             // Only a valid opening transition retries cleanup. Wrong-state stays the domain's
             // answer even while an earlier cancellation is waiting for a cleanup retry.
             drop(world);
+            // A cancelled result may be queued for publication. Let it acquire the lock and
+            // reject its old generation, so its claim can retire while cleanup waits for it.
+            drop(publication.take());
             self.control.quiesce().await.map_err(Refused::Host)?;
+            publication = Some(self.control.publication.lock().await);
             world = self.world.lock().await;
             done = apply(
                 self.spec.ir(),
@@ -899,6 +903,7 @@ impl Swarm {
         appended.extend(self.commit_caused(&caused, request).await?);
 
         drop(world);
+        drop(publication);
         if closing {
             self.control.quiesce().await.map_err(Refused::Host)?;
         }

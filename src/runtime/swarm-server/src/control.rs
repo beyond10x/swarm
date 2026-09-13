@@ -15,6 +15,10 @@ pub(crate) struct Control {
     state: Mutex<State>,
     changed: Notify,
     pub lifecycle: tokio::sync::Mutex<()>,
+    /// One logical result may need several domain commands. Lifecycle transitions exclude the
+    /// whole publication, then release this lock before waiting for old claims to retire.
+    /// Lock order: lifecycle -> publication -> world; turns take publication -> world only.
+    pub publication: tokio::sync::Mutex<()>,
     #[cfg(test)]
     fail_termination: std::sync::atomic::AtomicBool,
     #[cfg(test)]
@@ -69,6 +73,7 @@ impl Control {
             }),
             changed: Notify::new(),
             lifecycle: tokio::sync::Mutex::new(()),
+            publication: tokio::sync::Mutex::new(()),
             #[cfg(test)]
             fail_termination: std::sync::atomic::AtomicBool::new(false),
             #[cfg(test)]
@@ -85,6 +90,11 @@ impl Control {
     }
     pub fn running(&self) -> bool {
         self.state.lock().expect("not poisoned").running
+    }
+    pub async fn publish(&self) -> Result<tokio::sync::MutexGuard<'_, ()>, String> {
+        let publication = self.publication.lock().await;
+        self.check()?;
+        Ok(publication)
     }
     pub fn admit(self: &Arc<Self>, key: String) -> Option<Claim> {
         let mut state = self.state.lock().expect("not poisoned");
@@ -639,5 +649,140 @@ mod tests {
             1
         );
         serving.abort();
+    }
+    async fn cancellation_before_worker_publication(
+        closing: &'static str,
+        opening: &'static str,
+        outcome: &'static str,
+    ) {
+        let _environment = crate::ENVIRONMENT.lock().await;
+        let (data, server, swarm, id, _) = fixture().await;
+        let program = data.path().join("worker-verdict.sh");
+        std::fs::write(&program,"#!/bin/sh\ncat >/dev/null\nprintf '{\"event\":\"usage\",\"usage\":{\"input_tokens\":9}}\n{\"reached\":true}\n'\n").unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        unsafe {
+            std::env::set_var("SWARM_COORDINATOR", &program);
+        }
+        swarm
+            .ensure_agent("builder", "Worker", "builder")
+            .await
+            .unwrap();
+        issue(&swarm,"swarm.agent.Assign",json!({"agent_id":"builder","outcome":"finish","signoff":"approved","forbidden":"no model calls","artifact_ref":null})).await;
+        let ready = Arc::new(tokio::sync::Barrier::new(2));
+        let release = Arc::new(tokio::sync::Barrier::new(2));
+        *swarm.control.result_barriers.lock().unwrap() =
+            Some((Arc::clone(&ready), Arc::clone(&release)));
+        let mut observed = swarm.watch();
+        let (addr, serving) = serving(Arc::clone(&server)).await;
+        crate::trigger::work_the_assignments(&server, &swarm).await;
+        tokio::time::timeout(Duration::from_secs(8), ready.wait())
+            .await
+            .unwrap();
+        let pause = tokio::spawn(post(
+            addr,
+            closing,
+            json!({"swarm_id":id,"stopped_at":"2026-09-13T11:00:00Z"}),
+        ));
+        tokio::time::timeout(Duration::from_secs(8), async {
+            loop {
+                if let What::Applied {
+                    outcome: applied, ..
+                } = observed.recv().await.unwrap().what
+                    && applied == outcome
+                {
+                    break;
+                }
+            }
+        })
+        .await
+        .unwrap();
+        let resume = tokio::spawn(post(
+            addr,
+            opening,
+            json!({"swarm_id":id,"started_at":"2026-09-13T11:01:00Z"}),
+        ));
+        release.wait().await;
+        assert_eq!(pause.await.unwrap().0, 200);
+        assert_eq!(resume.await.unwrap().0, 200);
+        assert_eq!(swarm.spend_by_agent("builder").1, 1);
+        assert_eq!(swarm.spend_by_agent("builder").0.input_tokens, 9);
+        assert_eq!(
+            swarm.instances("swarm.agent.Assignment").await[0]["state"],
+            "Assigned"
+        );
+        assert_eq!(
+            swarm.instances("swarm.agent.Agent").await[0]["state"],
+            "Working"
+        );
+        assert!(
+            swarm
+                .history(100)
+                .await
+                .unwrap()
+                .iter()
+                .all(|event| event.name != "swarm.agent.AssignmentDone"
+                    && event.name != "swarm.agent.AgentIdle")
+        );
+        *swarm.control.result_barriers.lock().unwrap() = None;
+        crate::trigger::work_the_assignments(&server, &swarm).await;
+        tokio::time::timeout(Duration::from_secs(8), async {
+            while server.turns_in_flight() != 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(
+            swarm.instances("swarm.agent.Assignment").await[0]["state"],
+            "Done"
+        );
+        assert_eq!(
+            swarm.instances("swarm.agent.Agent").await[0]["state"],
+            "Idle"
+        );
+        assert_eq!(swarm.spend_by_agent("builder").1, 2);
+        assert_eq!(swarm.spend_by_agent("builder").0.input_tokens, 18);
+        crate::trigger::work_the_assignments(&server, &swarm).await;
+        assert_eq!(
+            server.turns_in_flight(),
+            0,
+            "a completed assignment is not made eligible again"
+        );
+        assert_eq!(swarm.spend_by_agent("builder").1, 2);
+        let events = swarm.history(100).await.unwrap();
+        let completion: Vec<_> = events
+            .iter()
+            .filter(|event| {
+                matches!(
+                    event.name.as_str(),
+                    "swarm.agent.AssignmentDone" | "swarm.agent.AgentIdle"
+                )
+            })
+            .map(|event| event.name.as_str())
+            .collect();
+        assert_eq!(
+            completion,
+            vec!["swarm.agent.AssignmentDone", "swarm.agent.AgentIdle"]
+        );
+        serving.abort();
+    }
+    #[tokio::test]
+    async fn pause_before_worker_publication_rejects_both_writes_and_resume_continues() {
+        cancellation_before_worker_publication(
+            "commands/swarm.manager.PauseSwarm",
+            "commands/swarm.manager.ResumeSwarm",
+            "paused",
+        )
+        .await;
+    }
+    #[tokio::test]
+    async fn stop_before_worker_publication_rejects_both_writes_and_start_continues() {
+        cancellation_before_worker_publication(
+            "commands/swarm.manager.StopSwarm",
+            "commands/swarm.manager.StartSwarm",
+            "stopped",
+        )
+        .await;
     }
 }
