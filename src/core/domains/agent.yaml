@@ -26,13 +26,26 @@ naming:
   display: Swarm agents
 
 types:
-  # One variant, because a swarm is born with one agent. The 2026-09-11 draft carried nine — that
-  # run's roster — and a roster is something a swarm arrives at, not something it starts with. A
-  # role the coordinator invents for an agent it spawns is a Box it draws, not a variant added here.
+  # Two variants: the one that decides and the one that works. The 2026-09-11 draft carried nine —
+  # that run's roster — and a roster is something a swarm arrives at, not something it starts with,
+  # so a role the coordinator invents for an agent it spawns is still a Box it draws rather than a
+  # variant added here.
+  #
+  # `Worker` was added on 2026-09-13 and is not a tenth name for a roster. It is the distinction the
+  # actors below already make and this enum could not: `swarm.agent.Coordinator` commands — Spawn,
+  # Assign, Wake, Restart, Retire — and `swarm.agent.Worker` only reports about itself. Measured
+  # across all 11 logs under data/swarms/*/eventlog.sqlite3 before it was added: the swarm
+  # `mail-check-1789197540` spawned `coordinator`, `reviewer`, `builder` and `tester`, and every one
+  # of them carries role `Coordinator`, because there was nothing else to give them. A swarm that
+  # can only call its members coordinators has one role and four names for it.
+  #
+  # Still deliberately short. A third variant needs the same argument these two have: a command in
+  # this domain that one may issue and the other may not.
   - name: swarm.agent.Role
     kind: enum
     variants:
       - Coordinator
+      - Worker
     naming:
       display: Role
 

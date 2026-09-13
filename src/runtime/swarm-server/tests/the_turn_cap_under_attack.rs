@@ -94,7 +94,7 @@ async fn an_answered_turn_names_the_agent_that_spent_it() {
 
     let goal = "77fc1fcc-a89c-4fb9-b041-89ecfc75922f";
     swarm
-        .ensure_coordinator("coordinator")
+        .ensure_agent("coordinator", "Coordinator", "The coordinator")
         .await
         .expect("the coordinator is a record");
 

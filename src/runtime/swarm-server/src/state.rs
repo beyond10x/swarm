@@ -107,6 +107,61 @@ fn unlink(directory: &std::path::Path) -> Result<(), Removal> {
     }
 }
 
+/// One unit of work a turn can be taken at.
+///
+/// A goal is the coordinator's unit and an assignment is a member's. They are different instances
+/// of different entities, and the claim that keeps turns serial has to say which — a claim keyed on
+/// the goal alone made every member under a goal wait for the coordinator and for each other,
+/// which is a swarm of one agent with extra steps.
+///
+/// The kind is part of the key rather than trusting ids not to collide: both are generated UUIDs
+/// today, and "they will never be equal" is a property nothing in this system enforces.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Unit {
+    kind: &'static str,
+    id: String,
+}
+
+impl Unit {
+    /// A goal the coordinator is pursuing.
+    #[must_use]
+    pub fn goal(id: &str) -> Self {
+        Self {
+            kind: "goal",
+            id: id.to_owned(),
+        }
+    }
+
+    /// An assignment a member is working.
+    #[must_use]
+    pub fn assignment(id: &str) -> Self {
+        Self {
+            kind: "assignment",
+            id: id.to_owned(),
+        }
+    }
+
+    /// The instance's own identity, for a caller that has to name it to the specification.
+    #[must_use]
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// Which kind of unit this is: `"goal"` or `"assignment"`.
+    ///
+    /// Published rather than kept private, because a reader handed an identity and not told what
+    /// kind of thing it identifies has to guess — and both kinds are generated UUIDs.
+    #[must_use]
+    pub fn kind(&self) -> &'static str {
+        self.kind
+    }
+
+    /// The key one swarm's claim on this unit is held under.
+    fn key(&self, slug: &str) -> String {
+        format!("{slug}/{}/{}", self.kind, self.id)
+    }
+}
+
 /// The whole server.
 pub struct Server {
     spec: Arc<Spec>,
@@ -608,21 +663,27 @@ impl Server {
         *self.ticks.lock().expect("not poisoned") += 1;
     }
 
-    /// Claims a goal for a coordinator turn. `false` when one is already running for it, which is
-    /// the `overlap: serial_per_instance` the binding declares, enforced here by the host.
-    pub fn claim_turn(&self, slug: &str, goal_id: &str) -> bool {
+    /// Claims one unit of work for one turn. `false` when a turn is already running at it, which
+    /// is the `overlap: serial_per_instance` the binding declares, enforced here by the host.
+    ///
+    /// Keyed on the unit and not on the goal since 2026-09-13. A key of `{slug}/{goal}` is one
+    /// claim per goal per swarm, so a member working an assignment waited on the coordinator's turn
+    /// at the goal, and two members under one goal ran one at a time — while
+    /// `serial_per_instance` is a bound per INSTANCE, and an assignment is a different instance
+    /// from a goal. `story:spawn-a-second-agent` clause 4.
+    pub fn claim(&self, slug: &str, unit: &Unit) -> bool {
         self.in_flight
             .lock()
             .expect("not poisoned")
-            .insert(format!("{slug}/{goal_id}"))
+            .insert(unit.key(slug))
     }
 
     /// The turn is over, whichever way.
-    pub fn release_turn(&self, slug: &str, goal_id: &str) {
+    pub fn release(&self, slug: &str, unit: &Unit) {
         self.in_flight
             .lock()
             .expect("not poisoned")
-            .remove(&format!("{slug}/{goal_id}"));
+            .remove(&unit.key(slug));
     }
 
     /// How many coordinator turns are running right now.
@@ -640,25 +701,30 @@ impl Server {
         self.caps
     }
 
-    /// Records that a goal has been capped. `false` when it already was, so the report is made
-    /// once rather than every period.
-    pub fn report_capped(&self, capped: CappedGoal) -> bool {
+    /// Records that one unit of work has been capped. `false` when it already was, so the report
+    /// is made once rather than every period.
+    ///
+    /// Keyed on [`Unit`] for the reason the in-flight claim is: `Unit`'s own doc says equal ids
+    /// across kinds are enforced by nothing, and both kinds are generated UUIDs. Keyed on the bare
+    /// id, a goal and an assignment that happened to share one would have been one report, and
+    /// whichever fired second would have been silent.
+    pub fn report_capped(&self, unit: &Unit, capped: CappedGoal) -> bool {
         self.capped
             .lock()
             .expect("not poisoned")
-            .insert(format!("{}/{}", capped.swarm, capped.goal), capped)
+            .insert(unit.key(&capped.swarm), capped)
             .is_none()
     }
 
     /// Forgets a cap report, so raising a cap reports the next one afresh.
-    pub fn forget_capped(&self, slug: &str, goal_id: &str) {
+    pub fn forget_capped(&self, slug: &str, unit: &Unit) {
         self.capped
             .lock()
             .expect("not poisoned")
-            .remove(&format!("{slug}/{goal_id}"));
+            .remove(&unit.key(slug));
     }
 
-    /// Every goal the loop has stopped asking about, with why.
+    /// Every unit of work the loop has stopped asking about, with why.
     pub fn capped_goals(&self) -> Vec<CappedGoal> {
         self.capped
             .lock()
@@ -718,7 +784,14 @@ impl Server {
             capped: self.capped_goals(),
             coordinator: Coordinator {
                 configured: true,
-                program: Some(coordinator.describe()),
+                // This block is `coordinator`, and it is about the coordinator, so it names the
+                // coordinator's knobs explicitly rather than reading whichever variable happens to
+                // be set. A member's launch is reported per turn, by `run_turn`.
+                program: Some(
+                    coordinator
+                        .launch
+                        .describe_for(crate::coordinator::knobs_for(None)),
+                ),
                 source: coordinator.source.to_string(),
                 in_flight: self.turns_in_flight(),
             },
@@ -864,7 +937,16 @@ impl std::error::Error for Removal {}
 #[derive(Clone, Debug, Serialize)]
 pub struct CappedGoal {
     pub swarm: String,
+    /// The unit of work the loop stopped asking about — a goal id, or an assignment id.
+    ///
+    /// Still called `goal` because `src/web/src/runtime.ts` and three cases read it under that
+    /// name; [`Self::unit`] beside it says which kind it is, so no reader has to infer it from a
+    /// UUID that looks the same either way.
     pub goal: String,
+    /// Which kind of unit [`Self::goal`] identifies: `"goal"` or `"assignment"`.
+    pub unit: String,
+    /// Whose turn the cap refused.
+    pub agent: String,
     pub turns: u64,
     pub spent_usd: Option<f64>,
     pub reached: Reached,

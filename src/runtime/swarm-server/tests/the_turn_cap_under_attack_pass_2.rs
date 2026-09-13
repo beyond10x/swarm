@@ -385,7 +385,7 @@ async fn resolve_refuses_rather_than_coin_flipping_between_two_active_configs() 
                 "{} from {}",
                 match &resolved.launch {
                     Launch::Program(argv) => argv.join(" "),
-                    Launch::Metaharness => "metaharness".to_owned(),
+                    Launch::Metaharness { .. } => "metaharness".to_owned(),
                 },
                 resolved.source
             ),
