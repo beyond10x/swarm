@@ -10,6 +10,12 @@ pub fn assert_case(id: &str) {
         .as_object_mut()
         .unwrap()
         .extend(extra.as_object().unwrap().clone());
+    let value_cases: Value =
+        serde_json::from_str(include_str!("../fixtures/value-semantics.json")).unwrap();
+    corpus
+        .as_object_mut()
+        .unwrap()
+        .extend(value_cases.as_object().unwrap().clone());
     let cases = corpus[id].as_array().expect("mapped case");
     assert!(!cases.is_empty(), "case must execute evidence");
     for (index, case) in cases.iter().enumerate() {

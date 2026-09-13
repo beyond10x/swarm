@@ -1,6 +1,7 @@
+use crate::evidence::Value;
 use crate::{Clause, records::*};
+use num_bigint::BigInt;
 use regex::Regex;
-use serde_json::Value;
 use std::{collections::BTreeSet, sync::LazyLock};
 fn listed(items: impl IntoIterator<Item = impl ToString>) -> String {
     listed_limit(items, 6)
@@ -250,7 +251,7 @@ fn agent_of<'a>(t: &'a Turn, r: &'a Records) -> (Option<&'a str>, &'static str) 
         for row in &r.spend {
             if let (Some(g), Some(agent)) = (row["goal"].as_str(), nonempty(&row["agent"]))
                 && r.knows(agent)
-                && row["iterations"].as_i64() == Some(turn)
+                && row["iterations"].equals_turn(turn)
                 && g.starts_with(goal)
             {
                 return (Some(agent), "spend.jsonl");
@@ -268,27 +269,32 @@ fn prefix(s: &str) -> String {
 pub fn three(r: &Records) -> Clause {
     let attributed: Vec<_> = r.turns.iter().map(|t| (t, agent_of(t, r))).collect();
     let agents: BTreeSet<_> = attributed.iter().filter_map(|(_, (a, _))| *a).collect();
-    let mut rows_per_key = vec![];
+    let mut rows_per_key: Vec<((BigInt, String), (usize, String))> = vec![];
     for row in &r.spend {
-        if let (Some(g), Some(t)) = (row["goal"].as_str(), row["iterations"].as_i64()) {
-            increment(&mut rows_per_key, (t, prefix(g)));
+        if let (Some(g), Some(t)) = (row["goal"].as_str(), row["iterations"].integer()) {
+            let key = (t, prefix(g));
+            if let Some((_, (count, _))) = rows_per_key.iter_mut().find(|(k, _)| *k == key) {
+                *count += 1;
+            } else {
+                rows_per_key.push((key, (1, py(&row["iterations"]))));
+            }
         }
     }
     rows_per_key.sort_by(|a, b| a.0.cmp(&b.0));
     let mut missing = vec![];
-    for ((turn, goal), rows) in rows_per_key {
+    for ((turn, goal), (rows, spelling)) in rows_per_key {
         let files = r
             .turns
             .iter()
             .filter(|t| {
-                t.turn == Some(turn)
+                t.turn.is_some_and(|t| BigInt::from(t) == turn)
                     && t.goal
                         .as_ref()
                         .is_some_and(|g| goal.starts_with(&prefix(g)))
             })
             .count();
         if rows > files {
-            missing.push(format!("turn {turn} of goal {goal} has {rows} attempt(s) in spend.jsonl and {files} file(s): {}",if files==0{"no transcript at all"}else{"a record was overwritten"}));
+            missing.push(format!("turn {spelling} of goal {goal} has {rows} attempt(s) in spend.jsonl and {files} file(s): {}",if files==0{"no transcript at all"}else{"a record was overwritten"}));
         }
     }
     let met = r.turns.len() >= 2
@@ -495,7 +501,7 @@ pub fn five(r: &Records) -> Clause {
         .flat_map(|t| &t.records)
         .filter(|r| r["event"] == "tool.decided")
         .count();
-    let claimed: i64 = r
+    let claimed: BigInt = r
         .turns
         .iter()
         .filter_map(|t| {
@@ -504,9 +510,9 @@ pub fn five(r: &Records) -> Clause {
                     && r["census"].is_object()
             })
         })
-        .filter_map(|r| r["census"]["denied"].as_i64())
+        .filter_map(|r| r["census"]["denied"].integer())
         .sum();
-    let unaccounted = if claimed != denied.len() as i64 {
+    let unaccounted = if claimed != BigInt::from(denied.len()) {
         format!(
             "; the session censuses claim {claimed} denied call(s) and {} `tool.decided` record(s) name a denier",
             denied.len()
@@ -523,9 +529,9 @@ pub fn five(r: &Records) -> Clause {
             "{} of {decided} decided call(s) refused by the frame: `{}` ({}) in {}{}",
             by_frame.len(),
             py(&entry.tool),
-            listed(entry.operations.as_array().into_iter().flatten().map(py)),
+            listed(entry.operations.listed_items()),
             entry.file,
-            if entry.reason.is_null() || entry.reason == "" {
+            if !entry.reason.truthy() {
                 String::new()
             } else {
                 format!(" — {}", py(&entry.reason))
@@ -616,7 +622,7 @@ fn ceiling_refusals(r: &Records) -> Vec<(String, String)> {
     }
     for e in &r.events {
         sentence(
-            Some(&e.data.to_string()),
+            Some(&e.data.json()),
             format!("`{}` at seq {}", e.name, e.seq),
             &mut out,
         );

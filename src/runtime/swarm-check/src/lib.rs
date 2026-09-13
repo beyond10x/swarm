@@ -1,5 +1,6 @@
 //! Evidence verdicts for recorded two-agent runs. Seven clauses decide success; unattended is separate.
 mod clauses;
+pub mod evidence;
 mod language;
 pub mod records;
 use serde::Serialize;

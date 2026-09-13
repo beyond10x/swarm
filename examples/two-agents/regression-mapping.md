@@ -87,3 +87,8 @@ Captured from the passing Python suite before replacement. Every report case com
 | test_checker.TheUnattendedCondition.test_not_met_when_the_log_predates_issuers_and_it_says_so | regression.rs::test_checker_theunattendedcondition_test_not_met_when_the_log_predates_issuers_and_it_says_so | 1 |
 | test_checker.TheUnattendedCondition.test_the_actor_column_no_longer_decides_it | regression.rs::test_checker_theunattendedcondition_test_the_actor_column_no_longer_decides_it | 1 |
 | test_checker.TheUnattendedCondition.test_the_command_that_starts_a_swarm_does_not_count_against_it | regression.rs::test_checker_theunattendedcondition_test_the_command_that_starts_a_swarm_does_not_count_against_it | 1 |
+
+The port's first adversary review added five unchanged parity cases in
+`adversary_port_parity.rs`. [Evidence value compatibility](value-semantics.md) enumerates the
+subsequent class correction, its 81 baseline report scenarios, and the invariant protecting
+ordinary runtime JSON serialization.

@@ -1,7 +1,7 @@
 //! Read historical evidence once. Readers never create a database or retry with write access.
+use crate::evidence::Value;
 use regex::Regex;
 use rusqlite::{Connection, OpenFlags};
-use serde_json::Value;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -121,13 +121,7 @@ pub fn nonempty(v: &Value) -> Option<&str> {
     v.as_str().filter(|s| !s.is_empty())
 }
 pub fn py(v: &Value) -> String {
-    match v {
-        Value::Null => "None".into(),
-        Value::Bool(true) => "True".into(),
-        Value::Bool(false) => "False".into(),
-        Value::String(s) => s.clone(),
-        _ => v.to_string(),
-    }
+    v.python()
 }
 
 pub fn read(root: &Path) -> Records {
@@ -208,7 +202,7 @@ fn read_events(path: &Path) -> rusqlite::Result<Vec<Event>> {
         let data = raw
             .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
             .filter(Value::is_object)
-            .unwrap_or_else(|| serde_json::json!({}));
+            .unwrap_or_else(|| Value::Object(vec![]));
         Ok(Event {
             seq: row.get(0)?,
             name: row.get(1)?,
