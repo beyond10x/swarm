@@ -53,6 +53,142 @@ pub const SCHEMA_VERSION: u32 = 1;
 /// How many events one read pulls back while folding a stream.
 const PAGE: usize = 500;
 
+/// Who issued a command, as the log records it.
+///
+/// Not the same question as the `actor`, and the difference is the whole of
+/// `story:an-event-cannot-say-which-agent-acted`. The actor is the specification's: `apply`'s
+/// `permitted` matches it against the declared actor TYPES, so every member of a swarm that may
+/// emit a note records the same word `swarm.agent.Worker`, and two members' notes were the same
+/// record twice. The issuer is the HOST's: which process, which agent instance, which pair of
+/// hands. The model does not know about sockets any more than it knows what time it is, so this
+/// arrives at the edge exactly as a timestamp does.
+///
+/// It is recorded in the envelope's `subject` column. eventlog calls that "the person the work is
+/// for", which is a stretch: there is no person here, and what wants recording is who did it. It
+/// is used because the alternative was what was there before — `subject` holding a second copy of
+/// `actor`, two columns carrying one fact — and a duplicate records nothing at all. `subject` is
+/// an `validate_identity` column, which is the right shape for an opaque agent slug.
+///
+/// **A row written before 2026-09-13 carries the actor type, or `system`, in that column.** No
+/// value in the eleven logs on disk when this was written collides with anything
+/// [`Issuer::label`] produces, and no actor type the specification declares does either — which
+/// is what lets a reader tell an old row from a new one and say so.
+///
+/// That is a fact about those logs and about this specification, **not a property of the code**,
+/// and the difference matters to anyone relying on it. `actor` is a caller-supplied free string
+/// and `apply`'s `permitted` skips the check when no declared actor matches, so a caller that
+/// issued a command with the literal actor `runtime` against an old build left a row a reader
+/// will now read as the runtime's. Nothing can be done about that row; what can be done is not
+/// claim it is impossible.
+///
+/// `examples/two-agents/check-two-agents.py` is the reader that tells them apart. There is no
+/// parser on this side because nothing in Rust reads the column back, and a second parser with no
+/// caller is a second vocabulary waiting to drift from this one.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Issuer {
+    /// The runtime issuing to itself: a binding, the pump, the trigger, a turn's own bookkeeping.
+    Runtime,
+    /// Something at the HTTP surface that said nothing about who it is — a `curl`, the canvas, a
+    /// CLI with no settings file. Called an operator because that is who it is in practice, and
+    /// because "no operator touched this swarm" is the claim it makes checkable.
+    Operator,
+    /// One named agent instance, as it claimed at the door. A claim, not a proof: authentication
+    /// is a different problem and is worth nothing without this one.
+    Agent(String),
+    /// An agent claimed a name the envelope's identity column cannot hold, kept as the claim it
+    /// made so the mark can be derived from it.
+    ///
+    /// `swarm.agent.Spawn`'s `agent_id` is a caller-supplied `String` and `StreamId` accepts a
+    /// space or an `@` in one; `validate_identity` does not, because an append-only log outlives
+    /// every request to erase an address. So a member called `two words` can exist and cannot be
+    /// named here. Recording this rather than refusing keeps that member working; recording it
+    /// rather than `Operator` or `Runtime` keeps the record true.
+    ///
+    /// **It is per name.** The first version of this had one label for all of them, and two such
+    /// members of one actor type then recorded the same envelope — which is acceptance clause 1
+    /// negated, and is how the adversary of correction round 1 negated it. The label carries a
+    /// digest of the claim, so two are two and one stays one.
+    UnnameableAgent(String),
+}
+
+/// What [`Issuer::Agent`] is spelled with, and what a reader splits on.
+const AGENT: &str = "agent:";
+
+/// What [`Issuer::UnnameableAgent`] is spelled with, before its digest.
+///
+/// **An agent whose id begins with `?` shares this prefix, and no character removes that.** The
+/// label is written into an identity column, so it must itself pass
+/// `eventlog_core::validate_identity` — which refuses a space and an `@`, and accepts every other
+/// ascii-graphic byte. That is exactly the set a nameable slug may begin with, so there is no
+/// character that can start the one and not the other. The adversary of correction round 2
+/// suggested `agent: ` for this and it cannot be used: the append would be refused, which is the
+/// failure [`Issuer::UnnameableAgent`] exists to avoid.
+///
+/// What makes the collision harmless is that **no reader decides by the prefix**. An agent is what
+/// a `swarm.agent.AgentSpawned` says it is, and `check-two-agents.py`'s `agent_named_by` asks the
+/// log: a slug it spawned is that agent whatever it starts with, and a string it did not spawn is
+/// not an agent whether it is a mark or an invention.
+///
+/// The first version of this comment accepted the collision and costed it at "one reader one wrong
+/// attribution in a case nothing has ever produced". The measured cost was clause 2 NOT MET and
+/// the demonstration exiting 1, on a member that had done everything the clause asks. The estimate
+/// was the defect, not the collision.
+const UNNAMEABLE: &str = "agent:?";
+
+/// How many hex characters of the digest go in the label. 48 bits, which is enough to keep the
+/// members of one swarm apart and short enough to read.
+const MARK: usize = 12;
+
+/// A stable mark for a name the log cannot write: FNV-1a, 64-bit, hex.
+///
+/// Written out rather than taken from `std::collections::hash_map::DefaultHasher`, whose algorithm
+/// std explicitly does not specify and may change between releases. A digest that moved under a
+/// toolchain upgrade would make one member's earlier events and its later ones read as two
+/// members — the same defect the digest exists to fix, wearing the opposite sign. A log outlives a
+/// compiler.
+fn mark(claim: &str) -> String {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in claim.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("{hash:016x}")[..MARK].to_owned()
+}
+
+impl Issuer {
+    /// The claim a door received, as an issuer. No name is an operator, because the doors are the
+    /// outside and the runtime does not reach itself through one.
+    #[must_use]
+    pub fn claimed(agent: Option<&str>) -> Self {
+        match agent {
+            Some(agent) if !agent.is_empty() => Self::agent(agent),
+            _ => Self::Operator,
+        }
+    }
+
+    /// One named agent, or the marked form when the log cannot hold that name.
+    #[must_use]
+    pub fn agent(name: &str) -> Self {
+        let said = format!("{AGENT}{name}");
+        if eventlog_core::validate_identity("issuer", &said).is_ok() {
+            Self::Agent(name.to_owned())
+        } else {
+            Self::UnnameableAgent(name.to_owned())
+        }
+    }
+
+    /// What goes in the column.
+    #[must_use]
+    pub fn label(&self) -> String {
+        match self {
+            Self::Runtime => "runtime".to_owned(),
+            Self::Operator => "operator".to_owned(),
+            Self::Agent(name) => format!("{AGENT}{name}"),
+            Self::UnnameableAgent(claim) => format!("{UNNAMEABLE}{}", mark(claim)),
+        }
+    }
+}
+
 /// Why the store refused.
 #[derive(Debug)]
 pub enum StoreError {
@@ -147,10 +283,15 @@ impl Store {
     /// outcome against the state it read: a concurrency guard belongs where that read and this write
     /// are one operation, and this runtime has one writer by construction. Where that changes, the
     /// expected version is what changes with it.
+    /// `issuer` is taken rather than defaulted, and that is deliberate: the defect this whole
+    /// method's envelope was fixed for was an identity that existed at the call site and was
+    /// discarded one line before the wire (`swarm-cli`'s `actor_for(command, _agent)`). A
+    /// parameter with a default here would be the same discard in a different place.
     pub async fn commit(
         &self,
         applied: &Applied,
         actor: Option<&str>,
+        issuer: &Issuer,
         request: &str,
     ) -> Result<(), StoreError> {
         let Some(instance) = applied.instance.as_ref() else {
@@ -189,7 +330,12 @@ impl Store {
         let meta = CommandMeta {
             idempotency_key: request.to_owned(),
             request_hash: request_hash(&body)?,
-            subject: actor.unwrap_or("system").to_owned(),
+            // Two columns, two facts. `actor` is the specification's actor TYPE, which is what
+            // `permitted` checked; `subject` is which instance issued it. They used to be one
+            // string written twice, and that is what made an `AssignmentTaken` naming a member
+            // indistinguishable from the coordinator or a `curl` issuing it on that member's
+            // behalf.
+            subject: issuer.label(),
             actor: actor.unwrap_or("system").to_owned(),
             request_id: request.to_owned(),
             trace_id: request.to_owned(),
@@ -315,7 +461,15 @@ pub struct Recorded {
     /// Position in the instance's stream, from 1.
     pub version: u64,
     pub name: String,
+    /// The specification's actor type, which is what `permitted` matched.
     pub actor: String,
+    /// Which instance issued the command — see [`Issuer`].
+    ///
+    /// A row written before 2026-09-13 carries the actor type here instead, because the store
+    /// wrote the actor into both columns. It is handed over verbatim rather than parsed, because
+    /// flattening an old row into "nothing said" would destroy the evidence that says which kind
+    /// of row it is — and that evidence is what a reader needs in order to say it is coping.
+    pub issuer: String,
     pub request: String,
     pub fields: Json,
 }
@@ -333,6 +487,7 @@ impl From<&RecordedEvent> for Recorded {
             version: event.version,
             name: event.name.clone(),
             actor: event.actor.clone(),
+            issuer: event.subject.clone(),
             request: event.request_id.clone(),
             fields: if event.is_redacted() {
                 Json::Null

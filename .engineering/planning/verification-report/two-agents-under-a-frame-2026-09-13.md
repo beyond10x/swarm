@@ -8,7 +8,7 @@ relations:
 - verifies: story:a-recorded-run-shows-two-agents-working
 - verifies: story:spawn-a-second-agent
 - verifies: story:a-turn-is-confined-by-a-frame
-revision: 2
+revision: 3
 ---
 ## The verdict
 
@@ -69,11 +69,18 @@ turn launches, so a swarm whose agent has already spent past the cap is refused 
 
 ## What this run does not show
 
-- **The unattended condition is UNDETERMINABLE and decided nothing**, by design. `store.rs:192`
-  writes `actor.unwrap_or("system")` and `http.rs:38` makes the actor optional, so an operator's
-  command and the loop's own are the same record. This run *was* driven by an operator's commands at
-  the start — `SetGoal` and `StartSwarm` — and the log cannot distinguish that from the loop. Closing
-  `story:an-event-cannot-say-which-agent-acted` is what makes it answerable.
+- **The unattended condition could not be answered when this run was recorded, and can be now.**
+  It read UNDETERMINABLE here, by design, because `store.rs` wrote `actor.unwrap_or("system")` and
+  `http.rs` made the actor optional, so an operator's command and the loop's own were the same
+  record. `story:an-event-cannot-say-which-agent-acted` closed on 2026-09-13 and gave commands an
+  issuer, so the condition now decides. **On this log it decides NOT MET**, and correctly: the run
+  was started by an operator's `SetGoal` and `StartSwarm`.
+
+  **The seven clauses are unchanged — seven met, exit 0.** The unattended condition is reported
+  beside them and decides nothing, so the verdict this report records has not moved. What moved is
+  that a later run can earn the condition instead of abstaining from it, and this one is kept as the
+  honest negative case: its `subject` column is a copy of `actor` on all 24 rows, the signature of a
+  log written before issuers existed.
 - **It is not containment.** Clause 5 is a refusal at a decision seam. `--substrate`,
   `--write-scope` and `--cgroup-root` are `b10x` only, and metaharness's own record says a hermetic
   run here is not network-isolated. `AGENTS.md`'s rule that nothing confines a coordinator stands.

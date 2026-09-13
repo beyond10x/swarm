@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use serde_json::{Map, Value as Json, json};
 
-use ess_runtime::{Spec, Store, World, apply};
+use ess_runtime::{Issuer, Spec, Store, World, apply};
 
 fn kernel() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -40,7 +40,7 @@ async fn step(
     let done = apply(spec.ir(), world, None, command, &args(input), id)
         .unwrap_or_else(|why| panic!("{command}: {why}"));
     store
-        .commit(&done, None, &request)
+        .commit(&done, None, &Issuer::Runtime, &request)
         .await
         .expect("the log accepts it");
     if let Some(instance) = done.instance.clone() {
@@ -209,8 +209,14 @@ async fn one_request_committed_twice_is_recorded_once() {
 
     // A caller that does not know whether its first attempt landed retries with the same key. The
     // log answers with the original result rather than writing a second goal.
-    store.commit(&done, None, "req-1").await.expect("first");
-    store.commit(&done, None, "req-1").await.expect("a retry");
+    store
+        .commit(&done, None, &Issuer::Runtime, "req-1")
+        .await
+        .expect("first");
+    store
+        .commit(&done, None, &Issuer::Runtime, "req-1")
+        .await
+        .expect("a retry");
 
     let goal = store
         .rebuild(spec.ir(), "swarm.goal.Goal", "g-1")
@@ -235,7 +241,10 @@ async fn a_key_means_one_request_within_a_stream() {
         Some("g-1"),
     )
     .expect("the goal is set");
-    store.commit(&first, None, "req-1").await.expect("first");
+    store
+        .commit(&first, None, &Issuer::Runtime, "req-1")
+        .await
+        .expect("first");
 
     let different = apply(
         spec.ir(),
@@ -250,7 +259,7 @@ async fn a_key_means_one_request_within_a_stream() {
     // Same stream, same key, different body. Accepting this would turn a client's bookkeeping
     // error into a lost write, so the log refuses it by name.
     let refused = store
-        .commit(&different, None, "req-1")
+        .commit(&different, None, &Issuer::Runtime, "req-1")
         .await
         .expect_err("a key means one request");
     assert!(
@@ -279,7 +288,7 @@ async fn a_key_is_scoped_to_its_stream_not_to_the_swarm() {
         )
         .expect("the goal is set");
         store
-            .commit(&done, None, "the-same-key")
+            .commit(&done, None, &Issuer::Runtime, "the-same-key")
             .await
             .unwrap_or_else(|why| panic!("{goal} should be accepted: {why}"));
     }
