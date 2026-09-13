@@ -104,8 +104,17 @@ pub enum What {
         iterations: u64,
         instance: Option<Json>,
     },
-    /// The coordinator was asked, or answered, or could not.
+    /// An agent was asked, or answered, or could not.
     Turn {
+        /// Whose turn it is.
+        ///
+        /// Added in correction round 1 of the 2026-09-13a wave, and it is the same defect as
+        /// `turn_file`'s: while a swarm had one agent the unit identified the turn, and two members
+        /// working at once publish into one channel where no reader can tell whose events are
+        /// whose. A field and not a new variant, because it is the same event about a different
+        /// agent.
+        agent: String,
+        /// The unit of work — a goal id, or an assignment id.
         goal: String,
         iterations: u64,
         phase: TurnPhase,
@@ -121,14 +130,25 @@ pub enum What {
     /// `event` is a `metaharness.event/1` record passed through whole: a text, a tool call, a
     /// usage figure. `spent` is the running total up to and including it.
     Agent {
+        /// Whose session this event is from. See [`What::Turn::agent`].
+        agent: String,
+        /// The unit of work — a goal id, or an assignment id.
         goal: String,
         iterations: u64,
         seq: u64,
         spent: Spent,
         event: Json,
     },
-    /// A goal used up a cap, so the loop stopped asking. Nothing in the model changed.
+    /// A unit of work used up a cap, so the loop stopped asking. Nothing in the model changed.
     Capped {
+        /// Whose turn was refused. See [`What::Turn::agent`] — this is the fourth variant of the
+        /// same fix, and it was missing: it published an assignment UUID in a field named `goal`
+        /// with nothing saying whose turn it was, live, to every reader of the stream.
+        agent: String,
+        /// Which kind of unit [`Self::Capped::goal`] identifies: `"goal"` or `"assignment"`.
+        unit: String,
+        /// The unit of work — a goal id, or an assignment id. Still called `goal` because
+        /// `src/web/src/runtime.ts` reads it under that name.
         goal: String,
         turns: u64,
         spent_usd: Option<f64>,
@@ -163,6 +183,29 @@ pub fn now() -> String {
     time::OffsetDateTime::now_utc()
         .format(&time::format_description::well_known::Rfc3339)
         .unwrap_or_default()
+}
+
+/// One fired bound, as `turns/capped.jsonl` records it.
+///
+/// A struct and not seven arguments, because six of them are strings and numbers that would read
+/// identically in any order at the call site.
+#[derive(Debug)]
+pub struct CappedRecord<'a> {
+    /// Whose turn was refused. Always known: something was about to be asked when this fired.
+    pub agent: &'a str,
+    /// Which fold the caps were applied to: `"unit"` for the unit's own record, `"agent"` for the
+    /// agent's whole record across every unit it works.
+    pub bound: &'a str,
+    /// The unit of work the turn was refused at — the goal, or the assignment.
+    pub unit: &'a str,
+    /// Turns on the record that fired.
+    pub turns: u64,
+    /// Dollars on it, where anything on it was priced.
+    pub spent_usd: Option<f64>,
+    /// The environment variable that sets the cap reached, so a reader is not left to find it.
+    pub cap: &'a str,
+    /// The sentence a person is given, verbatim from `Capped::why`.
+    pub why: &'a str,
 }
 
 /// What a caller wants said, before it is addressed.
@@ -444,6 +487,38 @@ impl Swarm {
             .create(true)
             .append(true)
             .open(dir.join("spend.jsonl"))
+        {
+            use std::io::Write;
+            let _ = writeln!(file, "{line}");
+        }
+    }
+
+    /// Appends one fired bound to `turns/capped.jsonl`, beside the spend it was measured on.
+    ///
+    /// A cap that refuses a turn was published to the watch stream and to the tracing log, and both
+    /// of those are gone with the process. So a finished swarm's own records could not answer
+    /// "was a turn ever refused here" — the first question a reader of a stopped loop asks, and the
+    /// question nobody could put to the $11.35 run afterwards.
+    ///
+    /// Written from `report_capped`, which is idempotent per unit, so a bound that holds for a
+    /// hundred periods leaves one row rather than a hundred.
+    pub fn record_capped(&self, capped: &CappedRecord<'_>) {
+        let dir = self.dir.join("turns");
+        let _ = std::fs::create_dir_all(&dir);
+        let line = serde_json::json!({
+            "at": now(),
+            "agent": capped.agent,
+            "unit": capped.unit,
+            "bound": capped.bound,
+            "turns": capped.turns,
+            "spent_usd": capped.spent_usd,
+            "cap": capped.cap,
+            "why": capped.why,
+        });
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(dir.join("capped.jsonl"))
         {
             use std::io::Write;
             let _ = writeln!(file, "{line}");
@@ -1109,7 +1184,7 @@ impl Swarm {
         Ok(true)
     }
 
-    /// Makes sure the coordinator is a record and has somewhere to be written to.
+    /// Makes sure one agent is a record and has somewhere to be written to.
     ///
     /// The coordinator was a process and nothing else: `swarm.agent.Agent` held no instances, so
     /// the `[coordinator]` of the birth graph was drawn by the UI and was not a thing the model
@@ -1120,7 +1195,18 @@ impl Swarm {
     ///
     /// Idempotent, and called before every turn rather than once at start, so a swarm created
     /// before this existed gets its coordinator the next time the loop turns.
-    pub async fn ensure_coordinator(&self, agent_id: &str) -> Result<(), Refused> {
+    ///
+    /// `role` and `display_name` are arguments and not constants because a swarm has more than one
+    /// kind of member as of 2026-09-13. There is deliberately no second door that hardcodes
+    /// `Coordinator` — that is the shape [`Swarm::record_spend`] records above as the defect: a
+    /// hand-kept rule that every caller should pass the right role is what produced eleven logs in
+    /// which four differently-named agents all carry the coordinator's.
+    pub async fn ensure_agent(
+        &self,
+        agent_id: &str,
+        role: &str,
+        display_name: &str,
+    ) -> Result<(), Refused> {
         let Some(swarm_id) = self.swarm_id().await else {
             return Ok(());
         };
@@ -1133,12 +1219,9 @@ impl Swarm {
             let mut input = Map::new();
             input.insert("agent_id".into(), Json::String(agent_id.to_owned()));
             input.insert("swarm_id".into(), Json::String(swarm_id.clone()));
-            input.insert("role".into(), Json::String("Coordinator".into()));
+            input.insert("role".into(), Json::String(role.to_owned()));
             input.insert("harness".into(), Json::String("ClaudeCode".into()));
-            input.insert(
-                "display_name".into(),
-                Json::String("The coordinator".into()),
-            );
+            input.insert("display_name".into(), Json::String(display_name.to_owned()));
             input.insert("host".into(), Json::Object(Map::new()));
             self.issue(
                 None,
@@ -1628,5 +1711,167 @@ mod attribution {
         let (nobody, none) = swarm.spend_by_agent("worker-c");
         assert_eq!(none, 0);
         assert_eq!(nobody.cost_usd, None);
+    }
+}
+
+#[cfg(test)]
+mod roster {
+    use super::*;
+
+    /// A created swarm, and its own record id.
+    async fn a_swarm(data: &tempdir::TempDir, slug: &str) -> (Arc<Swarm>, String) {
+        let kernel = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../src/core")
+            .canonicalize()
+            .expect("the kernel specification is beside this crate");
+        let spec = Arc::new(Spec::load(kernel).expect("the kernel resolves"));
+        let swarm = Arc::new(
+            Swarm::open(spec, data.path(), slug)
+                .await
+                .expect("a swarm opens"),
+        );
+        swarm
+            .issue(
+                None,
+                "swarm.manager.CreateSwarm",
+                serde_json::json!({"display_name": slug, "tmux_session": slug,
+                                   "home": "/nowhere", "created_at": "2026-09-13T10:00:00Z"})
+                .as_object()
+                .expect("an object")
+                .clone(),
+                "create",
+            )
+            .await
+            .expect("the swarm is created");
+        let id = swarm.instances("swarm.manager.Swarm").await[0]["id"]
+            .as_str()
+            .expect("an identity")
+            .to_owned();
+        (swarm, id)
+    }
+
+    /// Spawn clause 1: a role that is not `Coordinator` exists.
+    ///
+    /// Measured 2026-09-13 across all 11 logs under `data/swarms/*/eventlog.sqlite3`: the swarm
+    /// `mail-check-1789197540` spawned `coordinator`, `reviewer`, `builder` and `tester`, and
+    /// every one of them carries role `Coordinator` — because the enum offered nothing else. That
+    /// is the defect, observed in a real log rather than argued from the type.
+    #[tokio::test]
+    async fn a_role_that_is_not_the_coordinator_is_declared() {
+        let kernel = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../src/core")
+            .canonicalize()
+            .expect("the kernel specification is beside this crate");
+        let spec = Spec::load(kernel).expect("the kernel resolves");
+        let types = serde_json::to_value(spec.ir().types()).expect("the IR serialises");
+        let variants: Vec<&str> = types["swarm.agent.Role"]["body"]["variants"]
+            .as_array()
+            .expect("an enum has variants")
+            .iter()
+            .filter_map(Json::as_str)
+            .collect();
+
+        assert!(
+            variants.contains(&"Coordinator"),
+            "the role a swarm is born with is still there: {variants:?}"
+        );
+        assert!(
+            variants.iter().any(|variant| *variant != "Coordinator"),
+            "and a swarm that spawns a member can call it something else: {variants:?}"
+        );
+    }
+
+    /// Spawn clause 2: a spawned agent with that role gets its own mailbox, and `MailboxOpened`
+    /// names it.
+    ///
+    /// The mailbox is what makes a second agent addressable rather than merely recorded. Two
+    /// agents sharing one mailbox would be one agent with two names.
+    #[tokio::test]
+    async fn a_second_agent_gets_a_mailbox_of_its_own() {
+        let data = tempdir::TempDir::new("swarm-roster").expect("a scratch directory");
+        let (swarm, _) = a_swarm(&data, "roster").await;
+
+        swarm
+            .ensure_agent("coordinator", "Coordinator", "The coordinator")
+            .await
+            .expect("the coordinator is registered");
+        swarm
+            .ensure_agent("builder", "Worker", "A member that builds")
+            .await
+            .expect("the member is registered");
+
+        let roles: Vec<(String, String)> = swarm
+            .instances("swarm.agent.Agent")
+            .await
+            .into_iter()
+            .map(|agent| {
+                (
+                    agent["id"].as_str().unwrap_or_default().to_owned(),
+                    agent["fields"]["role"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_owned(),
+                )
+            })
+            .collect();
+        assert!(
+            roles.contains(&("builder".to_owned(), "Worker".to_owned())),
+            "the member holds the role it was spawned with, not the coordinator's: {roles:?}"
+        );
+
+        let mailboxes: Vec<(String, String)> = swarm
+            .view("swarm.mailbox.OpenMailboxes")
+            .await
+            .expect("the view computes")
+            .into_iter()
+            .filter_map(|row| {
+                Some((
+                    row.get("agent_id")?.as_str()?.to_owned(),
+                    row.get("mailbox_id")?.as_str()?.to_owned(),
+                ))
+            })
+            .collect();
+        let coordinators: Vec<&String> = mailboxes
+            .iter()
+            .filter(|(agent, _)| agent == "coordinator")
+            .map(|(_, id)| id)
+            .collect();
+        let members: Vec<&String> = mailboxes
+            .iter()
+            .filter(|(agent, _)| agent == "builder")
+            .map(|(_, id)| id)
+            .collect();
+        assert_eq!(coordinators.len(), 1, "one each: {mailboxes:?}");
+        assert_eq!(members.len(), 1, "one each: {mailboxes:?}");
+        assert_ne!(
+            coordinators[0], members[0],
+            "and the member's is its own — a shared mailbox is one agent with two names"
+        );
+
+        let log = swarm.history(200).await.expect("the log reads back");
+        let opened = log
+            .iter()
+            .filter(|event| event.name == "swarm.mailbox.MailboxOpened")
+            .filter(|event| event.fields["agent_id"] == "builder")
+            .count();
+        assert_eq!(
+            opened, 1,
+            "MailboxOpened names the member whose mailbox it is"
+        );
+
+        // Idempotent, and called before every turn: a second pass adds neither agent nor mailbox.
+        swarm
+            .ensure_agent("builder", "Worker", "A member that builds")
+            .await
+            .expect("registering twice is not an error");
+        assert_eq!(
+            swarm
+                .view("swarm.mailbox.OpenMailboxes")
+                .await
+                .expect("the view computes")
+                .len(),
+            mailboxes.len(),
+            "asking again adds nothing"
+        );
     }
 }

@@ -72,6 +72,24 @@ types:
   # How an agent is launched. What it may reach once running is not here — that is a Connection
   # between boxes. This is only what it starts holding, which nothing in the swarm's own graph can
   # grant because the graph is not reachable until the agent is up.
+  #
+  # WHAT A TURN ADMITS IS HERE; WHERE IT MAY ACT IS NOT. `admitted_operations` below narrows the
+  # sealed metaharness frame a turn runs under. The frame's other half — `SubjectScope`, the ordered
+  # glob rules that say WHERE an admitted operation may act — is deliberately absent, and
+  # `story:a-turn-is-confined-by-a-frame` left that open (`UNMAPPED:` per-swarm field, or a constant
+  # the runtime derives). It is derived by the runtime from the swarm's own work directory
+  # (`swarm-server/src/frame.rs::scope`), for this reason: a coordinator reaches every command
+  # through `swarm do`, `swarm.config.DraftConfig` and `ActivateConfig` among them, so a scope
+  # stated here is a scope the confined party can rewrite for itself. A confinement its subject can
+  # widen confines nothing.
+  #
+  # Narrowing is different and is safe, which is why the operation set IS here — but only because
+  # the runtime INTERSECTS it with its own default before sealing anything
+  # (`swarm-server/src/coordinator.rs::from_config`). Without that intersection the same argument
+  # condemns this field too, and it did: for one commit a coordinator could draft and activate a
+  # config naming all ten of metaharness's operations and seal itself a frame admitting
+  # `subagent.spawn`, `task.todo` and `web.read`. "The worst a config can do to it is admit less"
+  # is a claim about the runtime, not about this file, and the runtime is where it is kept.
   - name: swarm.config.HarnessLaunch
     kind: struct
     fields:
@@ -89,6 +107,24 @@ types:
         type: swarm.config.ToolSurface
       # Programs the served `run` tool may start. Empty publishes no `run` at all.
       - name: allow_program
+        type: List<String>
+      # The operations the turn's sealed frame admits, by metaharness's own closed vocabulary:
+      # dir.list, file.edit, file.read, file.write, search, shell, skill.load, subagent.spawn,
+      # task.todo, web.read (`metaharness-protocol::Operation::PARAMETERLESS`; `mcp.call` is
+      # parameterised by server and tool and so has no name a list of strings can carry). A call
+      # outside the set is refused at the decision seam, per call — NOT by narrowing the tool list
+      # the model is offered, which stays the vendor's whole catalogue (measured 2026-09-13
+      # against metaharness 0.6.4: 26 tools offered, `withheld: null`, and the refused call
+      # denied).
+      #
+      # Empty means "say nothing", and the runtime's own default stands. It is not "admit
+      # nothing": a config that wanted a turn to hold no tool at all would be asking for a turn
+      # that cannot write its own verdict file, and no operator has asked for one.
+      #
+      # A name the runtime does not admit is DROPPED and warned about, not honoured — the list can
+      # only ever narrow. A config whose every name is dropped is refused outright rather than
+      # quietly given the default, which is the rule the rest of this launch line already follows.
+      - name: admitted_operations
         type: List<String>
 
   # When things fire. swarm/coordinator/SEED.md §1 (the two crons, 7-day expiry),

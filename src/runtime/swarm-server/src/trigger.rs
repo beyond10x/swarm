@@ -21,7 +21,7 @@ use ess_runtime::route::Occurrence;
 
 use crate::budget::{Bound, Capped, Caps, Reached};
 use crate::coordinator;
-use crate::state::{CappedGoal, Server};
+use crate::state::{CappedGoal, Server, Unit};
 use crate::swarm::{Swarm, TurnPhase, What};
 
 /// The view that says which goals are waiting for a turn.
@@ -30,9 +30,29 @@ use crate::swarm::{Swarm, TurnPhase, What};
 /// `goal_id`, and which goals need one is the host's question to answer.
 const AWAITING: &str = "swarm.goal.GoalsAwaitingATick";
 
-/// The role slug a swarm's first agent holds. `swarm.agent.Role` declares exactly one variant, so
-/// there is exactly one of these until the enum grows.
+/// The view that says what each member is meant to be doing now.
+///
+/// `assign.sh`'s `assigned` rows, as `agent.yaml` names them. Read rather than kept, for the same
+/// reason `AWAITING` is: which members have work is the specification's fact, and a second list
+/// here would be a second answer to it.
+const OPEN_ASSIGNMENTS: &str = "swarm.agent.OpenAssignments";
+
+/// The role slug a swarm's first agent holds.
 pub const COORDINATOR: &str = "coordinator";
+
+/// The variant of `swarm.agent.Role` that first agent holds.
+///
+/// Separate from the slug, and the distinction is the one `agent.yaml` makes about identity: the
+/// slug is who an agent is and the role is what it does. They were the same string while the enum
+/// had one variant, which is exactly why eleven event logs record four differently-named agents
+/// all carrying `Coordinator`.
+pub const COORDINATOR_ROLE: &str = "Coordinator";
+
+/// The variant a member spawned to do work holds, and the display name it is given.
+///
+/// A worker is not a second coordinator: `agent.yaml`'s actors already say so — the Coordinator
+/// commands and the Worker reports about itself — and until 2026-09-13 the enum could not.
+pub const WORKER_ROLE: &str = "Worker";
 
 /// Drives every periodic binding the specification declares, for every swarm the server holds.
 ///
@@ -92,6 +112,10 @@ pub async fn run(server: Arc<Server>) {
             // of `[loop] -> [coordinator] -> [goal]`, and it is run after the tick rather than
             // inside it because the tick's job ends when the goal is Pursuing.
             ask_the_coordinator(&server, &swarm).await;
+            // And every member the coordinator has posted an assignment to. A second arrow of the
+            // same shape, driven from the same period: a roster a coordinator builds and nothing
+            // ever runs is a roster of records.
+            work_the_assignments(&server, &swarm).await;
         }
     }
 }
@@ -107,7 +131,10 @@ pub async fn run(server: Arc<Server>) {
 async fn ask_the_coordinator(server: &Arc<Server>, swarm: &Arc<Swarm>) {
     // The coordinator is a record before it is a process, so it can be addressed, drawn and
     // written to. Idempotent; a swarm made before this existed gets one here.
-    if let Err(why) = swarm.ensure_coordinator(COORDINATOR).await {
+    if let Err(why) = swarm
+        .ensure_agent(COORDINATOR, COORDINATOR_ROLE, "The coordinator")
+        .await
+    {
         tracing::warn!(swarm = %swarm.slug(), error = %why, "the coordinator could not be registered");
     }
 
@@ -118,7 +145,8 @@ async fn ask_the_coordinator(server: &Arc<Server>, swarm: &Arc<Swarm>) {
         let Some(id) = instance.get("id").and_then(Json::as_str) else {
             continue;
         };
-        if !server.claim_turn(swarm.slug(), id) {
+        let unit = Unit::goal(id);
+        if !server.claim(swarm.slug(), &unit) {
             continue;
         }
         let fields = instance.get("fields");
@@ -154,8 +182,8 @@ async fn ask_the_coordinator(server: &Arc<Server>, swarm: &Arc<Swarm>) {
             // left a goal sitting in `Pursuing` with nothing in `capped_goals()`, nothing on the
             // watch stream and no warning — which is precisely the picture the $11.35 run
             // presented to everybody who looked at it.
-            report_capped(server, swarm, id, &bound);
-            server.release_turn(swarm.slug(), id);
+            report_capped(server, swarm, COORDINATOR, &unit, &bound);
+            server.release(swarm.slug(), &unit);
             continue;
         }
 
@@ -164,8 +192,203 @@ async fn ask_the_coordinator(server: &Arc<Server>, swarm: &Arc<Swarm>) {
         let id = id.to_owned();
         tokio::spawn(async move {
             one_turn(&swarm, COORDINATOR, &id, &goal, iterations).await;
-            server.release_turn(swarm.slug(), &id);
+            server.release(swarm.slug(), &unit);
         });
+    }
+}
+
+/// Runs every member that is holding an assignment nobody is working.
+///
+/// The second arrow. `swarm.agent.OpenAssignments` is the specification's own answer to "what is
+/// each member meant to be doing now", so this reads it rather than keeping a list of its own.
+///
+/// Measured 2026-09-13, before this existed: across all 11 logs under
+/// `data/swarms/*/eventlog.sqlite3`, `swarm.agent.AssignmentTaken` had fired **zero times, ever**.
+/// A coordinator could spawn members and post them assignments, and nothing in the system would
+/// ever run one.
+///
+/// The coordinator's own slug is skipped. It has a loop already — the goal — and a coordinator that
+/// posted itself an assignment would be run twice a period, once at each.
+pub async fn work_the_assignments(server: &Arc<Server>, swarm: &Arc<Swarm>) {
+    let open = match swarm.view(OPEN_ASSIGNMENTS).await {
+        Ok(rows) => rows,
+        Err(why) => {
+            tracing::warn!(swarm = %swarm.slug(), error = %why,
+                           "the open assignments could not be read");
+            return;
+        }
+    };
+
+    for row in open {
+        let Some(assignment) = coordinator::Assignment::from_row(&row) else {
+            tracing::warn!(swarm = %swarm.slug(), row = %Json::Object(row),
+                           "an assignment row is missing a field a member would be launched on");
+            continue;
+        };
+        if assignment.agent_id == COORDINATOR {
+            continue;
+        }
+        let unit = Unit::assignment(&assignment.assignment_id);
+        if !server.claim(swarm.slug(), &unit) {
+            continue;
+        }
+
+        // What the member has already spent, across every unit it has worked. There is no
+        // `iterations` on an assignment — the specification counts turns for a goal and not for
+        // this — so the member's own recorded attempts are both the turn number and the figure the
+        // cap is measured on. They are the same number on purpose: a member that never answers
+        // would otherwise sit at turn 1 for ever while its money went out, which is the defect
+        // `spend_on` was given attempts to close.
+        let (_, attempts) = swarm.spend_by_agent(&assignment.agent_id);
+        if let Some(bound) = bounded(
+            server.caps(),
+            swarm,
+            &assignment.agent_id,
+            &assignment.assignment_id,
+            attempts,
+        ) {
+            report_capped(server, swarm, &assignment.agent_id, &unit, &bound);
+            server.release(swarm.slug(), &unit);
+            continue;
+        }
+
+        let server = Arc::clone(server);
+        let swarm = Arc::clone(swarm);
+        tokio::spawn(async move {
+            one_assignment(&swarm, &assignment, attempts + 1).await;
+            server.release(swarm.slug(), &unit);
+        });
+    }
+}
+
+/// One member's turn at one assignment, announced at both ends.
+///
+/// `TakeAssignment` is issued first, and only when the member has not already taken it: the event
+/// is the record that this agent started on this work, and a session that ran without one is work
+/// nobody can attribute. A member already `Working` is continuing, not starting again — and the
+/// specification would refuse a second take through its own `wrong-state` branch rather than
+/// quietly allowing it.
+async fn one_assignment(swarm: &Arc<Swarm>, assignment: &coordinator::Assignment, turn: u64) {
+    if !take_it(swarm, assignment).await {
+        return;
+    }
+
+    swarm.announce(What::Turn {
+        agent: assignment.agent_id.clone(),
+        goal: assignment.assignment_id.clone(),
+        iterations: turn,
+        phase: TurnPhase::Asking,
+        reached: None,
+        note: None,
+        error: None,
+        took_ms: None,
+        spent: None,
+    });
+    let began = Instant::now();
+
+    match coordinator::work_an_assignment(swarm, assignment, turn).await {
+        Ok(answer) => {
+            tracing::info!(swarm = %swarm.slug(), agent = %assignment.agent_id,
+                           assignment = %assignment.assignment_id,
+                           reached = answer.verdict.reached, "a member reported");
+            swarm.announce(What::Turn {
+                agent: assignment.agent_id.clone(),
+                goal: assignment.assignment_id.clone(),
+                iterations: turn,
+                phase: TurnPhase::Answered,
+                reached: Some(answer.verdict.reached),
+                note: answer.verdict.note,
+                error: None,
+                took_ms: Some(began.elapsed().as_millis() as u64),
+                spent: Some(answer.spent),
+            });
+        }
+        Err(why) => {
+            tracing::warn!(swarm = %swarm.slug(), agent = %assignment.agent_id,
+                           assignment = %assignment.assignment_id, error = %why,
+                           "a member's turn could not be finished");
+            if let Some(spent) = why.spent() {
+                swarm.record_spend(
+                    &assignment.agent_id,
+                    &assignment.assignment_id,
+                    turn,
+                    spent,
+                    None,
+                    Some(&why.to_string()),
+                );
+            }
+            swarm.announce(What::Turn {
+                agent: assignment.agent_id.clone(),
+                goal: assignment.assignment_id.clone(),
+                iterations: turn,
+                phase: TurnPhase::Unfinished,
+                reached: None,
+                note: None,
+                error: Some(why.to_string()),
+                took_ms: Some(began.elapsed().as_millis() as u64),
+                spent: why.spent().cloned(),
+            });
+        }
+    }
+}
+
+/// Records that the member has started on its assignment, when it has not already.
+///
+/// `false` when the take was refused, and then no session is launched: a member whose own record
+/// says it is not working this is not one the runtime may run anyway.
+async fn take_it(swarm: &Arc<Swarm>, assignment: &coordinator::Assignment) -> bool {
+    let state = swarm
+        .instances("swarm.agent.Agent")
+        .await
+        .into_iter()
+        .find(|agent| agent.get("id").and_then(Json::as_str) == Some(&assignment.agent_id))
+        .and_then(|agent| {
+            agent
+                .get("state")
+                .and_then(Json::as_str)
+                .map(ToOwned::to_owned)
+        });
+    if state.as_deref() == Some("Working") {
+        return true;
+    }
+
+    let mut input = Map::new();
+    input.insert(
+        "agent_id".to_owned(),
+        Json::String(assignment.agent_id.clone()),
+    );
+    input.insert(
+        "ref".to_owned(),
+        assignment
+            .artifact_ref
+            .clone()
+            .map_or(Json::Null, Json::String),
+    );
+    input.insert(
+        "msg".to_owned(),
+        Json::String(format!("started on: {}", assignment.outcome)),
+    );
+    match swarm
+        .issue(
+            Some("swarm.agent.Worker"),
+            "swarm.agent.TakeAssignment",
+            input,
+            &format!("take:{}", assignment.assignment_id),
+        )
+        .await
+    {
+        Ok(issued) if issued.error.is_none() => true,
+        Ok(issued) => {
+            tracing::warn!(swarm = %swarm.slug(), agent = %assignment.agent_id,
+                           outcome = %issued.outcome, error = ?issued.error,
+                           "the member could not take its assignment, so it was not run");
+            false
+        }
+        Err(why) => {
+            tracing::warn!(swarm = %swarm.slug(), agent = %assignment.agent_id, error = %why,
+                           "the member could not take its assignment, so it was not run");
+            false
+        }
     }
 }
 
@@ -174,6 +397,7 @@ async fn one_turn(swarm: &Arc<Swarm>, actor: &str, id: &str, goal: &str, iterati
     // Watchers hear the turn begin, so a coordinator that takes a minute is seen working
     // rather than seen as a loop that stalled.
     swarm.announce(What::Turn {
+        agent: actor.to_owned(),
         goal: id.to_owned(),
         iterations,
         phase: TurnPhase::Asking,
@@ -190,6 +414,7 @@ async fn one_turn(swarm: &Arc<Swarm>, actor: &str, id: &str, goal: &str, iterati
             tracing::info!(swarm = %swarm.slug(), goal = %id, reached = answer.verdict.reached,
                            "a turn was answered");
             swarm.announce(What::Turn {
+                agent: actor.to_owned(),
                 goal: id.to_owned(),
                 iterations,
                 phase: TurnPhase::Answered,
@@ -214,6 +439,7 @@ async fn one_turn(swarm: &Arc<Swarm>, actor: &str, id: &str, goal: &str, iterati
                 swarm.record_spend(actor, id, iterations, spent, None, Some(&why.to_string()));
             }
             swarm.announce(What::Turn {
+                agent: actor.to_owned(),
                 goal: id.to_owned(),
                 iterations,
                 phase: TurnPhase::Unfinished,
@@ -253,7 +479,7 @@ async fn fire(server: &Server, swarm: &Arc<Swarm>, binding: &str) -> Result<(), 
         let within_budget = match bounded(server.caps(), swarm, COORDINATOR, goal, so_far) {
             None => true,
             Some(bound) => {
-                report_capped(server, swarm, goal, &bound);
+                report_capped(server, swarm, COORDINATOR, &Unit::goal(goal), &bound);
                 false
             }
         };
@@ -285,20 +511,40 @@ async fn fire(server: &Server, swarm: &Arc<Swarm>, binding: &str) -> Result<(), 
 /// two folds stopped agreeing: a goal that had taken 2 turns was published as `turns: 2,
 /// spent_usd: null` beside `"the turn cap was reached: 4 of 3"`, telling every reader of `/status`
 /// and of the watch stream to raise a cap that goal had used none of.
-fn report_capped(server: &Server, swarm: &Arc<Swarm>, goal: &str, bound: &Capped) {
+fn report_capped(server: &Server, swarm: &Arc<Swarm>, agent: &str, unit: &Unit, bound: &Capped) {
     let reached = bound.reached;
+    let goal = unit.id();
     let capped = CappedGoal {
         swarm: swarm.slug().to_owned(),
         goal: goal.to_owned(),
+        unit: unit.kind().to_owned(),
+        agent: agent.to_owned(),
         turns: bound.turns,
         spent_usd: bound.spent_usd,
         reached,
         why: bound.why(),
     };
-    if server.report_capped(capped.clone()) {
-        tracing::warn!(swarm = %swarm.slug(), goal, why = %capped.why,
-                       "the loop stopped asking");
+    if server.report_capped(unit, capped.clone()) {
+        tracing::warn!(swarm = %swarm.slug(), unit = goal, kind = unit.kind(), agent,
+                       why = %capped.why, "the loop stopped asking");
+        // And durably, beside the spend the bound was measured on. The two lines below reach a
+        // watcher and a log; a swarm whose run is over has neither, and "was anything ever
+        // refused here" is the first question its records are asked.
+        swarm.record_capped(&crate::swarm::CappedRecord {
+            agent,
+            unit: goal,
+            bound: match &bound.bound {
+                Bound::Goal => "unit",
+                Bound::Agent(_) => "agent",
+            },
+            turns: bound.turns,
+            spent_usd: bound.spent_usd,
+            cap: bound.reached.variable(),
+            why: &capped.why,
+        });
         swarm.announce(What::Capped {
+            agent: capped.agent,
+            unit: capped.unit,
             goal: capped.goal,
             turns: capped.turns,
             spent_usd: capped.spent_usd,
@@ -344,27 +590,48 @@ pub fn bounded(
     goal_id: &str,
     iterations: u64,
 ) -> Option<Capped> {
-    let (spent, attempts) = swarm.spend_on(goal_id);
-    let turns = iterations.max(attempts);
-    if let Some(reached) = caps.exceeded(turns, spent.cost_usd) {
+    let (unit_spent, unit_attempts) = swarm.spend_on(goal_id);
+    let turns = iterations.max(unit_attempts);
+    let unit = caps.exceeded(turns, unit_spent.cost_usd);
+    // The same caps, read off a figure that names no unit. Nothing here asks which unit the agent
+    // is working, which is the whole point of it.
+    let (agent_spent, agent_attempts) = swarm.spend_by_agent(agent);
+    let whole_agent = caps.exceeded(agent_attempts, agent_spent.cost_usd);
+
+    // WHICH bound is reported, when both hold, is not a detail: it is what a reader is told to
+    // raise, and `Capped`'s own doc records a wave spent on getting it wrong.
+    //
+    // The unit bound is reported when the unit's OWN RECORD carries it — not when `iterations`
+    // alone does. `iterations` is the caller's figure FOR THIS UNIT, and it exists so that a goal
+    // whose spend rows were archived is not handed its cap back by their absence. A caller that
+    // passes a figure belonging to something else would otherwise have the refusal filed against a
+    // unit that has used nothing of it, which is exactly what `work_the_assignments` did until
+    // correction round 2: it passed the AGENT's whole record, so a member retasked to a second
+    // assignment was refused at its first turn there and `turns/capped.jsonl` told a reader to
+    // raise a cap that assignment had never touched.
+    //
+    // So: the unit, when the unit's own rows carry it, or when nothing else does — the archive
+    // defence, which is the only thing `iterations` is for. Otherwise the agent, which is the
+    // record that actually holds.
+    let unit_alone = caps.exceeded(unit_attempts, unit_spent.cost_usd).is_some();
+    if let Some(reached) = unit
+        && (unit_alone || whole_agent.is_none())
+    {
         return Some(Capped {
             bound: Bound::Goal,
             reached,
             turns,
-            spent_usd: spent.cost_usd,
+            spent_usd: unit_spent.cost_usd,
         });
     }
-    // The same caps, read off a figure that names no goal. Nothing below this line asks which goal
-    // the agent is working, which is the whole point of it — and the figures that travel with the
-    // verdict are this fold's, because the goal's no longer describe what was measured.
-    let (spent, attempts) = swarm.spend_by_agent(agent);
-    caps.exceeded(attempts, spent.cost_usd)
-        .map(|reached| Capped {
-            bound: Bound::Agent(agent.to_owned()),
-            reached,
-            turns: attempts,
-            spent_usd: spent.cost_usd,
-        })
+    // The figures that travel with the verdict are this fold's, because the unit's no longer
+    // describe what was measured.
+    whole_agent.map(|reached| Capped {
+        bound: Bound::Agent(agent.to_owned()),
+        reached,
+        turns: agent_attempts,
+        spent_usd: agent_spent.cost_usd,
+    })
 }
 
 /// The verdict alone, for a caller that wants only whether this goal may take another turn.
