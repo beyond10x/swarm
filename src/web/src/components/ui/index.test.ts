@@ -5,8 +5,10 @@
 // by reading the file rather than importing it: a `.vue` module cannot be loaded by node, and a
 // hand-kept comparison is exactly the drift it is meant to catch.
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { test } from 'node:test'
+
+import { escapingComponents } from './escapes.guard.ts'
 
 const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8')
 
@@ -168,10 +170,27 @@ const HERE = new URL('.', import.meta.url)
 /** Every component file the contract re-exports. */
 const files = exported.map((name) => ({ name, source: readFileSync(new URL(`./${name}.vue`, HERE), 'utf8') }))
 
-/** Reaching outside your own subtree, in the three forms the library actually uses. */
-const ESCAPES = /<Teleport\b|document\.|window\.addEventListener|window\.matchMedia/
+// What decides this was `/<Teleport\b|document\.|window\.addEventListener|window\.matchMedia/` —
+// the four spellings `UiModal` happened to be written in. A denylist of escapes fails OPEN: the
+// spelling it does not know reads as a component that stays in its box, which is the state
+// `UiModal` was in before it was refused. `./escapes.guard.ts` inverts it — a component may reach
+// its own declarations, the compiler macros, the ECMAScript intrinsics, `vue`, and a sibling in
+// this directory whose reach is then its own; every other free name is an escape because it is a
+// name the guard resolves to nothing it allowed. The edge it does not close is written there.
 
-const escaping = files.filter((file) => ESCAPES.test(file.source)).map((file) => file.name)
+/** The directory as text, so the guard can close reach over the imports between these files. */
+// The test files are left out: nothing the contract exports imports one, and a component that
+// somehow did would be reported as reaching a source the guard was not given, which is a refusal
+// and not a silence.
+const directory: Record<string, string> = Object.fromEntries(
+  readdirSync(HERE)
+    .filter((name) => !name.endsWith('.test.ts'))
+    .map((name) => [name, readFileSync(new URL(`./${name}`, HERE), 'utf8')]),
+)
+
+const reach = await escapingComponents(directory)
+
+const escaping = files.filter((file) => (reach[`${file.name}.vue`] ?? []).length > 0).map((file) => file.name)
 
 test('the refused components are exactly the ones that act outside their own subtree', () => {
   const declaredRefused = literal('uiRefused')
@@ -335,4 +354,89 @@ test('the contract table names exactly the events each component emits', () => {
     [],
     'a component whose emits the table does not name is rendered as if it emitted nothing',
   )
+})
+
+// A guard that decides refusal by four literal spellings passes by not recognising a fifth.
+//
+// `ESCAPES` above matches `<Teleport`, `document.`, `window.addEventListener` and
+// `window.matchMedia`. Every one of the probes below leaves its own subtree exactly as `UiModal`
+// does — scroll-locks the page, listens on the document, reads the clipboard, drives the top
+// window — and not one of them is written in those four spellings, so each reads as a component
+// safe to render inert on a canvas. That is the `UiModal` defect with the characters changed.
+
+/** Components that escape their subtree, each by a spelling the four literals do not match. */
+const PROBES: Record<string, string> = {
+  'globalThis.document': `<script setup lang="ts">
+import { onBeforeUnmount } from 'vue'
+const doc = globalThis.document
+doc.body.style.overflow = 'hidden'
+onBeforeUnmount(() => { doc.body.style.overflow = '' })
+</script>
+<template><div /></template>`,
+  'an aliased document': `<script setup lang="ts">
+const doc = document
+doc.addEventListener('keydown', (e: KeyboardEvent) => e.preventDefault())
+</script>
+<template><div /></template>`,
+  'a global that is neither document nor window': `<script setup lang="ts">
+async function copy(text: string) { await navigator.clipboard.writeText(text) }
+</script>
+<template><button @click="copy('x')">copy</button></template>`,
+  'the top window': `<script setup lang="ts">
+function leave() { window.top!.location.href = '/' }
+</script>
+<template><button @click="leave()">go</button></template>`,
+  'a composable one call away': `<script setup lang="ts">
+import { useScrollLock } from '@/composables/useScrollLock'
+useScrollLock()
+</script>
+<template><div /></template>`,
+}
+
+/** The predicate that shipped before this story, kept as the thing these probes are measured against. */
+const FOUR_LITERALS = /<Teleport\b|document\.|window\.addEventListener|window\.matchMedia/
+
+test('a component escaping by a spelling the scan does not know is still refused', async () => {
+  const seen: Record<string, boolean> = {}
+  for (const [spelling, probe] of Object.entries(PROBES)) {
+    assert.ok(
+      !FOUR_LITERALS.test(probe),
+      `${spelling} is matched by the four literals, so it measures nothing about a spelling they miss`,
+    )
+    const probed = await escapingComponents({ ...directory, 'UiProbe.vue': probe })
+    seen[spelling] = (probed['UiProbe.vue'] ?? []).length > 0
+  }
+  assert.deepEqual(
+    Object.entries(seen)
+      .filter(([, caught]) => !caught)
+      .map(([spelling]) => spelling),
+    [],
+    'these components act outside their own subtree and the scan reads them as safe, so a box ' +
+      'naming one is rendered inert on the canvas rather than refused',
+  )
+})
+
+test('a component that escapes through a sibling it imports escapes with it', async () => {
+  const helper = `<script setup lang="ts">\nconst doc = globalThis.document\ndoc.title = 'x'\n</script>\n<template><i /></template>`
+  const importer = `<script setup lang="ts">\nimport UiHelper from './UiHelper.vue'\n</script>\n<template><UiHelper /></template>`
+  const probed = await escapingComponents({ ...directory, 'UiHelper.vue': helper, 'UiProbe.vue': importer })
+  assert.ok(
+    (probed['UiProbe.vue'] ?? []).some((reason) => reason.includes('UiHelper.vue')),
+    'a component whose reach is a sibling\'s reach is refused for the sibling\'s reason',
+  )
+})
+
+test('the scan fails closed on a component it cannot read', async () => {
+  const unreadable = `<script setup lang="ts">\nconst = = =\n</script>\n<template><div /></template>`
+  const probed = await escapingComponents({ ...directory, 'UiProbe.vue': unreadable })
+  assert.ok(
+    (probed['UiProbe.vue'] ?? []).length > 0,
+    'a component this guard cannot parse has an unknown reach, and unknown must not read as safe',
+  )
+})
+
+test('the scan does not simply refuse everything', async () => {
+  const inside = `<script setup lang="ts">\nimport { computed } from 'vue'\nconst props = defineProps<{ n: number }>()\nconst doubled = computed(() => Math.max(0, props.n) * 2)\n</script>\n<template><span>{{ doubled }}</span></template>`
+  const probed = await escapingComponents({ ...directory, 'UiProbe.vue': inside })
+  assert.deepEqual(probed['UiProbe.vue'], [], 'a component that stays in its own box is not refused')
 })

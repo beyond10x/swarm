@@ -155,6 +155,11 @@ export const uiPropTypes = {
 //
 // So a component that acts outside itself is REFUSED, not inerted, and `index.test.ts` decides
 // which those are by reading every component in this directory rather than by trusting this list.
+// It decides it by ALLOWLIST — `escapes.guard.ts` lets a component name its own declarations, the
+// compiler macros, the ECMAScript intrinsics, `vue` less its three mounting exports, and a sibling
+// in this directory whose reach becomes its own — because the four literal spellings that decided
+// it before could only catch an escape someone had already seen. A spelling nobody has seen is the
+// case this set exists for.
 export const uiEmitters: ReadonlySet<string> = new Set([
   'UiButton',
   'UiIconButton',
