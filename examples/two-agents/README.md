@@ -1,28 +1,33 @@
 # two-agents — the checker that reads a log and reports each clause by number
 
-`AGENTS.md` § *Honesty rules for anything published* carries a standing finding: *"a working agent
-swarm is overstated. What works is a swarm manager: one coordinator per swarm, one goal, one loop."*
-`story:a-recorded-run-shows-two-agents-working` is the story that retires that sentence or proves it
-should stay, and its acceptance is **seven clauses**.
+The recorded `two-agents-proof` demonstration retired the earlier finding that the repository
+had shown only a swarm manager. `story:a-recorded-run-shows-two-agents-working` defines its
+**seven acceptance clauses**. The evidence demonstrates one coordinator and one worker; broader
+or recursive swarms remain undemonstrated.
 
-This directory holds the instrument, not the run. `check-two-agents.py` reads a finished swarm's
+The Rust `swarm-check` workspace binary reads a finished swarm's
 records and answers each of the seven **independently, by number**, so a run that clears six names
 the one it missed and the re-run targets that clause rather than starting again. At two concurrent
 `claude-opus-5` sessions, *"it didn't work"* is not an affordable report.
 
 ```console
-examples/two-agents/check-two-agents.py data/swarms/<slug>
-examples/two-agents/check-two-agents.py <slug> --data data/swarms --json
+cargo run -p swarm-check -- data/swarms/<slug>
+cargo run -p swarm-check -- <slug> --data data/swarms --json
 ```
 
 Exit **0** when every one of the seven is met; **1** otherwise. The story's *unattended*
 condition is reported beside them and decides nothing — see below.
 
+SQLite is opened read-only, with no read-write fallback. A missing or corrupt SQLite database,
+or an inaccessible evidence file, produces a failing verdict; the checker never creates a database.
+Malformed JSON lines are skipped, preserving the historical reader's behavior. This replaces the
+Python command; historical exports retain the command and verdict recorded at the time.
+
 ## What it reads
 
 | path | what the checker takes from it |
 |---|---|
-| `data/swarms/<slug>/eventlog.sqlite3` | `swarm_events` — `global_seq, event_name, actor, occurred_at, data` |
+| `data/swarms/<slug>/eventlog.sqlite3` | `swarm_events` — `global_seq, event_name, actor, subject, occurred_at, data` |
 | `data/swarms/<slug>/turns/*.jsonl` | the metaharness event records, one file per turn **attempt** |
 | `data/swarms/<slug>/turns/spend.jsonl` | one row per attempt: `agent`, `goal`, `iterations`, `reached`, `spent` |
 | `data/swarms/<slug>/turns/capped.jsonl` | if the runtime ever writes one — see clause 7 |
@@ -43,9 +48,7 @@ Two rules the checker obeys, and a third that decides the design:
 
 - **A clause it cannot evaluate is NOT MET, never skipped.** An absent event log, an unreadable turn
   file, a missing spend record — each is a clause that has not been shown.
-- **No clause passes by finding nothing.** `swarm.agent.AssignmentTaken` has fired zero times in
-  this repository's history, so an empty result is the default state of the world. Every clause is
-  met only by a positive count.
+- **No clause passes by finding nothing.** An empty result is not evidence. Every clause is met only by a positive count.
 - **An agent is what an `AgentSpawned` says it is, and nothing else says it.** A name on a spend
   row, a name a turn record gives itself, a name in a file name: each is a claim the log settles.
   One definition, used by attribution and by clauses 6 and 7 alike — there were two for a day, and
@@ -87,9 +90,9 @@ Two rules the checker obeys, and a third that decides the design:
 Four ways, in the order a reader would trust them: an `agent` field on a record in the file; the
 agent's name in the file name; a work directory named after the agent in `session.started.cwd`; and
 the `(iterations, goal-prefix)` join into `spend.jsonl` — which is the same join `Swarm::turns` uses
-to put a verdict against a transcript. **The fourth is the one that works today**: `turn_file`
-(`src/runtime/swarm-server/src/coordinator.rs:608`) names a file after the turn and the goal's first
-eight characters, and nothing in the name or in the metaharness record says which agent ran it.
+to put a verdict against a transcript. The parser accepts historical names without an attempt,
+names with an attempt, and current names that also carry an agent segment. The spend join preserves
+the original checker's attribution for the recorded demonstration.
 
 **All four check the name against `swarm.agent.AgentSpawned`.** A transcript that names itself
 `alice` in a swarm that spawned no `alice` is not attributed, and two such transcripts are not two
@@ -105,9 +108,8 @@ only 3 and 4 left a transcript.
 
 ## What no run can meet yet, as of 2026-09-13
 
-Read this before spending money on a run. **This section describes the tree after the 2026-09-13a
-wave merges**, and says where that differs from the branch this file was written on, because the two
-halves of the wave landed on different branches and a reader of either alone gets the wrong answer.
+This historical comparison describes the base before the 2026-09-13a wave. The merged runtime
+can provide evidence for every clause; whether it does is a question about a recorded run.
 
 Five clauses were unmeetable on the base commit `1da5334`, and every one of them is a thing another
 unit of this wave built:
@@ -129,13 +131,10 @@ unit of this wave built:
   (`trigger.rs:288`), both of which are gone with the process, so a finished swarm's records cannot
   show it. The wave writes `turns/capped.jsonl`.
 
-**After the merge, nothing here is structurally unmeetable** — every clause becomes a question about
-the run rather than about the runtime. Before it, on this branch alone, clause 1, clause 2 and
-clause 4 are reported *not met* against any real log, and so are clause 5 and clause 7. That is the
-honest verdict rather than a hole in the checker, and it is why `test_adversary_pass2.py`'s first
-case is red here and green on the merged tree: it reads `swarm.agent.Role` out of
-`src/core/domains/agent.yaml` in whichever tree it is run in. Measured, not assumed — that case and
-the other four pass, 5 of 5, against a tree carrying unit A's `agent.yaml`.
+The historical Python `test_adversary_pass2.py` supplied the domain-fixture guard. Its present
+Rust replacement succeeds against the integrated domain and compares fixture roles against
+`src/core/domains/agent.yaml`, and the documentation guard that requires this section to name
+the clauses that an all-Coordinator fixture cannot meet.
 
 The clause 7 reader accepts three shapes, so it reads the merged runtime's rows without another
 change: a `turns/capped.jsonl` row whose `bound` is `"agent"` beside an `agent` field — which is
@@ -144,38 +143,31 @@ sentence on a spend row's `note` or in an event payload.
 
 ## Testing it needs no swarm
 
-A real run costs real money: one turn on `claude-opus-5[1m]` cost $0.070 on 2026-09-13, and
-`--max-budget-usd` is not a pre-spend bound — a probe capped at $0.01 ended at $0.071. So the
-fixtures write the records a run would leave, from nothing, and every clause is exercised **both
-ways**.
+The Rust suite materializes stable synthetic SQLite and JSON-lines fixtures. It launches no agent,
+model or daemon and needs no Python setup.
 
 ```console
-python3 -m unittest discover -s examples/two-agents          # the suite; exit 0 when green
-python3 examples/two-agents/fixtures.py <dir>                # a swarm meeting all seven
-python3 examples/two-agents/fixtures.py <dir> --unmet 4      # the same, minus one fact
-python3 examples/two-agents/check-two-agents.py <dir>
+cargo test -p swarm-check
+cargo run -p swarm-check --example fixtures -- <new-directory>
+cargo run -p swarm-check --example fixtures -- <new-directory> --unmet 4
+cargo run -p swarm-check -- <new-directory> --json
 ```
 
-`python3 -m unittest discover -s examples/two-agents` is the command a gate step should run. It
-needs no dependency beyond the standard library — `sqlite3` and `json` are in it — which is why this
-is Python and not a fourth crate in the workspace.
+The fixture command refuses an existing destination. Its default meets all seven clauses;
+`--unmet` removes a selected fact, with clause 4 also failing when clause 2 has no handover.
 
-Three files, and the third is not the author's:
+[The regression mapping](regression-mapping.md) maps all 83 original cases, including all original
+subcases and adversary findings, to Rust tests. Behavioral cases compare every parsed JSON field,
+CLI exit status, and text clause titles/reasons against captured Python baseline outputs. The Rust
+fixture materializer owns setup; the immutable JSON corpus preserves the baseline's evidence.
+Vocabulary guards read the runtime's actual `Issuer` enum and label arms and fail by variant name
+when a unit, tuple or struct variant cannot be understood. Additional tests cover malformed input,
+legacy names, directory/slug invocation and inaccessible evidence.
 
-| file | what it holds |
-|---|---|
-| `fixtures.py` | the records a run would leave, written from nothing. `build()` with no overrides meets all seven; each keyword takes one clause the other way |
-| `test_checker.py` | every clause both ways, plus the enumerations: nothing passes by finding nothing, no clause about agents is met by a name the log never spawned, no clause is met by a tally instead of a record |
-| `test_adversary.py` | **the adversary's cases, and not the author's to edit.** Five records whose shapes were read off real `data/swarms/*` — the ones that showed this checker reporting *met* on evidence that establishes nothing |
+## Historical demonstration
 
-The suite was first run against a deliberately wrong checker that answered "met" to everything: 42
-of 45 cases fired. That instrument finds a checker that is too lax about *absence*. It cannot find a
-checker that is too lax about *evidence*, which is what `test_adversary.py` is for and what every
-fix in it was.
-
-## What is not here
-
-**The scenario.** The story's other half is a swarm, a goal small enough to finish, and an
-assignment the coordinator posts to a second agent. That run is evidence and is recorded as a
-`verification-report` afterwards; it is not this directory. If the run does not meet the acceptance,
-the honest outcome is a report saying so and the sentence in `AGENTS.md` stays.
+[The exported evidence](evidence/2026-09-13-two-agents-proof/README.md) preserves the original
+run claims and checker output. The export omits SQLite and original transcripts, so it cannot
+reproduce the complete verdict by itself. Checking the original demonstration requires its
+`data/swarms/two-agents-proof` directory. The portable test corpus is synthetic evidence and is
+kept separate from that historical input.

@@ -1,0 +1,1628 @@
+{
+  "malformed_event_payloads": [
+    {
+      "input": {
+        "exists": true,
+        "directories": [
+          "turns"
+        ],
+        "events": null,
+        "raw_events": [
+          [
+            1,
+            "swarm.manager.SwarmCreated",
+            "system",
+            "operator",
+            "2026-09-13T12:01:00Z",
+            "not json"
+          ],
+          [
+            2,
+            "swarm.goal.GoalSet",
+            "system",
+            "operator",
+            "2026-09-13T12:02:00Z",
+            "[1,2]"
+          ],
+          [
+            3,
+            "swarm.manager.SwarmStarted",
+            "system",
+            "operator",
+            "2026-09-13T12:03:00Z",
+            "{\"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            4,
+            "swarm.agent.AgentSpawned",
+            "system",
+            "runtime",
+            "2026-09-13T12:04:00Z",
+            "{\"agent_id\": \"coordinator\", \"display_name\": \"coordinator\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Coordinator\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            5,
+            "swarm.agent.AgentSpawned",
+            "system",
+            "agent:coordinator",
+            "2026-09-13T12:05:00Z",
+            "{\"agent_id\": \"builder\", \"display_name\": \"builder\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Worker\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            6,
+            "swarm.agent.AssignmentPosted",
+            "swarm.agent.SwarmAgent",
+            "agent:coordinator",
+            "2026-09-13T12:06:00Z",
+            "{\"agent_id\": \"builder\", \"artifact_ref\": null, \"forbidden\": \"editing another unit's files\", \"outcome\": \"the checker reports seven clauses\", \"signoff\": \"the suite is green\"}"
+          ],
+          [
+            7,
+            "swarm.agent.AssignmentRecorded",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:07:00Z",
+            "{\"agent_id\": \"builder\", \"artifact_ref\": null, \"assignment_id\": \"5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f\", \"forbidden\": \"editing another unit's files\", \"outcome\": \"the checker reports seven clauses\", \"signoff\": \"the suite is green\"}"
+          ],
+          [
+            8,
+            "swarm.agent.AssignmentTaken",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:08:00Z",
+            "{\"agent_id\": \"builder\", \"msg\": \"taken\", \"ref\": \"5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f\"}"
+          ],
+          [
+            9,
+            "swarm.agent.AssignmentDone",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:09:00Z",
+            "{\"assignment_id\": \"5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f\", \"note\": \"the seven are reported\"}"
+          ],
+          [
+            10,
+            "swarm.agent.NoteEmitted",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:10:00Z",
+            "{\"agent_id\": \"builder\", \"msg\": \"the turn cap was reached: 4 of 3, by the agent `builder` across every goal it works. This goal is within its own bounds; raise SWARM_MAX_TURNS, or stop one of the agent's other goals\"}"
+          ]
+        ],
+        "corrupt_database": false,
+        "files": {
+          "turns/0002-01-73a4ac74.jsonl": "{\"format\": \"metaharness.event/1\", \"seq\": 1, \"event\": \"session.started\", \"adapter\": \"claude\", \"model\": \"claude-opus-5[1m]\", \"cwd\": \"$ROOT/work\", \"hermetic\": {\"mode\": \"on\", \"decisions\": \"frame\"}}\n{\"format\": \"metaharness.event/1\", \"seq\": 2, \"event\": \"tool.requested\", \"call_id\": \"toolu_allowed\", \"name\": \"Read\", \"input\": {\"file_path\": \"$ROOT/work/NOTES.md\"}, \"operations\": [\"file.read\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 3, \"event\": \"tool.decided\", \"call_id\": \"toolu_allowed\", \"decision\": {\"decision\": \"allow\"}, \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 4, \"event\": \"tool.requested\", \"call_id\": \"toolu_denied\", \"name\": \"Bash\", \"input\": {\"command\": \"echo hello-from-inside\"}, \"operations\": [\"shell\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 5, \"event\": \"tool.decided\", \"call_id\": \"toolu_denied\", \"decision\": {\"decision\": \"deny\", \"reason\": \"this step only admits `file.read` operations\"}, \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 6, \"event\": \"session.ended\", \"census\": {\"allowed\": 1, \"denied\": 1, \"replaced\": 0, \"abstained\": 0, \"by_seam\": {\"hook\": 2}, \"by_decider\": {\"frame\": 2}}}\n",
+          "turns/0001-01-73a4ac74.jsonl": "{\"format\": \"metaharness.event/1\", \"seq\": 1, \"event\": \"session.started\", \"adapter\": \"claude\", \"model\": \"claude-opus-5[1m]\", \"cwd\": \"$ROOT/work\", \"hermetic\": {\"mode\": \"on\", \"decisions\": \"frame\"}}\n{\"format\": \"metaharness.event/1\", \"seq\": 2, \"event\": \"tool.requested\", \"call_id\": \"toolu_allowed\", \"name\": \"Read\", \"input\": {\"file_path\": \"$ROOT/work/NOTES.md\"}, \"operations\": [\"file.read\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 3, \"event\": \"tool.decided\", \"call_id\": \"toolu_allowed\", \"decision\": {\"decision\": \"allow\"}, \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 6, \"event\": \"session.ended\", \"census\": {\"allowed\": 1, \"denied\": 0, \"replaced\": 0, \"abstained\": 0, \"by_seam\": {\"hook\": 1}, \"by_decider\": {\"frame\": 1}}}\n",
+          "turns/spend.jsonl": "{\"at\": \"2026-09-13T12:01:30Z\", \"agent\": \"coordinator\", \"goal\": \"73a4ac74-c4b6-4833-a3af-f7a1b4a9be95\", \"iterations\": 1, \"reached\": false, \"note\": null, \"finished\": true, \"spent\": {\"cost_usd\": 0.07, \"model\": \"claude-opus-5\", \"requests\": 3}}\n{\"at\": \"2026-09-13T12:02:30Z\", \"agent\": \"builder\", \"goal\": \"73a4ac74-c4b6-4833-a3af-f7a1b4a9be95\", \"iterations\": 2, \"reached\": false, \"note\": null, \"finished\": true, \"spent\": {\"cost_usd\": 0.07, \"model\": \"claude-opus-5\", \"requests\": 3}}\n"
+        }
+      },
+      "expected": {
+        "swarm": "$ROOT",
+        "clauses": [
+          {
+            "number": 1,
+            "title": "a non-Coordinator agent exists",
+            "met": true,
+            "looked_for": "a `swarm.agent.AgentSpawned` whose `role` is not `Coordinator`",
+            "found": "1 of 2 spawned agent(s): `builder` (Worker)"
+          },
+          {
+            "number": 2,
+            "title": "work was handed over",
+            "met": true,
+            "looked_for": "a `swarm.agent.AssignmentPosted` naming a non-Coordinator agent, a later `swarm.agent.AssignmentTaken` whose `agent_id` is that same agent, and a record of WHO ISSUED that taking that is not an operator's hand and not some other agent acting in its name",
+            "found": "1 `swarm.agent.AssignmentPosted` (to `builder`); 1 `swarm.agent.AssignmentTaken` (by `builder`); posted to `builder` at seq 6 and taken by it at seq 8, assignment 5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f, and the `runtime` issued that taking, on the member's behalf"
+          },
+          {
+            "number": 3,
+            "title": "two transcripts, neither overwritten",
+            "met": true,
+            "looked_for": "two turn files under `turns/`, each attributable to an agent the log knows and the two of them to different agents, and a file for every attempt `spend.jsonl` claims \u2014 an attempt with no file of its own is a record that was overwritten or never kept",
+            "found": "2 turn file(s), 2 attributed: `coordinator` \u00d71 (spend.jsonl), `builder` \u00d71 (spend.jsonl); 2 distinct agent(s): builder, coordinator"
+          },
+          {
+            "number": 4,
+            "title": "the work was finished, not merely started",
+            "met": true,
+            "looked_for": "a `swarm.agent.AssignmentDone` \u2014 what `swarm.agent.FinishAssignment` emits \u2014 or a `swarm.agent.GateGreen`, recorded AFTER the handover of record was taken, by the agent that took it, and naming that same assignment. `AssignmentPosted` carries no assignment identity, so the handover's is read from `AssignmentTaken.ref` and the `AssignmentRecorded` behind it; where either side names none, the agent and the ordering are checked and the assignment is not, and the finding says which",
+            "found": "`swarm.agent.AssignmentDone` at seq 9 by `builder`, which took the assignment at seq 8, both naming 5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f"
+          },
+          {
+            "number": 5,
+            "title": "the confinement acted",
+            "met": true,
+            "looked_for": "a `tool.decided` in a turn record whose decision is a denial and whose `decided_by` is `frame` \u2014 one call, named, that did not happen. A session census is not this: its `by_decider` counts decisions of every outcome, so it cannot say the frame denied anything",
+            "found": "1 of 3 decided call(s) refused by the frame: `Bash` (shell) in 0002-01-73a4ac74.jsonl \u2014 this step only admits `file.read` operations"
+          },
+          {
+            "number": 6,
+            "title": "spend is attributed per agent",
+            "met": true,
+            "looked_for": "rows in `turns/spend.jsonl` naming two different agents, both of them agents the log says were spawned",
+            "found": "2 row(s), 2 agent(s) named: `coordinator` \u00d71, `builder` \u00d71"
+          },
+          {
+            "number": 7,
+            "title": "the bound held with more than one agent to bound",
+            "met": true,
+            "looked_for": "a recorded refusal by the AGENT ceiling \u2014 `bound: agent` in `turns/capped.jsonl`, or the sentence `Capped::why()` writes for `Bound::Agent`, in the event log or on a spend row \u2014 naming one of at least two agents an `AgentSpawned` says the swarm had",
+            "found": "2 spawned agent(s) to bound: builder, coordinator; refused: `builder` (`swarm.agent.NoteEmitted` at seq 10)"
+          }
+        ],
+        "unattended": {
+          "number": 0,
+          "title": "unattended",
+          "met": true,
+          "looked_for": "at least one event between the first `swarm.manager.SwarmStarted` and the last verdict other than the `swarm.manager.SwarmStarted` itself, every event in that window naming who issued it, and every one of those the runtime or an agent this log spawned \u2014 the command that STARTS a swarm excepted, because a person issues that one by construction",
+          "found": "8 event(s) from seq 3 to seq 10, the end of the log, every one naming its issuer and every one of them the runtime or an agent this log spawned; issuers: agent:coordinator, operator, runtime"
+        },
+        "met": 7,
+        "not_met": 0,
+        "ok": true
+      }
+    }
+  ],
+  "malformed_json_lines": [
+    {
+      "input": {
+        "exists": true,
+        "directories": [
+          "turns"
+        ],
+        "events": null,
+        "raw_events": [
+          [
+            1,
+            "swarm.manager.SwarmCreated",
+            "system",
+            "operator",
+            "2026-09-13T12:01:00Z",
+            "{\"display_name\": \"Two agents\", \"home\": \"$ROOT\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            2,
+            "swarm.goal.GoalSet",
+            "system",
+            "operator",
+            "2026-09-13T12:02:00Z",
+            "{\"goal_id\": \"73a4ac74-c4b6-4833-a3af-f7a1b4a9be95\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\", \"text\": \"hand one unit of work over\"}"
+          ],
+          [
+            3,
+            "swarm.manager.SwarmStarted",
+            "system",
+            "operator",
+            "2026-09-13T12:03:00Z",
+            "{\"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            4,
+            "swarm.agent.AgentSpawned",
+            "system",
+            "runtime",
+            "2026-09-13T12:04:00Z",
+            "{\"agent_id\": \"coordinator\", \"display_name\": \"coordinator\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Coordinator\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            5,
+            "swarm.agent.AgentSpawned",
+            "system",
+            "agent:coordinator",
+            "2026-09-13T12:05:00Z",
+            "{\"agent_id\": \"builder\", \"display_name\": \"builder\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Worker\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            6,
+            "swarm.agent.AssignmentPosted",
+            "swarm.agent.SwarmAgent",
+            "agent:coordinator",
+            "2026-09-13T12:06:00Z",
+            "{\"agent_id\": \"builder\", \"artifact_ref\": null, \"forbidden\": \"editing another unit's files\", \"outcome\": \"the checker reports seven clauses\", \"signoff\": \"the suite is green\"}"
+          ],
+          [
+            7,
+            "swarm.agent.AssignmentRecorded",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:07:00Z",
+            "{\"agent_id\": \"builder\", \"artifact_ref\": null, \"assignment_id\": \"5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f\", \"forbidden\": \"editing another unit's files\", \"outcome\": \"the checker reports seven clauses\", \"signoff\": \"the suite is green\"}"
+          ],
+          [
+            8,
+            "swarm.agent.AssignmentTaken",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:08:00Z",
+            "{\"agent_id\": \"builder\", \"msg\": \"taken\", \"ref\": \"5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f\"}"
+          ],
+          [
+            9,
+            "swarm.agent.AssignmentDone",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:09:00Z",
+            "{\"assignment_id\": \"5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f\", \"note\": \"the seven are reported\"}"
+          ],
+          [
+            10,
+            "swarm.agent.NoteEmitted",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:10:00Z",
+            "{\"agent_id\": \"builder\", \"msg\": \"the turn cap was reached: 4 of 3, by the agent `builder` across every goal it works. This goal is within its own bounds; raise SWARM_MAX_TURNS, or stop one of the agent's other goals\"}"
+          ]
+        ],
+        "corrupt_database": false,
+        "files": {
+          "turns/0002-01-73a4ac74.jsonl": "not-json\n[1,2]\nnull\n{\"format\": \"metaharness.event/1\", \"seq\": 1, \"event\": \"session.started\", \"adapter\": \"claude\", \"model\": \"claude-opus-5[1m]\", \"cwd\": \"$ROOT/work\", \"hermetic\": {\"mode\": \"on\", \"decisions\": \"frame\"}}\n{\"format\": \"metaharness.event/1\", \"seq\": 2, \"event\": \"tool.requested\", \"call_id\": \"toolu_allowed\", \"name\": \"Read\", \"input\": {\"file_path\": \"$ROOT/work/NOTES.md\"}, \"operations\": [\"file.read\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 3, \"event\": \"tool.decided\", \"call_id\": \"toolu_allowed\", \"decision\": {\"decision\": \"allow\"}, \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 4, \"event\": \"tool.requested\", \"call_id\": \"toolu_denied\", \"name\": \"Bash\", \"input\": {\"command\": \"echo hello-from-inside\"}, \"operations\": [\"shell\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 5, \"event\": \"tool.decided\", \"call_id\": \"toolu_denied\", \"decision\": {\"decision\": \"deny\", \"reason\": \"this step only admits `file.read` operations\"}, \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 6, \"event\": \"session.ended\", \"census\": {\"allowed\": 1, \"denied\": 1, \"replaced\": 0, \"abstained\": 0, \"by_seam\": {\"hook\": 2}, \"by_decider\": {\"frame\": 2}}}\n",
+          "turns/0001-01-73a4ac74.jsonl": "not-json\n[1,2]\nnull\n{\"format\": \"metaharness.event/1\", \"seq\": 1, \"event\": \"session.started\", \"adapter\": \"claude\", \"model\": \"claude-opus-5[1m]\", \"cwd\": \"$ROOT/work\", \"hermetic\": {\"mode\": \"on\", \"decisions\": \"frame\"}}\n{\"format\": \"metaharness.event/1\", \"seq\": 2, \"event\": \"tool.requested\", \"call_id\": \"toolu_allowed\", \"name\": \"Read\", \"input\": {\"file_path\": \"$ROOT/work/NOTES.md\"}, \"operations\": [\"file.read\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 3, \"event\": \"tool.decided\", \"call_id\": \"toolu_allowed\", \"decision\": {\"decision\": \"allow\"}, \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 6, \"event\": \"session.ended\", \"census\": {\"allowed\": 1, \"denied\": 0, \"replaced\": 0, \"abstained\": 0, \"by_seam\": {\"hook\": 1}, \"by_decider\": {\"frame\": 1}}}\n",
+          "turns/spend.jsonl": "not-json\n[1,2]\nnull\n{\"at\": \"2026-09-13T12:01:30Z\", \"agent\": \"coordinator\", \"goal\": \"73a4ac74-c4b6-4833-a3af-f7a1b4a9be95\", \"iterations\": 1, \"reached\": false, \"note\": null, \"finished\": true, \"spent\": {\"cost_usd\": 0.07, \"model\": \"claude-opus-5\", \"requests\": 3}}\n{\"at\": \"2026-09-13T12:02:30Z\", \"agent\": \"builder\", \"goal\": \"73a4ac74-c4b6-4833-a3af-f7a1b4a9be95\", \"iterations\": 2, \"reached\": false, \"note\": null, \"finished\": true, \"spent\": {\"cost_usd\": 0.07, \"model\": \"claude-opus-5\", \"requests\": 3}}\n"
+        }
+      },
+      "expected": {
+        "swarm": "$ROOT",
+        "clauses": [
+          {
+            "number": 1,
+            "title": "a non-Coordinator agent exists",
+            "met": true,
+            "looked_for": "a `swarm.agent.AgentSpawned` whose `role` is not `Coordinator`",
+            "found": "1 of 2 spawned agent(s): `builder` (Worker)"
+          },
+          {
+            "number": 2,
+            "title": "work was handed over",
+            "met": true,
+            "looked_for": "a `swarm.agent.AssignmentPosted` naming a non-Coordinator agent, a later `swarm.agent.AssignmentTaken` whose `agent_id` is that same agent, and a record of WHO ISSUED that taking that is not an operator's hand and not some other agent acting in its name",
+            "found": "1 `swarm.agent.AssignmentPosted` (to `builder`); 1 `swarm.agent.AssignmentTaken` (by `builder`); posted to `builder` at seq 6 and taken by it at seq 8, assignment 5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f, and the `runtime` issued that taking, on the member's behalf"
+          },
+          {
+            "number": 3,
+            "title": "two transcripts, neither overwritten",
+            "met": true,
+            "looked_for": "two turn files under `turns/`, each attributable to an agent the log knows and the two of them to different agents, and a file for every attempt `spend.jsonl` claims \u2014 an attempt with no file of its own is a record that was overwritten or never kept",
+            "found": "2 turn file(s), 2 attributed: `coordinator` \u00d71 (spend.jsonl), `builder` \u00d71 (spend.jsonl); 2 distinct agent(s): builder, coordinator"
+          },
+          {
+            "number": 4,
+            "title": "the work was finished, not merely started",
+            "met": true,
+            "looked_for": "a `swarm.agent.AssignmentDone` \u2014 what `swarm.agent.FinishAssignment` emits \u2014 or a `swarm.agent.GateGreen`, recorded AFTER the handover of record was taken, by the agent that took it, and naming that same assignment. `AssignmentPosted` carries no assignment identity, so the handover's is read from `AssignmentTaken.ref` and the `AssignmentRecorded` behind it; where either side names none, the agent and the ordering are checked and the assignment is not, and the finding says which",
+            "found": "`swarm.agent.AssignmentDone` at seq 9 by `builder`, which took the assignment at seq 8, both naming 5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f"
+          },
+          {
+            "number": 5,
+            "title": "the confinement acted",
+            "met": true,
+            "looked_for": "a `tool.decided` in a turn record whose decision is a denial and whose `decided_by` is `frame` \u2014 one call, named, that did not happen. A session census is not this: its `by_decider` counts decisions of every outcome, so it cannot say the frame denied anything",
+            "found": "1 of 3 decided call(s) refused by the frame: `Bash` (shell) in 0002-01-73a4ac74.jsonl \u2014 this step only admits `file.read` operations"
+          },
+          {
+            "number": 6,
+            "title": "spend is attributed per agent",
+            "met": true,
+            "looked_for": "rows in `turns/spend.jsonl` naming two different agents, both of them agents the log says were spawned",
+            "found": "2 row(s), 2 agent(s) named: `coordinator` \u00d71, `builder` \u00d71"
+          },
+          {
+            "number": 7,
+            "title": "the bound held with more than one agent to bound",
+            "met": true,
+            "looked_for": "a recorded refusal by the AGENT ceiling \u2014 `bound: agent` in `turns/capped.jsonl`, or the sentence `Capped::why()` writes for `Bound::Agent`, in the event log or on a spend row \u2014 naming one of at least two agents an `AgentSpawned` says the swarm had",
+            "found": "2 spawned agent(s) to bound: builder, coordinator; refused: `builder` (`swarm.agent.NoteEmitted` at seq 10)"
+          }
+        ],
+        "unattended": {
+          "number": 0,
+          "title": "unattended",
+          "met": true,
+          "looked_for": "at least one event between the first `swarm.manager.SwarmStarted` and the last verdict other than the `swarm.manager.SwarmStarted` itself, every event in that window naming who issued it, and every one of those the runtime or an agent this log spawned \u2014 the command that STARTS a swarm excepted, because a person issues that one by construction",
+          "found": "8 event(s) from seq 3 to seq 10, the end of the log, every one naming its issuer and every one of them the runtime or an agent this log spawned; issuers: agent:coordinator, operator, runtime"
+        },
+        "met": 7,
+        "not_met": 0,
+        "ok": true
+      }
+    }
+  ],
+  "missing_turns": [
+    {
+      "input": {
+        "exists": true,
+        "directories": [],
+        "events": null,
+        "raw_events": [
+          [
+            1,
+            "swarm.manager.SwarmCreated",
+            "system",
+            "operator",
+            "2026-09-13T12:01:00Z",
+            "{\"display_name\": \"Two agents\", \"home\": \"$ROOT\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            2,
+            "swarm.goal.GoalSet",
+            "system",
+            "operator",
+            "2026-09-13T12:02:00Z",
+            "{\"goal_id\": \"73a4ac74-c4b6-4833-a3af-f7a1b4a9be95\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\", \"text\": \"hand one unit of work over\"}"
+          ],
+          [
+            3,
+            "swarm.manager.SwarmStarted",
+            "system",
+            "operator",
+            "2026-09-13T12:03:00Z",
+            "{\"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            4,
+            "swarm.agent.AgentSpawned",
+            "system",
+            "runtime",
+            "2026-09-13T12:04:00Z",
+            "{\"agent_id\": \"coordinator\", \"display_name\": \"coordinator\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Coordinator\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            5,
+            "swarm.agent.AgentSpawned",
+            "system",
+            "agent:coordinator",
+            "2026-09-13T12:05:00Z",
+            "{\"agent_id\": \"builder\", \"display_name\": \"builder\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Worker\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            6,
+            "swarm.agent.AssignmentPosted",
+            "swarm.agent.SwarmAgent",
+            "agent:coordinator",
+            "2026-09-13T12:06:00Z",
+            "{\"agent_id\": \"builder\", \"artifact_ref\": null, \"forbidden\": \"editing another unit's files\", \"outcome\": \"the checker reports seven clauses\", \"signoff\": \"the suite is green\"}"
+          ],
+          [
+            7,
+            "swarm.agent.AssignmentRecorded",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:07:00Z",
+            "{\"agent_id\": \"builder\", \"artifact_ref\": null, \"assignment_id\": \"5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f\", \"forbidden\": \"editing another unit's files\", \"outcome\": \"the checker reports seven clauses\", \"signoff\": \"the suite is green\"}"
+          ],
+          [
+            8,
+            "swarm.agent.AssignmentTaken",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:08:00Z",
+            "{\"agent_id\": \"builder\", \"msg\": \"taken\", \"ref\": \"5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f\"}"
+          ],
+          [
+            9,
+            "swarm.agent.AssignmentDone",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:09:00Z",
+            "{\"assignment_id\": \"5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f\", \"note\": \"the seven are reported\"}"
+          ],
+          [
+            10,
+            "swarm.agent.NoteEmitted",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:10:00Z",
+            "{\"agent_id\": \"builder\", \"msg\": \"the turn cap was reached: 4 of 3, by the agent `builder` across every goal it works. This goal is within its own bounds; raise SWARM_MAX_TURNS, or stop one of the agent's other goals\"}"
+          ]
+        ],
+        "corrupt_database": false,
+        "files": {}
+      },
+      "expected": {
+        "swarm": "$ROOT",
+        "clauses": [
+          {
+            "number": 1,
+            "title": "a non-Coordinator agent exists",
+            "met": true,
+            "looked_for": "a `swarm.agent.AgentSpawned` whose `role` is not `Coordinator`",
+            "found": "1 of 2 spawned agent(s): `builder` (Worker)"
+          },
+          {
+            "number": 2,
+            "title": "work was handed over",
+            "met": true,
+            "looked_for": "a `swarm.agent.AssignmentPosted` naming a non-Coordinator agent, a later `swarm.agent.AssignmentTaken` whose `agent_id` is that same agent, and a record of WHO ISSUED that taking that is not an operator's hand and not some other agent acting in its name",
+            "found": "1 `swarm.agent.AssignmentPosted` (to `builder`); 1 `swarm.agent.AssignmentTaken` (by `builder`); posted to `builder` at seq 6 and taken by it at seq 8, assignment 5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f, and the `runtime` issued that taking, on the member's behalf"
+          },
+          {
+            "number": 3,
+            "title": "two transcripts, neither overwritten",
+            "met": false,
+            "looked_for": "two turn files under `turns/`, each attributable to an agent the log knows and the two of them to different agents, and a file for every attempt `spend.jsonl` claims \u2014 an attempt with no file of its own is a record that was overwritten or never kept",
+            "found": "there is no turns directory at $ROOT/turns"
+          },
+          {
+            "number": 4,
+            "title": "the work was finished, not merely started",
+            "met": true,
+            "looked_for": "a `swarm.agent.AssignmentDone` \u2014 what `swarm.agent.FinishAssignment` emits \u2014 or a `swarm.agent.GateGreen`, recorded AFTER the handover of record was taken, by the agent that took it, and naming that same assignment. `AssignmentPosted` carries no assignment identity, so the handover's is read from `AssignmentTaken.ref` and the `AssignmentRecorded` behind it; where either side names none, the agent and the ordering are checked and the assignment is not, and the finding says which",
+            "found": "`swarm.agent.AssignmentDone` at seq 9 by `builder`, which took the assignment at seq 8, both naming 5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f"
+          },
+          {
+            "number": 5,
+            "title": "the confinement acted",
+            "met": false,
+            "looked_for": "a `tool.decided` in a turn record whose decision is a denial and whose `decided_by` is `frame` \u2014 one call, named, that did not happen. A session census is not this: its `by_decider` counts decisions of every outcome, so it cannot say the frame denied anything",
+            "found": "there is no turns directory at $ROOT/turns"
+          },
+          {
+            "number": 6,
+            "title": "spend is attributed per agent",
+            "met": false,
+            "looked_for": "rows in `turns/spend.jsonl` naming two different agents, both of them agents the log says were spawned",
+            "found": "there is no turns directory at $ROOT/turns"
+          },
+          {
+            "number": 7,
+            "title": "the bound held with more than one agent to bound",
+            "met": true,
+            "looked_for": "a recorded refusal by the AGENT ceiling \u2014 `bound: agent` in `turns/capped.jsonl`, or the sentence `Capped::why()` writes for `Bound::Agent`, in the event log or on a spend row \u2014 naming one of at least two agents an `AgentSpawned` says the swarm had",
+            "found": "2 spawned agent(s) to bound: builder, coordinator; refused: `builder` (`swarm.agent.NoteEmitted` at seq 10)"
+          }
+        ],
+        "unattended": {
+          "number": 0,
+          "title": "unattended",
+          "met": true,
+          "looked_for": "at least one event between the first `swarm.manager.SwarmStarted` and the last verdict other than the `swarm.manager.SwarmStarted` itself, every event in that window naming who issued it, and every one of those the runtime or an agent this log spawned \u2014 the command that STARTS a swarm excepted, because a person issues that one by construction",
+          "found": "8 event(s) from seq 3 to seq 10, the end of the log, every one naming its issuer and every one of them the runtime or an agent this log spawned; issuers: agent:coordinator, operator, runtime"
+        },
+        "met": 4,
+        "not_met": 3,
+        "ok": false
+      }
+    }
+  ],
+  "legacy_turn_names": [
+    {
+      "input": {
+        "exists": true,
+        "directories": [
+          "turns"
+        ],
+        "events": null,
+        "raw_events": [
+          [
+            1,
+            "swarm.manager.SwarmCreated",
+            "system",
+            "operator",
+            "2026-09-13T12:01:00Z",
+            "{\"display_name\": \"Two agents\", \"home\": \"$ROOT\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            2,
+            "swarm.goal.GoalSet",
+            "system",
+            "operator",
+            "2026-09-13T12:02:00Z",
+            "{\"goal_id\": \"73a4ac74-c4b6-4833-a3af-f7a1b4a9be95\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\", \"text\": \"hand one unit of work over\"}"
+          ],
+          [
+            3,
+            "swarm.manager.SwarmStarted",
+            "system",
+            "operator",
+            "2026-09-13T12:03:00Z",
+            "{\"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            4,
+            "swarm.agent.AgentSpawned",
+            "system",
+            "runtime",
+            "2026-09-13T12:04:00Z",
+            "{\"agent_id\": \"coordinator\", \"display_name\": \"coordinator\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Coordinator\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            5,
+            "swarm.agent.AgentSpawned",
+            "system",
+            "agent:coordinator",
+            "2026-09-13T12:05:00Z",
+            "{\"agent_id\": \"builder\", \"display_name\": \"builder\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Worker\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            6,
+            "swarm.agent.AssignmentPosted",
+            "swarm.agent.SwarmAgent",
+            "agent:coordinator",
+            "2026-09-13T12:06:00Z",
+            "{\"agent_id\": \"builder\", \"artifact_ref\": null, \"forbidden\": \"editing another unit's files\", \"outcome\": \"the checker reports seven clauses\", \"signoff\": \"the suite is green\"}"
+          ],
+          [
+            7,
+            "swarm.agent.AssignmentRecorded",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:07:00Z",
+            "{\"agent_id\": \"builder\", \"artifact_ref\": null, \"assignment_id\": \"5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f\", \"forbidden\": \"editing another unit's files\", \"outcome\": \"the checker reports seven clauses\", \"signoff\": \"the suite is green\"}"
+          ],
+          [
+            8,
+            "swarm.agent.AssignmentTaken",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:08:00Z",
+            "{\"agent_id\": \"builder\", \"msg\": \"taken\", \"ref\": \"5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f\"}"
+          ],
+          [
+            9,
+            "swarm.agent.AssignmentDone",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:09:00Z",
+            "{\"assignment_id\": \"5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f\", \"note\": \"the seven are reported\"}"
+          ],
+          [
+            10,
+            "swarm.agent.NoteEmitted",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:10:00Z",
+            "{\"agent_id\": \"builder\", \"msg\": \"the turn cap was reached: 4 of 3, by the agent `builder` across every goal it works. This goal is within its own bounds; raise SWARM_MAX_TURNS, or stop one of the agent's other goals\"}"
+          ]
+        ],
+        "corrupt_database": false,
+        "files": {
+          "turns/0001-73a4ac74.jsonl": "{\"format\": \"metaharness.event/1\", \"seq\": 1, \"event\": \"session.started\", \"adapter\": \"claude\", \"model\": \"claude-opus-5[1m]\", \"cwd\": \"$ROOT/work\", \"hermetic\": {\"mode\": \"on\", \"decisions\": \"frame\"}}\n{\"format\": \"metaharness.event/1\", \"seq\": 2, \"event\": \"tool.requested\", \"call_id\": \"toolu_allowed\", \"name\": \"Read\", \"input\": {\"file_path\": \"$ROOT/work/NOTES.md\"}, \"operations\": [\"file.read\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 3, \"event\": \"tool.decided\", \"call_id\": \"toolu_allowed\", \"decision\": {\"decision\": \"allow\"}, \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 6, \"event\": \"session.ended\", \"census\": {\"allowed\": 1, \"denied\": 0, \"replaced\": 0, \"abstained\": 0, \"by_seam\": {\"hook\": 1}, \"by_decider\": {\"frame\": 1}}}\n",
+          "turns/spend.jsonl": "{\"at\": \"2026-09-13T12:01:30Z\", \"agent\": \"coordinator\", \"goal\": \"73a4ac74-c4b6-4833-a3af-f7a1b4a9be95\", \"iterations\": 1, \"reached\": false, \"note\": null, \"finished\": true, \"spent\": {\"cost_usd\": 0.07, \"model\": \"claude-opus-5\", \"requests\": 3}}\n{\"at\": \"2026-09-13T12:02:30Z\", \"agent\": \"builder\", \"goal\": \"73a4ac74-c4b6-4833-a3af-f7a1b4a9be95\", \"iterations\": 2, \"reached\": false, \"note\": null, \"finished\": true, \"spent\": {\"cost_usd\": 0.07, \"model\": \"claude-opus-5\", \"requests\": 3}}\n",
+          "turns/0002-73a4ac74.jsonl": "{\"format\": \"metaharness.event/1\", \"seq\": 1, \"event\": \"session.started\", \"adapter\": \"claude\", \"model\": \"claude-opus-5[1m]\", \"cwd\": \"$ROOT/work\", \"hermetic\": {\"mode\": \"on\", \"decisions\": \"frame\"}}\n{\"format\": \"metaharness.event/1\", \"seq\": 2, \"event\": \"tool.requested\", \"call_id\": \"toolu_allowed\", \"name\": \"Read\", \"input\": {\"file_path\": \"$ROOT/work/NOTES.md\"}, \"operations\": [\"file.read\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 3, \"event\": \"tool.decided\", \"call_id\": \"toolu_allowed\", \"decision\": {\"decision\": \"allow\"}, \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 4, \"event\": \"tool.requested\", \"call_id\": \"toolu_denied\", \"name\": \"Bash\", \"input\": {\"command\": \"echo hello-from-inside\"}, \"operations\": [\"shell\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 5, \"event\": \"tool.decided\", \"call_id\": \"toolu_denied\", \"decision\": {\"decision\": \"deny\", \"reason\": \"this step only admits `file.read` operations\"}, \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 6, \"event\": \"session.ended\", \"census\": {\"allowed\": 1, \"denied\": 1, \"replaced\": 0, \"abstained\": 0, \"by_seam\": {\"hook\": 2}, \"by_decider\": {\"frame\": 2}}}\n"
+        }
+      },
+      "expected": {
+        "swarm": "$ROOT",
+        "clauses": [
+          {
+            "number": 1,
+            "title": "a non-Coordinator agent exists",
+            "met": true,
+            "looked_for": "a `swarm.agent.AgentSpawned` whose `role` is not `Coordinator`",
+            "found": "1 of 2 spawned agent(s): `builder` (Worker)"
+          },
+          {
+            "number": 2,
+            "title": "work was handed over",
+            "met": true,
+            "looked_for": "a `swarm.agent.AssignmentPosted` naming a non-Coordinator agent, a later `swarm.agent.AssignmentTaken` whose `agent_id` is that same agent, and a record of WHO ISSUED that taking that is not an operator's hand and not some other agent acting in its name",
+            "found": "1 `swarm.agent.AssignmentPosted` (to `builder`); 1 `swarm.agent.AssignmentTaken` (by `builder`); posted to `builder` at seq 6 and taken by it at seq 8, assignment 5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f, and the `runtime` issued that taking, on the member's behalf"
+          },
+          {
+            "number": 3,
+            "title": "two transcripts, neither overwritten",
+            "met": true,
+            "looked_for": "two turn files under `turns/`, each attributable to an agent the log knows and the two of them to different agents, and a file for every attempt `spend.jsonl` claims \u2014 an attempt with no file of its own is a record that was overwritten or never kept",
+            "found": "2 turn file(s), 2 attributed: `coordinator` \u00d71 (spend.jsonl), `builder` \u00d71 (spend.jsonl); 2 distinct agent(s): builder, coordinator"
+          },
+          {
+            "number": 4,
+            "title": "the work was finished, not merely started",
+            "met": true,
+            "looked_for": "a `swarm.agent.AssignmentDone` \u2014 what `swarm.agent.FinishAssignment` emits \u2014 or a `swarm.agent.GateGreen`, recorded AFTER the handover of record was taken, by the agent that took it, and naming that same assignment. `AssignmentPosted` carries no assignment identity, so the handover's is read from `AssignmentTaken.ref` and the `AssignmentRecorded` behind it; where either side names none, the agent and the ordering are checked and the assignment is not, and the finding says which",
+            "found": "`swarm.agent.AssignmentDone` at seq 9 by `builder`, which took the assignment at seq 8, both naming 5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f"
+          },
+          {
+            "number": 5,
+            "title": "the confinement acted",
+            "met": true,
+            "looked_for": "a `tool.decided` in a turn record whose decision is a denial and whose `decided_by` is `frame` \u2014 one call, named, that did not happen. A session census is not this: its `by_decider` counts decisions of every outcome, so it cannot say the frame denied anything",
+            "found": "1 of 3 decided call(s) refused by the frame: `Bash` (shell) in 0002-73a4ac74.jsonl \u2014 this step only admits `file.read` operations"
+          },
+          {
+            "number": 6,
+            "title": "spend is attributed per agent",
+            "met": true,
+            "looked_for": "rows in `turns/spend.jsonl` naming two different agents, both of them agents the log says were spawned",
+            "found": "2 row(s), 2 agent(s) named: `coordinator` \u00d71, `builder` \u00d71"
+          },
+          {
+            "number": 7,
+            "title": "the bound held with more than one agent to bound",
+            "met": true,
+            "looked_for": "a recorded refusal by the AGENT ceiling \u2014 `bound: agent` in `turns/capped.jsonl`, or the sentence `Capped::why()` writes for `Bound::Agent`, in the event log or on a spend row \u2014 naming one of at least two agents an `AgentSpawned` says the swarm had",
+            "found": "2 spawned agent(s) to bound: builder, coordinator; refused: `builder` (`swarm.agent.NoteEmitted` at seq 10)"
+          }
+        ],
+        "unattended": {
+          "number": 0,
+          "title": "unattended",
+          "met": true,
+          "looked_for": "at least one event between the first `swarm.manager.SwarmStarted` and the last verdict other than the `swarm.manager.SwarmStarted` itself, every event in that window naming who issued it, and every one of those the runtime or an agent this log spawned \u2014 the command that STARTS a swarm excepted, because a person issues that one by construction",
+          "found": "8 event(s) from seq 3 to seq 10, the end of the log, every one naming its issuer and every one of them the runtime or an agent this log spawned; issuers: agent:coordinator, operator, runtime"
+        },
+        "met": 7,
+        "not_met": 0,
+        "ok": true
+      }
+    }
+  ],
+  "denial_words": [
+    {
+      "input": {
+        "exists": true,
+        "directories": [
+          "turns"
+        ],
+        "events": null,
+        "raw_events": [
+          [
+            1,
+            "swarm.manager.SwarmCreated",
+            "system",
+            "operator",
+            "2026-09-13T12:01:00Z",
+            "{\"display_name\": \"Two agents\", \"home\": \"$ROOT\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            2,
+            "swarm.goal.GoalSet",
+            "system",
+            "operator",
+            "2026-09-13T12:02:00Z",
+            "{\"goal_id\": \"73a4ac74-c4b6-4833-a3af-f7a1b4a9be95\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\", \"text\": \"hand one unit of work over\"}"
+          ],
+          [
+            3,
+            "swarm.manager.SwarmStarted",
+            "system",
+            "operator",
+            "2026-09-13T12:03:00Z",
+            "{\"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            4,
+            "swarm.agent.AgentSpawned",
+            "system",
+            "runtime",
+            "2026-09-13T12:04:00Z",
+            "{\"agent_id\": \"coordinator\", \"display_name\": \"coordinator\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Coordinator\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            5,
+            "swarm.agent.AgentSpawned",
+            "system",
+            "agent:coordinator",
+            "2026-09-13T12:05:00Z",
+            "{\"agent_id\": \"builder\", \"display_name\": \"builder\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Worker\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            6,
+            "swarm.agent.AssignmentPosted",
+            "swarm.agent.SwarmAgent",
+            "agent:coordinator",
+            "2026-09-13T12:06:00Z",
+            "{\"agent_id\": \"builder\", \"artifact_ref\": null, \"forbidden\": \"editing another unit's files\", \"outcome\": \"the checker reports seven clauses\", \"signoff\": \"the suite is green\"}"
+          ],
+          [
+            7,
+            "swarm.agent.AssignmentRecorded",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:07:00Z",
+            "{\"agent_id\": \"builder\", \"artifact_ref\": null, \"assignment_id\": \"5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f\", \"forbidden\": \"editing another unit's files\", \"outcome\": \"the checker reports seven clauses\", \"signoff\": \"the suite is green\"}"
+          ],
+          [
+            8,
+            "swarm.agent.AssignmentTaken",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:08:00Z",
+            "{\"agent_id\": \"builder\", \"msg\": \"taken\", \"ref\": \"5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f\"}"
+          ],
+          [
+            9,
+            "swarm.agent.AssignmentDone",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:09:00Z",
+            "{\"assignment_id\": \"5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f\", \"note\": \"the seven are reported\"}"
+          ],
+          [
+            10,
+            "swarm.agent.NoteEmitted",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:10:00Z",
+            "{\"agent_id\": \"builder\", \"msg\": \"the turn cap was reached: 4 of 3, by the agent `builder` across every goal it works. This goal is within its own bounds; raise SWARM_MAX_TURNS, or stop one of the agent's other goals\"}"
+          ]
+        ],
+        "corrupt_database": false,
+        "files": {
+          "turns/0002-01-73a4ac74.jsonl": "{\"format\": \"metaharness.event/1\", \"seq\": 1, \"event\": \"session.started\", \"adapter\": \"claude\", \"model\": \"claude-opus-5[1m]\", \"cwd\": \"$ROOT/work\", \"hermetic\": {\"mode\": \"on\", \"decisions\": \"frame\"}}\n{\"format\": \"metaharness.event/1\", \"seq\": 2, \"event\": \"tool.requested\", \"call_id\": \"toolu_allowed\", \"name\": \"Read\", \"input\": {\"file_path\": \"$ROOT/work/NOTES.md\"}, \"operations\": [\"file.read\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 3, \"event\": \"tool.decided\", \"call_id\": \"toolu_allowed\", \"decision\": {\"decision\": \"allow\"}, \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 4, \"event\": \"tool.requested\", \"call_id\": \"toolu_denied\", \"name\": \"Bash\", \"input\": {\"command\": \"echo hello-from-inside\"}, \"operations\": [\"shell\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 5, \"event\": \"tool.decided\", \"call_id\": \"toolu_denied\", \"decision\": {\"decision\": \"BLOCKED\", \"reason\": \"this step only admits `file.read` operations\"}, \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 6, \"event\": \"session.ended\", \"census\": {\"allowed\": 1, \"denied\": 1, \"replaced\": 0, \"abstained\": 0, \"by_seam\": {\"hook\": 2}, \"by_decider\": {\"frame\": 2}}}\n",
+          "turns/0001-01-73a4ac74.jsonl": "{\"format\": \"metaharness.event/1\", \"seq\": 1, \"event\": \"session.started\", \"adapter\": \"claude\", \"model\": \"claude-opus-5[1m]\", \"cwd\": \"$ROOT/work\", \"hermetic\": {\"mode\": \"on\", \"decisions\": \"frame\"}}\n{\"format\": \"metaharness.event/1\", \"seq\": 2, \"event\": \"tool.requested\", \"call_id\": \"toolu_allowed\", \"name\": \"Read\", \"input\": {\"file_path\": \"$ROOT/work/NOTES.md\"}, \"operations\": [\"file.read\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 3, \"event\": \"tool.decided\", \"call_id\": \"toolu_allowed\", \"decision\": {\"decision\": \"allow\"}, \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 6, \"event\": \"session.ended\", \"census\": {\"allowed\": 1, \"denied\": 0, \"replaced\": 0, \"abstained\": 0, \"by_seam\": {\"hook\": 1}, \"by_decider\": {\"frame\": 1}}}\n",
+          "turns/spend.jsonl": "{\"at\": \"2026-09-13T12:01:30Z\", \"agent\": \"coordinator\", \"goal\": \"73a4ac74-c4b6-4833-a3af-f7a1b4a9be95\", \"iterations\": 1, \"reached\": false, \"note\": null, \"finished\": true, \"spent\": {\"cost_usd\": 0.07, \"model\": \"claude-opus-5\", \"requests\": 3}}\n{\"at\": \"2026-09-13T12:02:30Z\", \"agent\": \"builder\", \"goal\": \"73a4ac74-c4b6-4833-a3af-f7a1b4a9be95\", \"iterations\": 2, \"reached\": false, \"note\": null, \"finished\": true, \"spent\": {\"cost_usd\": 0.07, \"model\": \"claude-opus-5\", \"requests\": 3}}\n"
+        }
+      },
+      "expected": {
+        "swarm": "$ROOT",
+        "clauses": [
+          {
+            "number": 1,
+            "title": "a non-Coordinator agent exists",
+            "met": true,
+            "looked_for": "a `swarm.agent.AgentSpawned` whose `role` is not `Coordinator`",
+            "found": "1 of 2 spawned agent(s): `builder` (Worker)"
+          },
+          {
+            "number": 2,
+            "title": "work was handed over",
+            "met": true,
+            "looked_for": "a `swarm.agent.AssignmentPosted` naming a non-Coordinator agent, a later `swarm.agent.AssignmentTaken` whose `agent_id` is that same agent, and a record of WHO ISSUED that taking that is not an operator's hand and not some other agent acting in its name",
+            "found": "1 `swarm.agent.AssignmentPosted` (to `builder`); 1 `swarm.agent.AssignmentTaken` (by `builder`); posted to `builder` at seq 6 and taken by it at seq 8, assignment 5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f, and the `runtime` issued that taking, on the member's behalf"
+          },
+          {
+            "number": 3,
+            "title": "two transcripts, neither overwritten",
+            "met": true,
+            "looked_for": "two turn files under `turns/`, each attributable to an agent the log knows and the two of them to different agents, and a file for every attempt `spend.jsonl` claims \u2014 an attempt with no file of its own is a record that was overwritten or never kept",
+            "found": "2 turn file(s), 2 attributed: `coordinator` \u00d71 (spend.jsonl), `builder` \u00d71 (spend.jsonl); 2 distinct agent(s): builder, coordinator"
+          },
+          {
+            "number": 4,
+            "title": "the work was finished, not merely started",
+            "met": true,
+            "looked_for": "a `swarm.agent.AssignmentDone` \u2014 what `swarm.agent.FinishAssignment` emits \u2014 or a `swarm.agent.GateGreen`, recorded AFTER the handover of record was taken, by the agent that took it, and naming that same assignment. `AssignmentPosted` carries no assignment identity, so the handover's is read from `AssignmentTaken.ref` and the `AssignmentRecorded` behind it; where either side names none, the agent and the ordering are checked and the assignment is not, and the finding says which",
+            "found": "`swarm.agent.AssignmentDone` at seq 9 by `builder`, which took the assignment at seq 8, both naming 5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f"
+          },
+          {
+            "number": 5,
+            "title": "the confinement acted",
+            "met": true,
+            "looked_for": "a `tool.decided` in a turn record whose decision is a denial and whose `decided_by` is `frame` \u2014 one call, named, that did not happen. A session census is not this: its `by_decider` counts decisions of every outcome, so it cannot say the frame denied anything",
+            "found": "1 of 3 decided call(s) refused by the frame: `Bash` (shell) in 0002-01-73a4ac74.jsonl \u2014 this step only admits `file.read` operations"
+          },
+          {
+            "number": 6,
+            "title": "spend is attributed per agent",
+            "met": true,
+            "looked_for": "rows in `turns/spend.jsonl` naming two different agents, both of them agents the log says were spawned",
+            "found": "2 row(s), 2 agent(s) named: `coordinator` \u00d71, `builder` \u00d71"
+          },
+          {
+            "number": 7,
+            "title": "the bound held with more than one agent to bound",
+            "met": true,
+            "looked_for": "a recorded refusal by the AGENT ceiling \u2014 `bound: agent` in `turns/capped.jsonl`, or the sentence `Capped::why()` writes for `Bound::Agent`, in the event log or on a spend row \u2014 naming one of at least two agents an `AgentSpawned` says the swarm had",
+            "found": "2 spawned agent(s) to bound: builder, coordinator; refused: `builder` (`swarm.agent.NoteEmitted` at seq 10)"
+          }
+        ],
+        "unattended": {
+          "number": 0,
+          "title": "unattended",
+          "met": true,
+          "looked_for": "at least one event between the first `swarm.manager.SwarmStarted` and the last verdict other than the `swarm.manager.SwarmStarted` itself, every event in that window naming who issued it, and every one of those the runtime or an agent this log spawned \u2014 the command that STARTS a swarm excepted, because a person issues that one by construction",
+          "found": "8 event(s) from seq 3 to seq 10, the end of the log, every one naming its issuer and every one of them the runtime or an agent this log spawned; issuers: agent:coordinator, operator, runtime"
+        },
+        "met": 7,
+        "not_met": 0,
+        "ok": true
+      }
+    }
+  ],
+  "bare_denial": [
+    {
+      "input": {
+        "exists": true,
+        "directories": [
+          "turns"
+        ],
+        "events": null,
+        "raw_events": [
+          [
+            1,
+            "swarm.manager.SwarmCreated",
+            "system",
+            "operator",
+            "2026-09-13T12:01:00Z",
+            "{\"display_name\": \"Two agents\", \"home\": \"$ROOT\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            2,
+            "swarm.goal.GoalSet",
+            "system",
+            "operator",
+            "2026-09-13T12:02:00Z",
+            "{\"goal_id\": \"73a4ac74-c4b6-4833-a3af-f7a1b4a9be95\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\", \"text\": \"hand one unit of work over\"}"
+          ],
+          [
+            3,
+            "swarm.manager.SwarmStarted",
+            "system",
+            "operator",
+            "2026-09-13T12:03:00Z",
+            "{\"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            4,
+            "swarm.agent.AgentSpawned",
+            "system",
+            "runtime",
+            "2026-09-13T12:04:00Z",
+            "{\"agent_id\": \"coordinator\", \"display_name\": \"coordinator\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Coordinator\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            5,
+            "swarm.agent.AgentSpawned",
+            "system",
+            "agent:coordinator",
+            "2026-09-13T12:05:00Z",
+            "{\"agent_id\": \"builder\", \"display_name\": \"builder\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Worker\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            6,
+            "swarm.agent.AssignmentPosted",
+            "swarm.agent.SwarmAgent",
+            "agent:coordinator",
+            "2026-09-13T12:06:00Z",
+            "{\"agent_id\": \"builder\", \"artifact_ref\": null, \"forbidden\": \"editing another unit's files\", \"outcome\": \"the checker reports seven clauses\", \"signoff\": \"the suite is green\"}"
+          ],
+          [
+            7,
+            "swarm.agent.AssignmentRecorded",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:07:00Z",
+            "{\"agent_id\": \"builder\", \"artifact_ref\": null, \"assignment_id\": \"5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f\", \"forbidden\": \"editing another unit's files\", \"outcome\": \"the checker reports seven clauses\", \"signoff\": \"the suite is green\"}"
+          ],
+          [
+            8,
+            "swarm.agent.AssignmentTaken",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:08:00Z",
+            "{\"agent_id\": \"builder\", \"msg\": \"taken\", \"ref\": \"5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f\"}"
+          ],
+          [
+            9,
+            "swarm.agent.AssignmentDone",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:09:00Z",
+            "{\"assignment_id\": \"5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f\", \"note\": \"the seven are reported\"}"
+          ],
+          [
+            10,
+            "swarm.agent.NoteEmitted",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:10:00Z",
+            "{\"agent_id\": \"builder\", \"msg\": \"the turn cap was reached: 4 of 3, by the agent `builder` across every goal it works. This goal is within its own bounds; raise SWARM_MAX_TURNS, or stop one of the agent's other goals\"}"
+          ]
+        ],
+        "corrupt_database": false,
+        "files": {
+          "turns/0002-01-73a4ac74.jsonl": "{\"format\": \"metaharness.event/1\", \"seq\": 1, \"event\": \"session.started\", \"adapter\": \"claude\", \"model\": \"claude-opus-5[1m]\", \"cwd\": \"$ROOT/work\", \"hermetic\": {\"mode\": \"on\", \"decisions\": \"frame\"}}\n{\"format\": \"metaharness.event/1\", \"seq\": 2, \"event\": \"tool.requested\", \"call_id\": \"toolu_allowed\", \"name\": \"Read\", \"input\": {\"file_path\": \"$ROOT/work/NOTES.md\"}, \"operations\": [\"file.read\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 3, \"event\": \"tool.decided\", \"call_id\": \"toolu_allowed\", \"decision\": {\"decision\": \"allow\"}, \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 4, \"event\": \"tool.requested\", \"call_id\": \"toolu_denied\", \"name\": \"Bash\", \"input\": {\"command\": \"echo hello-from-inside\"}, \"operations\": [\"shell\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 5, \"event\": \"tool.decided\", \"call_id\": \"toolu_denied\", \"decision\": \"ReJeCtEd\", \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 6, \"event\": \"session.ended\", \"census\": {\"allowed\": 1, \"denied\": 1, \"replaced\": 0, \"abstained\": 0, \"by_seam\": {\"hook\": 2}, \"by_decider\": {\"frame\": 2}}}\n",
+          "turns/0001-01-73a4ac74.jsonl": "{\"format\": \"metaharness.event/1\", \"seq\": 1, \"event\": \"session.started\", \"adapter\": \"claude\", \"model\": \"claude-opus-5[1m]\", \"cwd\": \"$ROOT/work\", \"hermetic\": {\"mode\": \"on\", \"decisions\": \"frame\"}}\n{\"format\": \"metaharness.event/1\", \"seq\": 2, \"event\": \"tool.requested\", \"call_id\": \"toolu_allowed\", \"name\": \"Read\", \"input\": {\"file_path\": \"$ROOT/work/NOTES.md\"}, \"operations\": [\"file.read\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 3, \"event\": \"tool.decided\", \"call_id\": \"toolu_allowed\", \"decision\": {\"decision\": \"allow\"}, \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 6, \"event\": \"session.ended\", \"census\": {\"allowed\": 1, \"denied\": 0, \"replaced\": 0, \"abstained\": 0, \"by_seam\": {\"hook\": 1}, \"by_decider\": {\"frame\": 1}}}\n",
+          "turns/spend.jsonl": "{\"at\": \"2026-09-13T12:01:30Z\", \"agent\": \"coordinator\", \"goal\": \"73a4ac74-c4b6-4833-a3af-f7a1b4a9be95\", \"iterations\": 1, \"reached\": false, \"note\": null, \"finished\": true, \"spent\": {\"cost_usd\": 0.07, \"model\": \"claude-opus-5\", \"requests\": 3}}\n{\"at\": \"2026-09-13T12:02:30Z\", \"agent\": \"builder\", \"goal\": \"73a4ac74-c4b6-4833-a3af-f7a1b4a9be95\", \"iterations\": 2, \"reached\": false, \"note\": null, \"finished\": true, \"spent\": {\"cost_usd\": 0.07, \"model\": \"claude-opus-5\", \"requests\": 3}}\n"
+        }
+      },
+      "expected": {
+        "swarm": "$ROOT",
+        "clauses": [
+          {
+            "number": 1,
+            "title": "a non-Coordinator agent exists",
+            "met": true,
+            "looked_for": "a `swarm.agent.AgentSpawned` whose `role` is not `Coordinator`",
+            "found": "1 of 2 spawned agent(s): `builder` (Worker)"
+          },
+          {
+            "number": 2,
+            "title": "work was handed over",
+            "met": true,
+            "looked_for": "a `swarm.agent.AssignmentPosted` naming a non-Coordinator agent, a later `swarm.agent.AssignmentTaken` whose `agent_id` is that same agent, and a record of WHO ISSUED that taking that is not an operator's hand and not some other agent acting in its name",
+            "found": "1 `swarm.agent.AssignmentPosted` (to `builder`); 1 `swarm.agent.AssignmentTaken` (by `builder`); posted to `builder` at seq 6 and taken by it at seq 8, assignment 5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f, and the `runtime` issued that taking, on the member's behalf"
+          },
+          {
+            "number": 3,
+            "title": "two transcripts, neither overwritten",
+            "met": true,
+            "looked_for": "two turn files under `turns/`, each attributable to an agent the log knows and the two of them to different agents, and a file for every attempt `spend.jsonl` claims \u2014 an attempt with no file of its own is a record that was overwritten or never kept",
+            "found": "2 turn file(s), 2 attributed: `coordinator` \u00d71 (spend.jsonl), `builder` \u00d71 (spend.jsonl); 2 distinct agent(s): builder, coordinator"
+          },
+          {
+            "number": 4,
+            "title": "the work was finished, not merely started",
+            "met": true,
+            "looked_for": "a `swarm.agent.AssignmentDone` \u2014 what `swarm.agent.FinishAssignment` emits \u2014 or a `swarm.agent.GateGreen`, recorded AFTER the handover of record was taken, by the agent that took it, and naming that same assignment. `AssignmentPosted` carries no assignment identity, so the handover's is read from `AssignmentTaken.ref` and the `AssignmentRecorded` behind it; where either side names none, the agent and the ordering are checked and the assignment is not, and the finding says which",
+            "found": "`swarm.agent.AssignmentDone` at seq 9 by `builder`, which took the assignment at seq 8, both naming 5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f"
+          },
+          {
+            "number": 5,
+            "title": "the confinement acted",
+            "met": true,
+            "looked_for": "a `tool.decided` in a turn record whose decision is a denial and whose `decided_by` is `frame` \u2014 one call, named, that did not happen. A session census is not this: its `by_decider` counts decisions of every outcome, so it cannot say the frame denied anything",
+            "found": "1 of 3 decided call(s) refused by the frame: `Bash` (shell) in 0002-01-73a4ac74.jsonl"
+          },
+          {
+            "number": 6,
+            "title": "spend is attributed per agent",
+            "met": true,
+            "looked_for": "rows in `turns/spend.jsonl` naming two different agents, both of them agents the log says were spawned",
+            "found": "2 row(s), 2 agent(s) named: `coordinator` \u00d71, `builder` \u00d71"
+          },
+          {
+            "number": 7,
+            "title": "the bound held with more than one agent to bound",
+            "met": true,
+            "looked_for": "a recorded refusal by the AGENT ceiling \u2014 `bound: agent` in `turns/capped.jsonl`, or the sentence `Capped::why()` writes for `Bound::Agent`, in the event log or on a spend row \u2014 naming one of at least two agents an `AgentSpawned` says the swarm had",
+            "found": "2 spawned agent(s) to bound: builder, coordinator; refused: `builder` (`swarm.agent.NoteEmitted` at seq 10)"
+          }
+        ],
+        "unattended": {
+          "number": 0,
+          "title": "unattended",
+          "met": true,
+          "looked_for": "at least one event between the first `swarm.manager.SwarmStarted` and the last verdict other than the `swarm.manager.SwarmStarted` itself, every event in that window naming who issued it, and every one of those the runtime or an agent this log spawned \u2014 the command that STARTS a swarm excepted, because a person issues that one by construction",
+          "found": "8 event(s) from seq 3 to seq 10, the end of the log, every one naming its issuer and every one of them the runtime or an agent this log spawned; issuers: agent:coordinator, operator, runtime"
+        },
+        "met": 7,
+        "not_met": 0,
+        "ok": true
+      }
+    }
+  ],
+  "bound_object": [
+    {
+      "input": {
+        "exists": true,
+        "directories": [
+          "turns"
+        ],
+        "events": null,
+        "raw_events": [
+          [
+            1,
+            "swarm.manager.SwarmCreated",
+            "system",
+            "operator",
+            "2026-09-13T12:01:00Z",
+            "{\"display_name\": \"Two agents\", \"home\": \"$ROOT\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            2,
+            "swarm.goal.GoalSet",
+            "system",
+            "operator",
+            "2026-09-13T12:02:00Z",
+            "{\"goal_id\": \"73a4ac74-c4b6-4833-a3af-f7a1b4a9be95\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\", \"text\": \"hand one unit of work over\"}"
+          ],
+          [
+            3,
+            "swarm.manager.SwarmStarted",
+            "system",
+            "operator",
+            "2026-09-13T12:03:00Z",
+            "{\"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            4,
+            "swarm.agent.AgentSpawned",
+            "system",
+            "runtime",
+            "2026-09-13T12:04:00Z",
+            "{\"agent_id\": \"coordinator\", \"display_name\": \"coordinator\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Coordinator\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            5,
+            "swarm.agent.AgentSpawned",
+            "system",
+            "agent:coordinator",
+            "2026-09-13T12:05:00Z",
+            "{\"agent_id\": \"builder\", \"display_name\": \"builder\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Worker\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            6,
+            "swarm.agent.AssignmentPosted",
+            "swarm.agent.SwarmAgent",
+            "agent:coordinator",
+            "2026-09-13T12:06:00Z",
+            "{\"agent_id\": \"builder\", \"artifact_ref\": null, \"forbidden\": \"editing another unit's files\", \"outcome\": \"the checker reports seven clauses\", \"signoff\": \"the suite is green\"}"
+          ],
+          [
+            7,
+            "swarm.agent.AssignmentRecorded",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:07:00Z",
+            "{\"agent_id\": \"builder\", \"artifact_ref\": null, \"assignment_id\": \"5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f\", \"forbidden\": \"editing another unit's files\", \"outcome\": \"the checker reports seven clauses\", \"signoff\": \"the suite is green\"}"
+          ],
+          [
+            8,
+            "swarm.agent.AssignmentTaken",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:08:00Z",
+            "{\"agent_id\": \"builder\", \"msg\": \"taken\", \"ref\": \"5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f\"}"
+          ],
+          [
+            9,
+            "swarm.agent.AssignmentDone",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:09:00Z",
+            "{\"assignment_id\": \"5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f\", \"note\": \"the seven are reported\"}"
+          ],
+          [
+            10,
+            "swarm.agent.NoteEmitted",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:10:00Z",
+            "{\"agent_id\": \"builder\", \"msg\": \"the turn cap was reached: 4 of 3, by the agent `builder` across every goal it works. This goal is within its own bounds; raise SWARM_MAX_TURNS, or stop one of the agent's other goals\"}"
+          ]
+        ],
+        "corrupt_database": false,
+        "files": {
+          "turns/0002-01-73a4ac74.jsonl": "{\"format\": \"metaharness.event/1\", \"seq\": 1, \"event\": \"session.started\", \"adapter\": \"claude\", \"model\": \"claude-opus-5[1m]\", \"cwd\": \"$ROOT/work\", \"hermetic\": {\"mode\": \"on\", \"decisions\": \"frame\"}}\n{\"format\": \"metaharness.event/1\", \"seq\": 2, \"event\": \"tool.requested\", \"call_id\": \"toolu_allowed\", \"name\": \"Read\", \"input\": {\"file_path\": \"$ROOT/work/NOTES.md\"}, \"operations\": [\"file.read\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 3, \"event\": \"tool.decided\", \"call_id\": \"toolu_allowed\", \"decision\": {\"decision\": \"allow\"}, \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 4, \"event\": \"tool.requested\", \"call_id\": \"toolu_denied\", \"name\": \"Bash\", \"input\": {\"command\": \"echo hello-from-inside\"}, \"operations\": [\"shell\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 5, \"event\": \"tool.decided\", \"call_id\": \"toolu_denied\", \"decision\": {\"decision\": \"deny\", \"reason\": \"this step only admits `file.read` operations\"}, \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 6, \"event\": \"session.ended\", \"census\": {\"allowed\": 1, \"denied\": 1, \"replaced\": 0, \"abstained\": 0, \"by_seam\": {\"hook\": 2}, \"by_decider\": {\"frame\": 2}}}\n",
+          "turns/0001-01-73a4ac74.jsonl": "{\"format\": \"metaharness.event/1\", \"seq\": 1, \"event\": \"session.started\", \"adapter\": \"claude\", \"model\": \"claude-opus-5[1m]\", \"cwd\": \"$ROOT/work\", \"hermetic\": {\"mode\": \"on\", \"decisions\": \"frame\"}}\n{\"format\": \"metaharness.event/1\", \"seq\": 2, \"event\": \"tool.requested\", \"call_id\": \"toolu_allowed\", \"name\": \"Read\", \"input\": {\"file_path\": \"$ROOT/work/NOTES.md\"}, \"operations\": [\"file.read\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 3, \"event\": \"tool.decided\", \"call_id\": \"toolu_allowed\", \"decision\": {\"decision\": \"allow\"}, \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 6, \"event\": \"session.ended\", \"census\": {\"allowed\": 1, \"denied\": 0, \"replaced\": 0, \"abstained\": 0, \"by_seam\": {\"hook\": 1}, \"by_decider\": {\"frame\": 1}}}\n",
+          "turns/spend.jsonl": "{\"at\": \"2026-09-13T12:01:30Z\", \"agent\": \"coordinator\", \"goal\": \"73a4ac74-c4b6-4833-a3af-f7a1b4a9be95\", \"iterations\": 1, \"reached\": false, \"note\": null, \"finished\": true, \"spent\": {\"cost_usd\": 0.07, \"model\": \"claude-opus-5\", \"requests\": 3}}\n{\"at\": \"2026-09-13T12:02:30Z\", \"agent\": \"builder\", \"goal\": \"73a4ac74-c4b6-4833-a3af-f7a1b4a9be95\", \"iterations\": 2, \"reached\": false, \"note\": null, \"finished\": true, \"spent\": {\"cost_usd\": 0.07, \"model\": \"claude-opus-5\", \"requests\": 3}}\n",
+          "turns/capped.jsonl": "{\"bound\": {\"agent\": \"builder\"}}\n"
+        }
+      },
+      "expected": {
+        "swarm": "$ROOT",
+        "clauses": [
+          {
+            "number": 1,
+            "title": "a non-Coordinator agent exists",
+            "met": true,
+            "looked_for": "a `swarm.agent.AgentSpawned` whose `role` is not `Coordinator`",
+            "found": "1 of 2 spawned agent(s): `builder` (Worker)"
+          },
+          {
+            "number": 2,
+            "title": "work was handed over",
+            "met": true,
+            "looked_for": "a `swarm.agent.AssignmentPosted` naming a non-Coordinator agent, a later `swarm.agent.AssignmentTaken` whose `agent_id` is that same agent, and a record of WHO ISSUED that taking that is not an operator's hand and not some other agent acting in its name",
+            "found": "1 `swarm.agent.AssignmentPosted` (to `builder`); 1 `swarm.agent.AssignmentTaken` (by `builder`); posted to `builder` at seq 6 and taken by it at seq 8, assignment 5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f, and the `runtime` issued that taking, on the member's behalf"
+          },
+          {
+            "number": 3,
+            "title": "two transcripts, neither overwritten",
+            "met": true,
+            "looked_for": "two turn files under `turns/`, each attributable to an agent the log knows and the two of them to different agents, and a file for every attempt `spend.jsonl` claims \u2014 an attempt with no file of its own is a record that was overwritten or never kept",
+            "found": "2 turn file(s), 2 attributed: `coordinator` \u00d71 (spend.jsonl), `builder` \u00d71 (spend.jsonl); 2 distinct agent(s): builder, coordinator"
+          },
+          {
+            "number": 4,
+            "title": "the work was finished, not merely started",
+            "met": true,
+            "looked_for": "a `swarm.agent.AssignmentDone` \u2014 what `swarm.agent.FinishAssignment` emits \u2014 or a `swarm.agent.GateGreen`, recorded AFTER the handover of record was taken, by the agent that took it, and naming that same assignment. `AssignmentPosted` carries no assignment identity, so the handover's is read from `AssignmentTaken.ref` and the `AssignmentRecorded` behind it; where either side names none, the agent and the ordering are checked and the assignment is not, and the finding says which",
+            "found": "`swarm.agent.AssignmentDone` at seq 9 by `builder`, which took the assignment at seq 8, both naming 5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f"
+          },
+          {
+            "number": 5,
+            "title": "the confinement acted",
+            "met": true,
+            "looked_for": "a `tool.decided` in a turn record whose decision is a denial and whose `decided_by` is `frame` \u2014 one call, named, that did not happen. A session census is not this: its `by_decider` counts decisions of every outcome, so it cannot say the frame denied anything",
+            "found": "1 of 3 decided call(s) refused by the frame: `Bash` (shell) in 0002-01-73a4ac74.jsonl \u2014 this step only admits `file.read` operations"
+          },
+          {
+            "number": 6,
+            "title": "spend is attributed per agent",
+            "met": true,
+            "looked_for": "rows in `turns/spend.jsonl` naming two different agents, both of them agents the log says were spawned",
+            "found": "2 row(s), 2 agent(s) named: `coordinator` \u00d71, `builder` \u00d71"
+          },
+          {
+            "number": 7,
+            "title": "the bound held with more than one agent to bound",
+            "met": true,
+            "looked_for": "a recorded refusal by the AGENT ceiling \u2014 `bound: agent` in `turns/capped.jsonl`, or the sentence `Capped::why()` writes for `Bound::Agent`, in the event log or on a spend row \u2014 naming one of at least two agents an `AgentSpawned` says the swarm had",
+            "found": "2 spawned agent(s) to bound: builder, coordinator; refused: `builder` (turns/capped.jsonl), `builder` (`swarm.agent.NoteEmitted` at seq 10)"
+          }
+        ],
+        "unattended": {
+          "number": 0,
+          "title": "unattended",
+          "met": true,
+          "looked_for": "at least one event between the first `swarm.manager.SwarmStarted` and the last verdict other than the `swarm.manager.SwarmStarted` itself, every event in that window naming who issued it, and every one of those the runtime or an agent this log spawned \u2014 the command that STARTS a swarm excepted, because a person issues that one by construction",
+          "found": "8 event(s) from seq 3 to seq 10, the end of the log, every one naming its issuer and every one of them the runtime or an agent this log spawned; issuers: agent:coordinator, operator, runtime"
+        },
+        "met": 7,
+        "not_met": 0,
+        "ok": true
+      }
+    }
+  ],
+  "missing_assignment_identity": [
+    {
+      "input": {
+        "exists": true,
+        "directories": [
+          "turns"
+        ],
+        "events": null,
+        "raw_events": [
+          [
+            1,
+            "swarm.manager.SwarmCreated",
+            "system",
+            "operator",
+            "2026-09-13T12:01:00Z",
+            "{\"display_name\": \"Two agents\", \"home\": \"$ROOT\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            2,
+            "swarm.goal.GoalSet",
+            "system",
+            "operator",
+            "2026-09-13T12:02:00Z",
+            "{\"goal_id\": \"73a4ac74-c4b6-4833-a3af-f7a1b4a9be95\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\", \"text\": \"hand one unit of work over\"}"
+          ],
+          [
+            3,
+            "swarm.manager.SwarmStarted",
+            "system",
+            "operator",
+            "2026-09-13T12:03:00Z",
+            "{\"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            4,
+            "swarm.agent.AgentSpawned",
+            "system",
+            "runtime",
+            "2026-09-13T12:04:00Z",
+            "{\"agent_id\": \"coordinator\", \"display_name\": \"coordinator\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Coordinator\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            5,
+            "swarm.agent.AgentSpawned",
+            "system",
+            "agent:coordinator",
+            "2026-09-13T12:05:00Z",
+            "{\"agent_id\": \"builder\", \"display_name\": \"builder\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Worker\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            6,
+            "swarm.agent.AssignmentPosted",
+            "swarm.agent.SwarmAgent",
+            "agent:coordinator",
+            "2026-09-13T12:06:00Z",
+            "{\"agent_id\": \"builder\", \"artifact_ref\": null, \"forbidden\": \"editing another unit's files\", \"outcome\": \"the checker reports seven clauses\", \"signoff\": \"the suite is green\"}"
+          ],
+          [
+            7,
+            "swarm.agent.AssignmentRecorded",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:07:00Z",
+            "{\"agent_id\": \"builder\", \"artifact_ref\": null, \"assignment_id\": \"5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f\", \"forbidden\": \"editing another unit's files\", \"outcome\": \"the checker reports seven clauses\", \"signoff\": \"the suite is green\"}"
+          ],
+          [
+            8,
+            "swarm.agent.AssignmentTaken",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:08:00Z",
+            "{\"agent_id\": \"builder\", \"msg\": \"taken\"}"
+          ],
+          [
+            9,
+            "swarm.agent.AssignmentDone",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:09:00Z",
+            "{\"assignment_id\": \"5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f\", \"note\": \"the seven are reported\"}"
+          ],
+          [
+            10,
+            "swarm.agent.NoteEmitted",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:10:00Z",
+            "{\"agent_id\": \"builder\", \"msg\": \"the turn cap was reached: 4 of 3, by the agent `builder` across every goal it works. This goal is within its own bounds; raise SWARM_MAX_TURNS, or stop one of the agent's other goals\"}"
+          ]
+        ],
+        "corrupt_database": false,
+        "files": {
+          "turns/0002-01-73a4ac74.jsonl": "{\"format\": \"metaharness.event/1\", \"seq\": 1, \"event\": \"session.started\", \"adapter\": \"claude\", \"model\": \"claude-opus-5[1m]\", \"cwd\": \"$ROOT/work\", \"hermetic\": {\"mode\": \"on\", \"decisions\": \"frame\"}}\n{\"format\": \"metaharness.event/1\", \"seq\": 2, \"event\": \"tool.requested\", \"call_id\": \"toolu_allowed\", \"name\": \"Read\", \"input\": {\"file_path\": \"$ROOT/work/NOTES.md\"}, \"operations\": [\"file.read\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 3, \"event\": \"tool.decided\", \"call_id\": \"toolu_allowed\", \"decision\": {\"decision\": \"allow\"}, \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 4, \"event\": \"tool.requested\", \"call_id\": \"toolu_denied\", \"name\": \"Bash\", \"input\": {\"command\": \"echo hello-from-inside\"}, \"operations\": [\"shell\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 5, \"event\": \"tool.decided\", \"call_id\": \"toolu_denied\", \"decision\": {\"decision\": \"deny\", \"reason\": \"this step only admits `file.read` operations\"}, \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 6, \"event\": \"session.ended\", \"census\": {\"allowed\": 1, \"denied\": 1, \"replaced\": 0, \"abstained\": 0, \"by_seam\": {\"hook\": 2}, \"by_decider\": {\"frame\": 2}}}\n",
+          "turns/0001-01-73a4ac74.jsonl": "{\"format\": \"metaharness.event/1\", \"seq\": 1, \"event\": \"session.started\", \"adapter\": \"claude\", \"model\": \"claude-opus-5[1m]\", \"cwd\": \"$ROOT/work\", \"hermetic\": {\"mode\": \"on\", \"decisions\": \"frame\"}}\n{\"format\": \"metaharness.event/1\", \"seq\": 2, \"event\": \"tool.requested\", \"call_id\": \"toolu_allowed\", \"name\": \"Read\", \"input\": {\"file_path\": \"$ROOT/work/NOTES.md\"}, \"operations\": [\"file.read\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 3, \"event\": \"tool.decided\", \"call_id\": \"toolu_allowed\", \"decision\": {\"decision\": \"allow\"}, \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 6, \"event\": \"session.ended\", \"census\": {\"allowed\": 1, \"denied\": 0, \"replaced\": 0, \"abstained\": 0, \"by_seam\": {\"hook\": 1}, \"by_decider\": {\"frame\": 1}}}\n",
+          "turns/spend.jsonl": "{\"at\": \"2026-09-13T12:01:30Z\", \"agent\": \"coordinator\", \"goal\": \"73a4ac74-c4b6-4833-a3af-f7a1b4a9be95\", \"iterations\": 1, \"reached\": false, \"note\": null, \"finished\": true, \"spent\": {\"cost_usd\": 0.07, \"model\": \"claude-opus-5\", \"requests\": 3}}\n{\"at\": \"2026-09-13T12:02:30Z\", \"agent\": \"builder\", \"goal\": \"73a4ac74-c4b6-4833-a3af-f7a1b4a9be95\", \"iterations\": 2, \"reached\": false, \"note\": null, \"finished\": true, \"spent\": {\"cost_usd\": 0.07, \"model\": \"claude-opus-5\", \"requests\": 3}}\n"
+        }
+      },
+      "expected": {
+        "swarm": "$ROOT",
+        "clauses": [
+          {
+            "number": 1,
+            "title": "a non-Coordinator agent exists",
+            "met": true,
+            "looked_for": "a `swarm.agent.AgentSpawned` whose `role` is not `Coordinator`",
+            "found": "1 of 2 spawned agent(s): `builder` (Worker)"
+          },
+          {
+            "number": 2,
+            "title": "work was handed over",
+            "met": true,
+            "looked_for": "a `swarm.agent.AssignmentPosted` naming a non-Coordinator agent, a later `swarm.agent.AssignmentTaken` whose `agent_id` is that same agent, and a record of WHO ISSUED that taking that is not an operator's hand and not some other agent acting in its name",
+            "found": "1 `swarm.agent.AssignmentPosted` (to `builder`); 1 `swarm.agent.AssignmentTaken` (by `builder`); posted to `builder` at seq 6 and taken by it at seq 8, an assignment the take does not name (`ref` absent), and the `runtime` issued that taking, on the member's behalf"
+          },
+          {
+            "number": 3,
+            "title": "two transcripts, neither overwritten",
+            "met": true,
+            "looked_for": "two turn files under `turns/`, each attributable to an agent the log knows and the two of them to different agents, and a file for every attempt `spend.jsonl` claims \u2014 an attempt with no file of its own is a record that was overwritten or never kept",
+            "found": "2 turn file(s), 2 attributed: `coordinator` \u00d71 (spend.jsonl), `builder` \u00d71 (spend.jsonl); 2 distinct agent(s): builder, coordinator"
+          },
+          {
+            "number": 4,
+            "title": "the work was finished, not merely started",
+            "met": true,
+            "looked_for": "a `swarm.agent.AssignmentDone` \u2014 what `swarm.agent.FinishAssignment` emits \u2014 or a `swarm.agent.GateGreen`, recorded AFTER the handover of record was taken, by the agent that took it, and naming that same assignment. `AssignmentPosted` carries no assignment identity, so the handover's is read from `AssignmentTaken.ref` and the `AssignmentRecorded` behind it; where either side names none, the agent and the ordering are checked and the assignment is not, and the finding says which",
+            "found": "`swarm.agent.AssignmentDone` at seq 9 by `builder`, which took the assignment at seq 8 \u2014 but the take names no assignment (`ref` absent), so the agent and the ordering are checked and the assignment is not"
+          },
+          {
+            "number": 5,
+            "title": "the confinement acted",
+            "met": true,
+            "looked_for": "a `tool.decided` in a turn record whose decision is a denial and whose `decided_by` is `frame` \u2014 one call, named, that did not happen. A session census is not this: its `by_decider` counts decisions of every outcome, so it cannot say the frame denied anything",
+            "found": "1 of 3 decided call(s) refused by the frame: `Bash` (shell) in 0002-01-73a4ac74.jsonl \u2014 this step only admits `file.read` operations"
+          },
+          {
+            "number": 6,
+            "title": "spend is attributed per agent",
+            "met": true,
+            "looked_for": "rows in `turns/spend.jsonl` naming two different agents, both of them agents the log says were spawned",
+            "found": "2 row(s), 2 agent(s) named: `coordinator` \u00d71, `builder` \u00d71"
+          },
+          {
+            "number": 7,
+            "title": "the bound held with more than one agent to bound",
+            "met": true,
+            "looked_for": "a recorded refusal by the AGENT ceiling \u2014 `bound: agent` in `turns/capped.jsonl`, or the sentence `Capped::why()` writes for `Bound::Agent`, in the event log or on a spend row \u2014 naming one of at least two agents an `AgentSpawned` says the swarm had",
+            "found": "2 spawned agent(s) to bound: builder, coordinator; refused: `builder` (`swarm.agent.NoteEmitted` at seq 10)"
+          }
+        ],
+        "unattended": {
+          "number": 0,
+          "title": "unattended",
+          "met": true,
+          "looked_for": "at least one event between the first `swarm.manager.SwarmStarted` and the last verdict other than the `swarm.manager.SwarmStarted` itself, every event in that window naming who issued it, and every one of those the runtime or an agent this log spawned \u2014 the command that STARTS a swarm excepted, because a person issues that one by construction",
+          "found": "8 event(s) from seq 3 to seq 10, the end of the log, every one naming its issuer and every one of them the runtime or an agent this log spawned; issuers: agent:coordinator, operator, runtime"
+        },
+        "met": 7,
+        "not_met": 0,
+        "ok": true
+      }
+    }
+  ],
+  "unknown_issuer_mark": [
+    {
+      "input": {
+        "exists": true,
+        "directories": [
+          "turns"
+        ],
+        "events": null,
+        "raw_events": [
+          [
+            1,
+            "swarm.manager.SwarmCreated",
+            "system",
+            "operator",
+            "2026-09-13T12:01:00Z",
+            "{\"display_name\": \"Two agents\", \"home\": \"$ROOT\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            2,
+            "swarm.goal.GoalSet",
+            "system",
+            "operator",
+            "2026-09-13T12:02:00Z",
+            "{\"goal_id\": \"73a4ac74-c4b6-4833-a3af-f7a1b4a9be95\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\", \"text\": \"hand one unit of work over\"}"
+          ],
+          [
+            3,
+            "swarm.manager.SwarmStarted",
+            "system",
+            "operator",
+            "2026-09-13T12:03:00Z",
+            "{\"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            4,
+            "swarm.agent.AgentSpawned",
+            "system",
+            "runtime",
+            "2026-09-13T12:04:00Z",
+            "{\"agent_id\": \"coordinator\", \"display_name\": \"coordinator\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Coordinator\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            5,
+            "swarm.agent.AgentSpawned",
+            "system",
+            "agent:coordinator",
+            "2026-09-13T12:05:00Z",
+            "{\"agent_id\": \"builder\", \"display_name\": \"builder\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Worker\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+          ],
+          [
+            6,
+            "swarm.agent.AssignmentPosted",
+            "swarm.agent.SwarmAgent",
+            "agent:coordinator",
+            "2026-09-13T12:06:00Z",
+            "{\"agent_id\": \"builder\", \"artifact_ref\": null, \"forbidden\": \"editing another unit's files\", \"outcome\": \"the checker reports seven clauses\", \"signoff\": \"the suite is green\"}"
+          ],
+          [
+            7,
+            "swarm.agent.AssignmentRecorded",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:07:00Z",
+            "{\"agent_id\": \"builder\", \"artifact_ref\": null, \"assignment_id\": \"5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f\", \"forbidden\": \"editing another unit's files\", \"outcome\": \"the checker reports seven clauses\", \"signoff\": \"the suite is green\"}"
+          ],
+          [
+            8,
+            "swarm.agent.AssignmentTaken",
+            "swarm.agent.SwarmAgent",
+            "agent:?digest",
+            "2026-09-13T12:08:00Z",
+            "{\"agent_id\": \"builder\", \"msg\": \"taken\", \"ref\": \"5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f\"}"
+          ],
+          [
+            9,
+            "swarm.agent.AssignmentDone",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:09:00Z",
+            "{\"assignment_id\": \"5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f\", \"note\": \"the seven are reported\"}"
+          ],
+          [
+            10,
+            "swarm.agent.NoteEmitted",
+            "swarm.agent.SwarmAgent",
+            "runtime",
+            "2026-09-13T12:10:00Z",
+            "{\"agent_id\": \"builder\", \"msg\": \"the turn cap was reached: 4 of 3, by the agent `builder` across every goal it works. This goal is within its own bounds; raise SWARM_MAX_TURNS, or stop one of the agent's other goals\"}"
+          ]
+        ],
+        "corrupt_database": false,
+        "files": {
+          "turns/0002-01-73a4ac74.jsonl": "{\"format\": \"metaharness.event/1\", \"seq\": 1, \"event\": \"session.started\", \"adapter\": \"claude\", \"model\": \"claude-opus-5[1m]\", \"cwd\": \"$ROOT/work\", \"hermetic\": {\"mode\": \"on\", \"decisions\": \"frame\"}}\n{\"format\": \"metaharness.event/1\", \"seq\": 2, \"event\": \"tool.requested\", \"call_id\": \"toolu_allowed\", \"name\": \"Read\", \"input\": {\"file_path\": \"$ROOT/work/NOTES.md\"}, \"operations\": [\"file.read\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 3, \"event\": \"tool.decided\", \"call_id\": \"toolu_allowed\", \"decision\": {\"decision\": \"allow\"}, \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 4, \"event\": \"tool.requested\", \"call_id\": \"toolu_denied\", \"name\": \"Bash\", \"input\": {\"command\": \"echo hello-from-inside\"}, \"operations\": [\"shell\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 5, \"event\": \"tool.decided\", \"call_id\": \"toolu_denied\", \"decision\": {\"decision\": \"deny\", \"reason\": \"this step only admits `file.read` operations\"}, \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 6, \"event\": \"session.ended\", \"census\": {\"allowed\": 1, \"denied\": 1, \"replaced\": 0, \"abstained\": 0, \"by_seam\": {\"hook\": 2}, \"by_decider\": {\"frame\": 2}}}\n",
+          "turns/0001-01-73a4ac74.jsonl": "{\"format\": \"metaharness.event/1\", \"seq\": 1, \"event\": \"session.started\", \"adapter\": \"claude\", \"model\": \"claude-opus-5[1m]\", \"cwd\": \"$ROOT/work\", \"hermetic\": {\"mode\": \"on\", \"decisions\": \"frame\"}}\n{\"format\": \"metaharness.event/1\", \"seq\": 2, \"event\": \"tool.requested\", \"call_id\": \"toolu_allowed\", \"name\": \"Read\", \"input\": {\"file_path\": \"$ROOT/work/NOTES.md\"}, \"operations\": [\"file.read\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 3, \"event\": \"tool.decided\", \"call_id\": \"toolu_allowed\", \"decision\": {\"decision\": \"allow\"}, \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 6, \"event\": \"session.ended\", \"census\": {\"allowed\": 1, \"denied\": 0, \"replaced\": 0, \"abstained\": 0, \"by_seam\": {\"hook\": 1}, \"by_decider\": {\"frame\": 1}}}\n",
+          "turns/spend.jsonl": "{\"at\": \"2026-09-13T12:01:30Z\", \"agent\": \"coordinator\", \"goal\": \"73a4ac74-c4b6-4833-a3af-f7a1b4a9be95\", \"iterations\": 1, \"reached\": false, \"note\": null, \"finished\": true, \"spent\": {\"cost_usd\": 0.07, \"model\": \"claude-opus-5\", \"requests\": 3}}\n{\"at\": \"2026-09-13T12:02:30Z\", \"agent\": \"builder\", \"goal\": \"73a4ac74-c4b6-4833-a3af-f7a1b4a9be95\", \"iterations\": 2, \"reached\": false, \"note\": null, \"finished\": true, \"spent\": {\"cost_usd\": 0.07, \"model\": \"claude-opus-5\", \"requests\": 3}}\n"
+        }
+      },
+      "expected": {
+        "swarm": "$ROOT",
+        "clauses": [
+          {
+            "number": 1,
+            "title": "a non-Coordinator agent exists",
+            "met": true,
+            "looked_for": "a `swarm.agent.AgentSpawned` whose `role` is not `Coordinator`",
+            "found": "1 of 2 spawned agent(s): `builder` (Worker)"
+          },
+          {
+            "number": 2,
+            "title": "work was handed over",
+            "met": false,
+            "looked_for": "a `swarm.agent.AssignmentPosted` naming a non-Coordinator agent, a later `swarm.agent.AssignmentTaken` whose `agent_id` is that same agent, and a record of WHO ISSUED that taking that is not an operator's hand and not some other agent acting in its name",
+            "found": "1 `swarm.agent.AssignmentPosted` (to `builder`); 1 `swarm.agent.AssignmentTaken` (by `builder`); posted to `builder` at seq 6 and taken by it at seq 8, assignment 5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f, and the taking was issued by `agent:?digest`, which this log spawned no agent for \u2014 a mark for a name the envelope cannot hold, or a claim with nothing behind it. Either way it cannot be shown to be the member"
+          },
+          {
+            "number": 3,
+            "title": "two transcripts, neither overwritten",
+            "met": true,
+            "looked_for": "two turn files under `turns/`, each attributable to an agent the log knows and the two of them to different agents, and a file for every attempt `spend.jsonl` claims \u2014 an attempt with no file of its own is a record that was overwritten or never kept",
+            "found": "2 turn file(s), 2 attributed: `coordinator` \u00d71 (spend.jsonl), `builder` \u00d71 (spend.jsonl); 2 distinct agent(s): builder, coordinator"
+          },
+          {
+            "number": 4,
+            "title": "the work was finished, not merely started",
+            "met": true,
+            "looked_for": "a `swarm.agent.AssignmentDone` \u2014 what `swarm.agent.FinishAssignment` emits \u2014 or a `swarm.agent.GateGreen`, recorded AFTER the handover of record was taken, by the agent that took it, and naming that same assignment. `AssignmentPosted` carries no assignment identity, so the handover's is read from `AssignmentTaken.ref` and the `AssignmentRecorded` behind it; where either side names none, the agent and the ordering are checked and the assignment is not, and the finding says which",
+            "found": "`swarm.agent.AssignmentDone` at seq 9 by `builder`, which took the assignment at seq 8, both naming 5f1d1f5e-2a1b-4c3d-8e9f-0a1b2c3d4e5f"
+          },
+          {
+            "number": 5,
+            "title": "the confinement acted",
+            "met": true,
+            "looked_for": "a `tool.decided` in a turn record whose decision is a denial and whose `decided_by` is `frame` \u2014 one call, named, that did not happen. A session census is not this: its `by_decider` counts decisions of every outcome, so it cannot say the frame denied anything",
+            "found": "1 of 3 decided call(s) refused by the frame: `Bash` (shell) in 0002-01-73a4ac74.jsonl \u2014 this step only admits `file.read` operations"
+          },
+          {
+            "number": 6,
+            "title": "spend is attributed per agent",
+            "met": true,
+            "looked_for": "rows in `turns/spend.jsonl` naming two different agents, both of them agents the log says were spawned",
+            "found": "2 row(s), 2 agent(s) named: `coordinator` \u00d71, `builder` \u00d71"
+          },
+          {
+            "number": 7,
+            "title": "the bound held with more than one agent to bound",
+            "met": true,
+            "looked_for": "a recorded refusal by the AGENT ceiling \u2014 `bound: agent` in `turns/capped.jsonl`, or the sentence `Capped::why()` writes for `Bound::Agent`, in the event log or on a spend row \u2014 naming one of at least two agents an `AgentSpawned` says the swarm had",
+            "found": "2 spawned agent(s) to bound: builder, coordinator; refused: `builder` (`swarm.agent.NoteEmitted` at seq 10)"
+          }
+        ],
+        "unattended": {
+          "number": 0,
+          "title": "unattended",
+          "met": false,
+          "looked_for": "at least one event between the first `swarm.manager.SwarmStarted` and the last verdict other than the `swarm.manager.SwarmStarted` itself, every event in that window naming who issued it, and every one of those the runtime or an agent this log spawned \u2014 the command that STARTS a swarm excepted, because a person issues that one by construction",
+          "found": "1 of 8 event(s) in the window were issued by neither the `runtime` nor an agent this log spawned: `swarm.agent.AssignmentTaken` at seq 8 by `agent:?digest`"
+        },
+        "met": 6,
+        "not_met": 1,
+        "ok": false
+      }
+    }
+  ],
+  "missing_database": [
+    {
+      "input": {
+        "exists": true,
+        "directories": [
+          "turns"
+        ],
+        "events": null,
+        "raw_events": null,
+        "corrupt_database": false,
+        "files": {
+          "turns/0002-01-73a4ac74.jsonl": "{\"format\": \"metaharness.event/1\", \"seq\": 1, \"event\": \"session.started\", \"adapter\": \"claude\", \"model\": \"claude-opus-5[1m]\", \"cwd\": \"$ROOT/work\", \"hermetic\": {\"mode\": \"on\", \"decisions\": \"frame\"}}\n{\"format\": \"metaharness.event/1\", \"seq\": 2, \"event\": \"tool.requested\", \"call_id\": \"toolu_allowed\", \"name\": \"Read\", \"input\": {\"file_path\": \"$ROOT/work/NOTES.md\"}, \"operations\": [\"file.read\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 3, \"event\": \"tool.decided\", \"call_id\": \"toolu_allowed\", \"decision\": {\"decision\": \"allow\"}, \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 4, \"event\": \"tool.requested\", \"call_id\": \"toolu_denied\", \"name\": \"Bash\", \"input\": {\"command\": \"echo hello-from-inside\"}, \"operations\": [\"shell\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 5, \"event\": \"tool.decided\", \"call_id\": \"toolu_denied\", \"decision\": {\"decision\": \"deny\", \"reason\": \"this step only admits `file.read` operations\"}, \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 6, \"event\": \"session.ended\", \"census\": {\"allowed\": 1, \"denied\": 1, \"replaced\": 0, \"abstained\": 0, \"by_seam\": {\"hook\": 2}, \"by_decider\": {\"frame\": 2}}}\n",
+          "turns/0001-01-73a4ac74.jsonl": "{\"format\": \"metaharness.event/1\", \"seq\": 1, \"event\": \"session.started\", \"adapter\": \"claude\", \"model\": \"claude-opus-5[1m]\", \"cwd\": \"$ROOT/work\", \"hermetic\": {\"mode\": \"on\", \"decisions\": \"frame\"}}\n{\"format\": \"metaharness.event/1\", \"seq\": 2, \"event\": \"tool.requested\", \"call_id\": \"toolu_allowed\", \"name\": \"Read\", \"input\": {\"file_path\": \"$ROOT/work/NOTES.md\"}, \"operations\": [\"file.read\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 3, \"event\": \"tool.decided\", \"call_id\": \"toolu_allowed\", \"decision\": {\"decision\": \"allow\"}, \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 6, \"event\": \"session.ended\", \"census\": {\"allowed\": 1, \"denied\": 0, \"replaced\": 0, \"abstained\": 0, \"by_seam\": {\"hook\": 1}, \"by_decider\": {\"frame\": 1}}}\n",
+          "turns/spend.jsonl": "{\"at\": \"2026-09-13T12:01:30Z\", \"agent\": \"coordinator\", \"goal\": \"73a4ac74-c4b6-4833-a3af-f7a1b4a9be95\", \"iterations\": 1, \"reached\": false, \"note\": null, \"finished\": true, \"spent\": {\"cost_usd\": 0.07, \"model\": \"claude-opus-5\", \"requests\": 3}}\n{\"at\": \"2026-09-13T12:02:30Z\", \"agent\": \"builder\", \"goal\": \"73a4ac74-c4b6-4833-a3af-f7a1b4a9be95\", \"iterations\": 2, \"reached\": false, \"note\": null, \"finished\": true, \"spent\": {\"cost_usd\": 0.07, \"model\": \"claude-opus-5\", \"requests\": 3}}\n"
+        }
+      },
+      "expected": {
+        "swarm": "$ROOT",
+        "clauses": [
+          {
+            "number": 1,
+            "title": "a non-Coordinator agent exists",
+            "met": false,
+            "looked_for": "a `swarm.agent.AgentSpawned` whose `role` is not `Coordinator`",
+            "found": "there is no event log at $ROOT/eventlog.sqlite3"
+          },
+          {
+            "number": 2,
+            "title": "work was handed over",
+            "met": false,
+            "looked_for": "a `swarm.agent.AssignmentPosted` naming a non-Coordinator agent, a later `swarm.agent.AssignmentTaken` whose `agent_id` is that same agent, and a record of WHO ISSUED that taking that is not an operator's hand and not some other agent acting in its name",
+            "found": "there is no event log at $ROOT/eventlog.sqlite3"
+          },
+          {
+            "number": 3,
+            "title": "two transcripts, neither overwritten",
+            "met": false,
+            "looked_for": "two turn files under `turns/`, each attributable to an agent the log knows and the two of them to different agents, and a file for every attempt `spend.jsonl` claims \u2014 an attempt with no file of its own is a record that was overwritten or never kept",
+            "found": "2 turn file(s), 0 attributed: none; 0 distinct agent(s): none; 2 file(s) no agent is named on: 0001-01-73a4ac74.jsonl, 0002-01-73a4ac74.jsonl"
+          },
+          {
+            "number": 4,
+            "title": "the work was finished, not merely started",
+            "met": false,
+            "looked_for": "a `swarm.agent.AssignmentDone` \u2014 what `swarm.agent.FinishAssignment` emits \u2014 or a `swarm.agent.GateGreen`, recorded AFTER the handover of record was taken, by the agent that took it, and naming that same assignment. `AssignmentPosted` carries no assignment identity, so the handover's is read from `AssignmentTaken.ref` and the `AssignmentRecorded` behind it; where either side names none, the agent and the ordering are checked and the assignment is not, and the finding says which",
+            "found": "there is no event log at $ROOT/eventlog.sqlite3"
+          },
+          {
+            "number": 5,
+            "title": "the confinement acted",
+            "met": true,
+            "looked_for": "a `tool.decided` in a turn record whose decision is a denial and whose `decided_by` is `frame` \u2014 one call, named, that did not happen. A session census is not this: its `by_decider` counts decisions of every outcome, so it cannot say the frame denied anything",
+            "found": "1 of 3 decided call(s) refused by the frame: `Bash` (shell) in 0002-01-73a4ac74.jsonl \u2014 this step only admits `file.read` operations"
+          },
+          {
+            "number": 6,
+            "title": "spend is attributed per agent",
+            "met": false,
+            "looked_for": "rows in `turns/spend.jsonl` naming two different agents, both of them agents the log says were spawned",
+            "found": "2 row(s), 2 agent(s) named: `coordinator` \u00d71, `builder` \u00d71; named by no `swarm.agent.AgentSpawned`: `builder`, `coordinator`"
+          },
+          {
+            "number": 7,
+            "title": "the bound held with more than one agent to bound",
+            "met": false,
+            "looked_for": "a recorded refusal by the AGENT ceiling \u2014 `bound: agent` in `turns/capped.jsonl`, or the sentence `Capped::why()` writes for `Bound::Agent`, in the event log or on a spend row \u2014 naming one of at least two agents an `AgentSpawned` says the swarm had",
+            "found": "0 spawned agent(s) to bound: none; no refusal by the agent ceiling in the event log, in spend.jsonl or in capped.jsonl"
+          }
+        ],
+        "unattended": {
+          "number": 0,
+          "title": "unattended",
+          "met": false,
+          "looked_for": "at least one event between the first `swarm.manager.SwarmStarted` and the last verdict other than the `swarm.manager.SwarmStarted` itself, every event in that window naming who issued it, and every one of those the runtime or an agent this log spawned \u2014 the command that STARTS a swarm excepted, because a person issues that one by construction",
+          "found": "there is no event log at $ROOT/eventlog.sqlite3"
+        },
+        "met": 1,
+        "not_met": 6,
+        "ok": false
+      }
+    }
+  ],
+  "corrupt_database": [
+    {
+      "input": {
+        "exists": true,
+        "directories": [
+          "turns"
+        ],
+        "events": null,
+        "raw_events": null,
+        "corrupt_database": true,
+        "files": {
+          "turns/0002-01-73a4ac74.jsonl": "{\"format\": \"metaharness.event/1\", \"seq\": 1, \"event\": \"session.started\", \"adapter\": \"claude\", \"model\": \"claude-opus-5[1m]\", \"cwd\": \"$ROOT/work\", \"hermetic\": {\"mode\": \"on\", \"decisions\": \"frame\"}}\n{\"format\": \"metaharness.event/1\", \"seq\": 2, \"event\": \"tool.requested\", \"call_id\": \"toolu_allowed\", \"name\": \"Read\", \"input\": {\"file_path\": \"$ROOT/work/NOTES.md\"}, \"operations\": [\"file.read\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 3, \"event\": \"tool.decided\", \"call_id\": \"toolu_allowed\", \"decision\": {\"decision\": \"allow\"}, \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 4, \"event\": \"tool.requested\", \"call_id\": \"toolu_denied\", \"name\": \"Bash\", \"input\": {\"command\": \"echo hello-from-inside\"}, \"operations\": [\"shell\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 5, \"event\": \"tool.decided\", \"call_id\": \"toolu_denied\", \"decision\": {\"decision\": \"deny\", \"reason\": \"this step only admits `file.read` operations\"}, \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 6, \"event\": \"session.ended\", \"census\": {\"allowed\": 1, \"denied\": 1, \"replaced\": 0, \"abstained\": 0, \"by_seam\": {\"hook\": 2}, \"by_decider\": {\"frame\": 2}}}\n",
+          "turns/0001-01-73a4ac74.jsonl": "{\"format\": \"metaharness.event/1\", \"seq\": 1, \"event\": \"session.started\", \"adapter\": \"claude\", \"model\": \"claude-opus-5[1m]\", \"cwd\": \"$ROOT/work\", \"hermetic\": {\"mode\": \"on\", \"decisions\": \"frame\"}}\n{\"format\": \"metaharness.event/1\", \"seq\": 2, \"event\": \"tool.requested\", \"call_id\": \"toolu_allowed\", \"name\": \"Read\", \"input\": {\"file_path\": \"$ROOT/work/NOTES.md\"}, \"operations\": [\"file.read\"]}\n{\"format\": \"metaharness.event/1\", \"seq\": 3, \"event\": \"tool.decided\", \"call_id\": \"toolu_allowed\", \"decision\": {\"decision\": \"allow\"}, \"decided_by\": \"frame\"}\n{\"format\": \"metaharness.event/1\", \"seq\": 6, \"event\": \"session.ended\", \"census\": {\"allowed\": 1, \"denied\": 0, \"replaced\": 0, \"abstained\": 0, \"by_seam\": {\"hook\": 1}, \"by_decider\": {\"frame\": 1}}}\n",
+          "turns/spend.jsonl": "{\"at\": \"2026-09-13T12:01:30Z\", \"agent\": \"coordinator\", \"goal\": \"73a4ac74-c4b6-4833-a3af-f7a1b4a9be95\", \"iterations\": 1, \"reached\": false, \"note\": null, \"finished\": true, \"spent\": {\"cost_usd\": 0.07, \"model\": \"claude-opus-5\", \"requests\": 3}}\n{\"at\": \"2026-09-13T12:02:30Z\", \"agent\": \"builder\", \"goal\": \"73a4ac74-c4b6-4833-a3af-f7a1b4a9be95\", \"iterations\": 2, \"reached\": false, \"note\": null, \"finished\": true, \"spent\": {\"cost_usd\": 0.07, \"model\": \"claude-opus-5\", \"requests\": 3}}\n"
+        }
+      },
+      "expected": {
+        "swarm": "$ROOT",
+        "clauses": [
+          {
+            "number": 1,
+            "title": "a non-Coordinator agent exists",
+            "met": false,
+            "looked_for": "a `swarm.agent.AgentSpawned` whose `role` is not `Coordinator`",
+            "found": "$ROOT/eventlog.sqlite3 could not be read: file is not a database"
+          },
+          {
+            "number": 2,
+            "title": "work was handed over",
+            "met": false,
+            "looked_for": "a `swarm.agent.AssignmentPosted` naming a non-Coordinator agent, a later `swarm.agent.AssignmentTaken` whose `agent_id` is that same agent, and a record of WHO ISSUED that taking that is not an operator's hand and not some other agent acting in its name",
+            "found": "$ROOT/eventlog.sqlite3 could not be read: file is not a database"
+          },
+          {
+            "number": 3,
+            "title": "two transcripts, neither overwritten",
+            "met": false,
+            "looked_for": "two turn files under `turns/`, each attributable to an agent the log knows and the two of them to different agents, and a file for every attempt `spend.jsonl` claims \u2014 an attempt with no file of its own is a record that was overwritten or never kept",
+            "found": "2 turn file(s), 0 attributed: none; 0 distinct agent(s): none; 2 file(s) no agent is named on: 0001-01-73a4ac74.jsonl, 0002-01-73a4ac74.jsonl"
+          },
+          {
+            "number": 4,
+            "title": "the work was finished, not merely started",
+            "met": false,
+            "looked_for": "a `swarm.agent.AssignmentDone` \u2014 what `swarm.agent.FinishAssignment` emits \u2014 or a `swarm.agent.GateGreen`, recorded AFTER the handover of record was taken, by the agent that took it, and naming that same assignment. `AssignmentPosted` carries no assignment identity, so the handover's is read from `AssignmentTaken.ref` and the `AssignmentRecorded` behind it; where either side names none, the agent and the ordering are checked and the assignment is not, and the finding says which",
+            "found": "$ROOT/eventlog.sqlite3 could not be read: file is not a database"
+          },
+          {
+            "number": 5,
+            "title": "the confinement acted",
+            "met": true,
+            "looked_for": "a `tool.decided` in a turn record whose decision is a denial and whose `decided_by` is `frame` \u2014 one call, named, that did not happen. A session census is not this: its `by_decider` counts decisions of every outcome, so it cannot say the frame denied anything",
+            "found": "1 of 3 decided call(s) refused by the frame: `Bash` (shell) in 0002-01-73a4ac74.jsonl \u2014 this step only admits `file.read` operations"
+          },
+          {
+            "number": 6,
+            "title": "spend is attributed per agent",
+            "met": false,
+            "looked_for": "rows in `turns/spend.jsonl` naming two different agents, both of them agents the log says were spawned",
+            "found": "2 row(s), 2 agent(s) named: `coordinator` \u00d71, `builder` \u00d71; named by no `swarm.agent.AgentSpawned`: `builder`, `coordinator`"
+          },
+          {
+            "number": 7,
+            "title": "the bound held with more than one agent to bound",
+            "met": false,
+            "looked_for": "a recorded refusal by the AGENT ceiling \u2014 `bound: agent` in `turns/capped.jsonl`, or the sentence `Capped::why()` writes for `Bound::Agent`, in the event log or on a spend row \u2014 naming one of at least two agents an `AgentSpawned` says the swarm had",
+            "found": "0 spawned agent(s) to bound: none; no refusal by the agent ceiling in the event log, in spend.jsonl or in capped.jsonl"
+          }
+        ],
+        "unattended": {
+          "number": 0,
+          "title": "unattended",
+          "met": false,
+          "looked_for": "at least one event between the first `swarm.manager.SwarmStarted` and the last verdict other than the `swarm.manager.SwarmStarted` itself, every event in that window naming who issued it, and every one of those the runtime or an agent this log spawned \u2014 the command that STARTS a swarm excepted, because a person issues that one by construction",
+          "found": "$ROOT/eventlog.sqlite3 could not be read: file is not a database"
+        },
+        "met": 1,
+        "not_met": 6,
+        "ok": false
+      }
+    }
+  ]
+}

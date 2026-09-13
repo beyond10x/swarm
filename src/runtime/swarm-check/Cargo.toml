@@ -9,7 +9,8 @@ license.workspace = true
 [dependencies]
 clap.workspace = true
 serde.workspace = true
-serde_json.workspace = true
+serde_json = { workspace = true, features = ["raw_value"] }
+num-bigint = "0.4"
 rusqlite = "0.37"
 regex = "1"
 
