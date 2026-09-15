@@ -110,7 +110,7 @@ interface SwarmRow { swarmId: string; displayName: string; state: string; agents
 const swarms: SwarmRow[] = [
   { swarmId: 's-1', displayName: 'harness-builder', state: 'Running', agents: 4, createdAt: '2026-09-11' },
   { swarmId: 's-2', displayName: 'org-brain-ingest', state: 'Paused', agents: 2, createdAt: '2026-09-08' },
-  { swarmId: 's-3', displayName: 'daemonloom-release', state: 'Faulted', agents: 1, createdAt: '2026-09-02' },
+  { swarmId: 's-3', displayName: 'acme-release', state: 'Faulted', agents: 1, createdAt: '2026-09-02' },
   { swarmId: 's-4', displayName: 'aep-drive-wave-7', state: 'Created', agents: 0, createdAt: '2026-09-11' },
 ]
 
@@ -232,7 +232,7 @@ const states = ['Running', 'Working', 'Succeeded', 'Answered', 'Blocked', 'Parke
               <div class="row"><UiStateBadge state="Running" /><UiBadge tone="muted" text="4 agents" /></div>
               <template #footer><span class="muted">started 2 h ago</span></template>
             </UiTile>
-            <UiTile title="daemonloom-release" subtitle="Cut v0.23 after the full pre-release suite." accent="fault" clickable @click="note('UiTile daemonloom click')">
+            <UiTile title="acme-release" subtitle="Cut v0.23 after the full pre-release suite." accent="fault" clickable @click="note('UiTile acme click')">
               <UiStateBadge state="Faulted" />
               <template #footer><UiButton size="sm" variant="ghost" icon="play">Resume</UiButton></template>
             </UiTile>

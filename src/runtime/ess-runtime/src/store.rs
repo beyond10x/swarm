@@ -436,6 +436,13 @@ impl Store {
 
         let mut world = World::new();
         for ((entity, id), events) in per_instance {
+            // Everything above this loop suspends on the log; nothing in it does. A swarm with a
+            // long feed therefore held the executor from the last page read until the last
+            // instance was rebuilt — on a current-thread runtime that is every other task, and on
+            // a multi-threaded one it is one worker for the whole fold. Handing the scheduler back
+            // between instances costs a poll each and changes no result: `fold` is unchanged, the
+            // map is still walked in commit-grouped order, and `World` is still built in one pass.
+            tokio::task::yield_now().await;
             if let Some(instance) = fold(ir, &entity, &id, &events) {
                 world.insert((entity, id), instance);
             }

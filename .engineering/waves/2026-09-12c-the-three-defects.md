@@ -38,7 +38,7 @@ this wave** and runs next. The operator is not blocked by that: the server was r
 | worktrees | none — the previous wave's five were removed and `worktree repo list` shows the primary only |
 | **free disk** | **14G of 848G, 99% full.** One Rust worktree cost 4.6G measured, so **two is the ceiling** and three was refused |
 | `worktree gc` across the whole profile | **frees nothing.** Every record is retained: `no-remote-recovery-proof` on the published ones, `worktree-dirty` on the rest, and one `worktree-not-found` that must stay refused. The tool is doing its job; nothing here is reclaimable |
-| what does occupy the disk | `~/.cache/claude-tmp` 28G, `~/.cache/org-brain` 22G, `e21-tmp` 9.3G, `babelforce-specs` 9.0G, `ess-evolution-20260910` 7.2G — **none of them mine to delete.** 160M of my own finished scratch was removed |
+| what does occupy the disk | `~/.cache/claude-tmp` 28G, `~/.cache/org-brain` 22G, `e21-tmp` 9.3G, an internal repository's specs tree 9.0G, `ess-evolution-20260910` 7.2G — **none of them mine to delete.** 160M of my own finished scratch was removed |
 | build cache | `sccache` installed, 4.0G, `RUSTC_WRAPPER` unset |
 | model budget | no cap; the operator asked for multiple agents |
 
