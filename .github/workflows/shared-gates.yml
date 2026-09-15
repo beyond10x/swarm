@@ -1,5 +1,18 @@
 name: Shared source gates
 
+# This repository is **not enrolled** in the organisation's Gates policy.
+#
+# `B10X_GATES_POLICY` is an organisation secret with `visibility: selected`, granted to exactly
+# the four repositories `policy.json` lists under `repositories`: aep, ess, eventlog and gates.
+# swarm is in neither list, so the secret arrives empty and the shared workflow refuses with
+# `b10x-gates: policy format invalid`. That has happened on **every** push to `main` since
+# `v0.1.0` — eight runs, the earliest being 34772468892 — which means this repository's content
+# has never been scanned, and the red check said nothing about why.
+#
+# The preflight below fails with the reason and the remedy instead. Enrolling swarm is an
+# organisation-policy decision, not a change this repository can make: it needs an entry in
+# `policy.json` `repositories` with a baseline commit, and the secret granted to this repository.
+
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -12,7 +25,27 @@ permissions:
   checks: read
 
 jobs:
+  preflight:
+    name: Enrolled in the Gates policy
+    runs-on: ubuntu-latest
+    outputs:
+      enrolled: ${{ steps.check.outputs.enrolled }}
+    steps:
+      - id: check
+        env:
+          POLICY: ${{ secrets.B10X_GATES_POLICY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${POLICY}" ]; then
+            echo "enrolled=false" >> "$GITHUB_OUTPUT"
+            echo "::error::swarm is not enrolled in the Gates policy, so its source has never been scanned. B10X_GATES_POLICY is an organisation secret with visibility 'selected', granted to aep, ess, eventlog and gates only. Enrolling needs a repositories entry with a baseline commit in policy.json and the secret granted here. Until then this check cannot pass, and a green one would be a false statement." >&2
+            exit 1
+          fi
+          echo "enrolled=true" >> "$GITHUB_OUTPUT"
+
   common:
+    needs: preflight
+    if: needs.preflight.outputs.enrolled == 'true'
     uses: beyond10x/gates/.github/workflows/common.yml@2c3c6acd0a6795768446e925a6137e17357f267a
     secrets:
       B10X_GATES_POLICY: ${{ secrets.B10X_GATES_POLICY }}
