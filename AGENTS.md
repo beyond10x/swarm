@@ -4,6 +4,21 @@ A swarm manager whose kernel is an Executable System Specification. `README.md` 
 introduction and is written for humans; it owns the pitch and the motivation, and nothing here
 repeats them. This file owns the tree, the commands and the rules.
 
+## Serves
+
+The objectives of the collection this repository moves, by id from `atlas/ROADMAP.md` — the only
+cross-repository roadmap, and the page that says what each id means and which evidence closes it:
+
+- **O2 — decisions as data, with evidence.** The kernel is an Executable System Specification: the
+  YAML under `src/core/` *is* the system, compiled at boot and interpreted rather than generated
+  (AGENTS.md:24).
+- **O3 — any harness, observed and compared.** The coordinator is a vendor harness driven from
+  outside; its process protocol is `metaharness run claude`, the prompt and the verdict line
+  (AGENTS.md:201).
+
+A change here that moves none of these is a question for the operator, not a task.
+`atlas/scripts/check-map.sh` fails a repository whose `AGENTS.md` names no objective.
+
 ## The one thing to understand before changing anything
 
 The specification in `src/core/` is the system. `swarm-server` compiles it at boot
