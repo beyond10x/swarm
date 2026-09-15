@@ -1,17 +1,22 @@
 name: Shared source gates
 
-# This repository is **not enrolled** in the organisation's Gates policy.
+# This repository is **not enrolled** in the organisation's Gates policy, so its source has
+# never been scanned. Two separate things were missing; one is now fixed.
 #
-# `B10X_GATES_POLICY` is an organisation secret with `visibility: selected`, granted to exactly
-# the four repositories `policy.json` lists under `repositories`: aep, ess, eventlog and gates.
-# swarm is in neither list, so the secret arrives empty and the shared workflow refuses with
-# `b10x-gates: policy format invalid`. That has happened on **every** push to `main` since
-# `v0.1.0` — eight runs, the earliest being 34772468892 — which means this repository's content
-# has never been scanned, and the red check said nothing about why.
+# 1. The secret. `B10X_GATES_POLICY` is an organisation secret with `visibility: selected`. Until
+#    2026-09-15 it was granted to exactly the four repositories `policy.json` lists under
+#    `repositories` — aep, ess, eventlog, gates — so here it arrived empty and the shared
+#    workflow refused with `b10x-gates: policy format invalid` on **every** push to `main` since
+#    `v0.1.0`: eight runs, the earliest 34772468892. swarm was granted the secret on 2026-09-15.
 #
-# The preflight below fails with the reason and the remedy instead. Enrolling swarm is an
-# organisation-policy decision, not a change this repository can make: it needs an entry in
-# `policy.json` `repositories` with a baseline commit, and the secret granted to this repository.
+# 2. The enrolment. With the secret present the preflight passes and Gates reaches its own check,
+#    which now refuses with the accurate reason — `b10x-gates: repository is not enrolled`
+#    (run 35009275304). Closing that needs an entry for swarm in `policy.json` `repositories`
+#    with a baseline commit, which is a change to the signed policy the four enrolled
+#    repositories depend on, not a change this repository can make.
+#
+# The preflight stays because a missing grant and a missing enrolment fail identically from here
+# otherwise, and the first is much cheaper to fix.
 
 on:
   pull_request_target:
