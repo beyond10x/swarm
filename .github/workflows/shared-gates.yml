@@ -1,57 +1,18 @@
 name: Shared source gates
 
-# This repository is **not enrolled** in the organisation's Gates policy, so its source has
-# never been scanned. Two separate things were missing; one is now fixed.
-#
-# 1. The secret. `B10X_GATES_POLICY` is an organisation secret with `visibility: selected`. Until
-#    2026-09-15 it was granted to exactly the four repositories `policy.json` lists under
-#    `repositories` — aep, ess, eventlog, gates — so here it arrived empty and the shared
-#    workflow refused with `b10x-gates: policy format invalid` on **every** push to `main` since
-#    `v0.1.0`: eight runs, the earliest 34772468892. swarm was granted the secret on 2026-09-15.
-#
-# 2. The enrolment. With the secret present the preflight passes and Gates reaches its own check,
-#    which now refuses with the accurate reason — `b10x-gates: repository is not enrolled`
-#    (run 35009275304). Closing that needs an entry for swarm in `policy.json` `repositories`
-#    with a baseline commit, which is a change to the signed policy the four enrolled
-#    repositories depend on, not a change this repository can make.
-#
-# The preflight stays because a missing grant and a missing enrolment fail identically from here
-# otherwise, and the first is much cheaper to fix.
-
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
     tags: ['*']
-  workflow_dispatch:
 
 permissions:
   contents: read
   checks: read
 
 jobs:
-  preflight:
-    name: Enrolled in the Gates policy
-    runs-on: ubuntu-latest
-    outputs:
-      enrolled: ${{ steps.check.outputs.enrolled }}
-    steps:
-      - id: check
-        env:
-          POLICY: ${{ secrets.B10X_GATES_POLICY }}
-        run: |
-          set -euo pipefail
-          if [ -z "${POLICY}" ]; then
-            echo "enrolled=false" >> "$GITHUB_OUTPUT"
-            echo "::error::swarm is not enrolled in the Gates policy, so its source has never been scanned. B10X_GATES_POLICY is an organisation secret with visibility 'selected', granted to aep, ess, eventlog and gates only. Enrolling needs a repositories entry with a baseline commit in policy.json and the secret granted here. Until then this check cannot pass, and a green one would be a false statement." >&2
-            exit 1
-          fi
-          echo "enrolled=true" >> "$GITHUB_OUTPUT"
-
   common:
-    needs: preflight
-    if: needs.preflight.outputs.enrolled == 'true'
     uses: beyond10x/gates/.github/workflows/common.yml@21bba03026fed49e74ae73722db81c2377e3a638
     secrets:
       B10X_GATES_POLICY: ${{ secrets.B10X_GATES_POLICY }}
