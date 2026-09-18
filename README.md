@@ -32,8 +32,16 @@ the runtime will not fill in a verdict on the coordinator's behalf. Software tha
 nobody did is worse than software that stops.
 
 Everything a swarm needs beyond that bare start, it draws for itself. A tool is a box. A data source
-is a box. A panel in the UI is a box. Boxes connect when their ports agree on a shape. Giving a
-coordinator access to something is drawing an edge to it; taking it away is deleting the edge.
+is a box. A panel in the UI is a box. Boxes connect when their ports agree on a shape.
+
+Be careful about what that drawing means today. The boxes and the connections are **declared**: the
+specification defines them, a coordinator can create them, the canvas shows them, and the event log
+records every one. Nothing in the runtime then reads them. No message travels a connection and no
+box runs a program. What a coordinator may actually reach is settled somewhere else entirely —
+per call, by the sealed frame its turn launches under, from an admitted set of operations and a
+directory scope the runtime derives (below). An edge a coordinator draws does not widen that, and
+deleting one does not narrow it. The wiring as the grant is where this is going, and is not built
+yet; it is tracked as `story:run-a-tool-box`.
 
 ## What actually runs today
 
@@ -47,6 +55,12 @@ repository. The server, the command line tool and the web UI all work.
 to start if it does not resolve — it will not limp along with a broken model. The web UI asks the
 server what entities exist rather than knowing in advance, so adding one to the YAML makes it appear
 on the canvas.
+
+**The canvas is drawn, and not yet wired.** Boxes and connections are real declared entities with a
+real purpose, and today that purpose is description: they say what a swarm intends to reach and how
+the pieces are meant to fit. A box of kind `Tool` or `Service` runs nothing, a connection carries
+nothing, and no part of the runtime consults either when deciding what a turn is allowed to do. Read
+the canvas as a plan the swarm keeps of itself, not as a permission system.
 
 **The multi-agent part runs, at depth one and breadth two.** Until 2026-09-13 this paragraph said it
 was written down and not demonstrated, which was true. What changed is a recorded run, not an

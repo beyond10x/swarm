@@ -207,7 +207,7 @@ difference is where the surprises live:
 
 ## Honesty rules for anything published
 
-The public site and `README.md` were audited against the tree. Three findings stand, and any new
+The public site and `README.md` were audited against the tree. Four findings stand, and any new
 prose must respect them:
 
 - **"fully code-generated" is false.** No `build.rs`, no codegen step, no generated file, no marker,
@@ -240,6 +240,28 @@ prose must respect them:
   subjects matches, so an outside path is admitted when the same call also names an admitted one.
   Nothing found emits such a call; `frame::scope`'s doc states the condition, and two cases assert
   today's behaviour with their inversion triggers.
+- **A drawn edge grants nothing — the canvas describes, the frame decides.** The published prose
+  used to hand the canvas an access-control role: draw a connection to give a coordinator something,
+  delete it to take it back. No code has ever behaved that way. `swarm.blackbox.Box` and
+  `swarm.blackbox.Connection` are declared, created, folded and rendered, and nothing under
+  `src/runtime/` reads either to decide anything. `grep -rn 'LiveConnections' src/runtime/` selects
+  nothing: the view exists only as a declaration at `src/core/domains/blackbox.yaml:1197`. No
+  message travels a `Connection` and no box runs a program — `story:run-a-tool-box` states it
+  outright, that a `Box` of kind `Tool` or `Service` "is declared, drawn, connected and executed by
+  nothing." What a coordinator may actually reach is settled per call by the sealed
+  `metaharness.frame/1`: `frame::ADMITTED` (`src/runtime/swarm-server/src/frame.rs:84`) and
+  `frame::scope` (`frame.rs:229`), whose only arguments are the agent's own work directory, the
+  shared directory and an operation list intersected with `ADMITTED`. Neither consults the canvas,
+  and a coordinator drawing on the canvas cannot move either.
+  **What is true, and worth keeping visible:** the canvas is a real declared model with a real
+  purpose — it records what a swarm intends to reach and how its pieces are meant to fit. Wiring as
+  the grant is the design's *intent*. Write it as intent, never as behaviour, until a runner exists.
+  This finding is about **which mechanism decides access**, and it does not touch the entry above:
+  the frame is still refusal at a decision seam and still not containment, and correcting one must
+  not blur the other.
+  `website/scripts/spec-facts.mjs` fails the gate if the withdrawn sentence reappears in any of the
+  five files that carried it: `README.md`, this file, `website/src/pages/index.js`,
+  `src/core/README.md` and `docs/index.md`.
 
 No count in `website/` may be typed by hand. `website/scripts/spec-facts.mjs` derives all of them
 from the tree into `website/src/data/spec-facts.json`, and fails loudly rather than emitting a zero

@@ -251,6 +251,78 @@ function checkProse(f) {
   assertProse('AGENTS.md', 'specification file count', f.specFiles);
 }
 
+// ---------------------------------------------------------------------------
+// Withdrawn claims. Self-contained: it uses only `source` and `fail`.
+//
+// Everything above derives a number and compares it. A claim is not a number — no
+// derivation can produce "the canvas does not grant access", so there is nothing to
+// compare against. What a check can do is refuse the sentence that says otherwise.
+// That is the whole of the mechanism here: an absence assertion, one entry per
+// retired claim, naming the file and quoting the sentence when it fires.
+//
+// The first entry is the canvas-as-access-control claim, published for the site's
+// whole life and never once true of the code: nothing under `src/runtime/` reads a
+// `Box` or a `Connection` (`grep -rn 'LiveConnections' src/runtime/` selects nothing),
+// no message travels a connection, and access is decided per call by the sealed frame
+// — `frame::ADMITTED` and `frame::scope`, neither of which consults the canvas. See
+// AGENTS.md, "Honesty rules for anything published".
+//
+// The limit, stated rather than left to be discovered: patterns match the wordings
+// that were actually published and the obvious re-edits of them, not every possible
+// paraphrase. They are anchored on the assertive construction ("... is drawing an
+// edge"), so prose *about* the withdrawal does not trip them — which is what makes it
+// safe to explain the retraction in the same files.
+
+const WITHDRAWN = [
+  {
+    claim: 'the canvas grants access — a drawn edge as a grant, a deleted edge as a revocation',
+    files: [
+      'README.md',
+      'AGENTS.md',
+      'website/src/pages/index.js',
+      'src/core/README.md',
+      'docs/index.md',
+    ],
+    patterns: [
+      /\b(?:giving|granting)\b[^.]{0,120}\bis\s+drawing\s+an\s+edge\b/i,
+      /\b(?:revoking|removing|taking)\b[^.]{0,60}\bis\s+(?:removing|deleting)\s+(?:one\b|an?\s+edge\b|the\s+edge\b)/i,
+      /\breach\s+is\s+the\s+set\s+of\s+connections\b/i,
+    ],
+    because:
+      'Boxes and connections are declared and drawn; nothing under src/runtime/ reads one, no ' +
+      'message travels a Connection, and what a turn may reach is decided per call by ' +
+      'frame::ADMITTED and frame::scope, which never consult the canvas.',
+  },
+];
+
+/** Fail naming the file, the line and the sentence, for any withdrawn claim that came back. */
+function checkWithdrawn() {
+  for (const {claim, files, patterns, because} of WITHDRAWN) {
+    for (const rel of files) {
+      const text = source(rel);
+      for (const pattern of patterns) {
+        const hit = pattern.exec(text);
+        if (!hit) continue;
+        const line = text.slice(0, hit.index).split('\n').length;
+        fail(
+          `${rel}:${line} restates a withdrawn claim — ${claim}.\n` +
+            `        sentence: "${hit[0].replace(/\s+/g, ' ').trim()}"\n` +
+            `        why it is false: ${because}\n` +
+            `        Withdraw it again, or — if the runtime now does this — retire the entry in\n` +
+            `        AGENTS.md "Honesty rules for anything published" and drop it from WITHDRAWN\n` +
+            `        in website/scripts/spec-facts.mjs.`,
+        );
+      }
+    }
+  }
+}
+
+// Run before anything is derived: it needs no `ess`, no compile and no committed file,
+// so it holds in a bare checkout and on the build path as well as under `--check`.
+checkWithdrawn();
+
+// ---------------------------------------------------------------------------
+
 const fresh = derive();
 const committed = existsSync(OUT) ? readFileSync(OUT, 'utf8') : null;
 

@@ -353,15 +353,23 @@ export default function Home() {
             id="kernel"
             eyebrow="Boxes and connections"
             title="What is in the kernel, and why nothing else is"
-            description="The kernel is only what a swarm cannot build for itself: the swarm record and its lifecycle, how an agent is launched, the agent itself, the goal, and what anything may reach."
+            description="The kernel is only what a swarm cannot build for itself: the swarm record and its lifecycle, how an agent is launched, the agent itself, the goal, and the boxes and connections in which a swarm declares what it means to reach."
           />
           <CardGrid columns={2} label="Why the kernel is this small">
             <ContentCard title="Everything else is a box" headingLevel={3}>
               <p>
                 A tool is a box. An MCP server is a box. A UI panel is a box. Two boxes connect only
-                when their ports cite the same published schema, so what a coordinator may reach is
-                the set of connections drawn to it: granting a tool is drawing an edge, revoking it
-                is removing one.
+                when their ports cite the same published schema. What the canvas does with that
+                today is <em>describe</em>: boxes and connections are declared, created and
+                recorded, and no part of the runtime reads one. No message travels a connection and
+                no box runs a program.
+              </p>
+              <p>
+                So the drawing is not the permission. What a coordinator may actually reach is
+                decided per call by the sealed frame its turn launches under, from an admitted set
+                of operations and a directory scope the runtime derives &mdash; neither of which
+                consults the canvas. Wiring as the grant is the intent of the model, and is not
+                built.
               </p>
             </ContentCard>
             <ContentCard title="Eleven domains were removed" headingLevel={3}>

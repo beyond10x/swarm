@@ -13,8 +13,13 @@ truth; a small Rust runtime serves it, and a Vue canvas UI shows it.
 A swarm starts bare — one coordinator, no data, one goal — and builds what it needs. `src/core/` is
 the kernel: only what a swarm cannot build for itself. Everything else is a **Box** the swarm draws
 and a **Connection** it wires. A tool is a box, an MCP server is a box, a UI panel is a box. Two
-boxes connect only when their ports cite the same published schema, so granting a tool is drawing an
-edge and revoking it is removing one.
+boxes connect only when their ports cite the same published schema.
+
+That drawing describes; it does not decide. Boxes and connections are declared, created and
+recorded, and no part of the runtime reads one: no message travels a connection and no box runs a
+program. What a coordinator may reach is settled per call by the sealed frame its turn launches
+under, which never consults the canvas. Wiring as the grant is the model's intent, and is not built
+yet.
 
 ## Read next
 

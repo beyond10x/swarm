@@ -30,8 +30,16 @@ what they need and like."*
 
 Everything else is a **Box** the swarm draws and a **Connection** it wires. A tool is a box. An MCP
 server is a box. A UI panel is a box. The loop is a box and so is the goal. Two boxes connect only
-when their ports cite the same published schema, and what a coordinator may reach is the set of
-connections drawn to it — granting a tool is drawing an edge, revoking it is removing one.
+when their ports cite the same published schema.
+
+What the canvas does with that today is **describe**. `Box` and `Connection` are declared here,
+created by a coordinator, folded into the log and rendered by the UI, and nothing under
+`src/runtime/` reads either one to decide anything: no message travels a `Connection`, and a box of
+kind `Tool` or `Service` runs no program. What a coordinator may actually reach is settled per call
+by the sealed frame its turn launches under — an admitted operation set and a directory scope the
+runtime derives — and the frame never consults the canvas. Wiring as the grant is this model's
+*intent*; it is not built, and it is tracked as `story:run-a-tool-box`. See AGENTS.md, "Honesty
+rules for anything published".
 
 An earlier draft (2026-09-11) was reverse-engineered from a live 16-agent run and carried 11
 domains: `board`, `schedule`, `orchestrator`, `work`, `fault`, `decision` and `flow` alongside these
