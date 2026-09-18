@@ -507,7 +507,13 @@ impl Swarm {
             .open(dir.join("spend.jsonl"))
         {
             use std::io::Write;
-            let _ = writeln!(file, "{line}");
+            // One write per row, not many. `writeln!` issues several small writes, so two members
+            // recording a turn at the same moment interleave *inside* a row; `spend_where` then
+            // drops the shredded line with `let Ok(row) = ... else { continue }` and the turn and
+            // its dollars vanish from every cap fold. A single `write_all` under `O_APPEND` is
+            // atomic. Unreachable while one writer could not race itself; SWARM_MAX_IN_FLIGHT
+            // makes it reachable.
+            let _ = file.write_all(format!("{line}\n").as_bytes());
         }
     }
 
@@ -539,7 +545,13 @@ impl Swarm {
             .open(dir.join("capped.jsonl"))
         {
             use std::io::Write;
-            let _ = writeln!(file, "{line}");
+            // One write per row, not many. `writeln!` issues several small writes, so two members
+            // recording a turn at the same moment interleave *inside* a row; `spend_where` then
+            // drops the shredded line with `let Ok(row) = ... else { continue }` and the turn and
+            // its dollars vanish from every cap fold. A single `write_all` under `O_APPEND` is
+            // atomic. Unreachable while one writer could not race itself; SWARM_MAX_IN_FLIGHT
+            // makes it reachable.
+            let _ = file.write_all(format!("{line}\n").as_bytes());
         }
     }
 
