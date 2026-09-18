@@ -50,7 +50,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -65,7 +65,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -258,7 +258,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -398,7 +398,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -413,7 +413,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -1009,7 +1009,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -1024,7 +1024,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -1330,7 +1330,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -1345,7 +1345,7 @@
             "data": {
               "agent_id": "?worker",
               "display_name": "?worker",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -1671,7 +1671,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -1686,7 +1686,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -1893,7 +1893,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -1908,7 +1908,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -2115,7 +2115,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -2130,7 +2130,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -2327,7 +2327,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -2342,7 +2342,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -2525,7 +2525,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -2540,7 +2540,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -2733,7 +2733,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -2748,7 +2748,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -2941,7 +2941,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -2956,7 +2956,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -3149,7 +3149,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -3164,7 +3164,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -3353,7 +3353,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -3368,7 +3368,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -3561,7 +3561,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -3576,7 +3576,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -3771,7 +3771,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -3786,7 +3786,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -3967,7 +3967,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -3982,7 +3982,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -4177,7 +4177,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -4192,7 +4192,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -4374,7 +4374,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -4389,7 +4389,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -4582,7 +4582,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -4597,7 +4597,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -4968,7 +4968,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -4983,7 +4983,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -5176,7 +5176,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -5191,7 +5191,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -5374,7 +5374,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -5389,7 +5389,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -5571,7 +5571,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -5586,7 +5586,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -5768,7 +5768,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -5919,7 +5919,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -5934,7 +5934,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -6127,7 +6127,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -6142,7 +6142,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -6335,7 +6335,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -6350,7 +6350,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -6543,7 +6543,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -6558,7 +6558,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -6751,7 +6751,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -6766,7 +6766,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -6958,7 +6958,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -6973,7 +6973,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -7164,7 +7164,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -7179,7 +7179,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -7370,7 +7370,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -7385,7 +7385,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -7576,7 +7576,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -7591,7 +7591,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -7784,7 +7784,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -7799,7 +7799,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -7992,7 +7992,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -8007,7 +8007,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -8200,7 +8200,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -8215,7 +8215,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -8408,7 +8408,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -8423,7 +8423,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -8615,7 +8615,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -8630,7 +8630,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -8822,7 +8822,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -8837,7 +8837,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -9030,7 +9030,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -9045,7 +9045,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -9238,7 +9238,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -9253,7 +9253,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -9446,7 +9446,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -9461,7 +9461,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -9654,7 +9654,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -9669,7 +9669,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -9903,7 +9903,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -9918,7 +9918,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -10111,7 +10111,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -10126,7 +10126,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -10319,7 +10319,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -10334,7 +10334,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -10527,7 +10527,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -10542,7 +10542,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -10706,7 +10706,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -10721,7 +10721,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -10902,7 +10902,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -10917,7 +10917,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -11110,7 +11110,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -11125,7 +11125,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -11318,7 +11318,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -11333,7 +11333,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -11526,7 +11526,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -11541,7 +11541,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -11797,7 +11797,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -11812,7 +11812,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -11994,7 +11994,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -12009,7 +12009,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -12206,7 +12206,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -12221,7 +12221,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -12403,7 +12403,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -12418,7 +12418,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -12611,7 +12611,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -12626,7 +12626,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -12817,7 +12817,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -12832,7 +12832,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -13011,7 +13011,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -13026,7 +13026,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -13216,7 +13216,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -13231,7 +13231,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -13411,7 +13411,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -13426,7 +13426,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -13617,7 +13617,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -13632,7 +13632,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -13823,7 +13823,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -13838,7 +13838,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -14342,7 +14342,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -14357,7 +14357,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -14616,7 +14616,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -14631,7 +14631,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -14824,7 +14824,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -14839,7 +14839,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -15042,7 +15042,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -15057,7 +15057,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -15250,7 +15250,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -15265,7 +15265,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -15468,7 +15468,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -15483,7 +15483,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -15686,7 +15686,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -15701,7 +15701,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -15894,7 +15894,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -15909,7 +15909,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -16113,7 +16113,7 @@
             "data": {
               "agent_id": "coordinator",
               "display_name": "coordinator",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Coordinator",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"
@@ -16128,7 +16128,7 @@
             "data": {
               "agent_id": "builder",
               "display_name": "builder",
-              "harness": "ClaudeCode",
+              "harness": "Claude",
               "host": {},
               "role": "Worker",
               "swarm_id": "083b1264-b000-4fd6-a656-c07181e79796"

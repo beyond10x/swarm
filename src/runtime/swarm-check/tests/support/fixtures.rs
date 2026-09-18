@@ -1,3 +1,27 @@
+//! The captured corpora, and how they are materialized into a swarm directory on disk.
+//!
+//! # The `harness` value was corrected on 2026-09-18
+//!
+//! Every `swarm.agent.AgentSpawned` payload in the four corpora beside this file carried
+//! `"harness": "ClaudeCode"` — 500 occurrences across `corpus.json`, `compatibility.json`,
+//! `value-semantics.json` and `unicode-parser.json`. `swarm.config.Harness` declares
+//! `[Claude, Codex, B10x]` and nothing else, so the checker's own fixtures carried a value the
+//! system now refuses (`ess-runtime/src/apply.rs::require_declared_variants`). They say `"Claude"`
+//! now.
+//!
+//! Why that is a rewrite and not a re-capture, said plainly: every one of those 500 occurrences sat
+//! under a case's `input`, and not one appeared in an `expected` half. The baselines were captured
+//! from a Python reader that is not in this repository and cannot be re-run here, so the honest
+//! description is that the inputs were corrected in place and the unchanged baselines were re-run
+//! against them. That the whole `swarm-check` suite is still green is the evidence the value is
+//! inert to the checker, which is also what the source says: nothing under `swarm-check/src/` reads
+//! `harness` at all. The seven clauses turn on event names, sequence, and the `actor`/`subject`
+//! columns.
+//!
+//! The one corpus of recorded evidence that was NOT corrected is
+//! `examples/two-agents/evidence/2026-09-13-two-agents-proof/events.csv`, which is retained evidence
+//! behind a verification report. A note beside it says why.
+
 use rusqlite::{Connection, params};
 use serde_json::Value;
 use std::{fs, path::Path};

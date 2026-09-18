@@ -1324,7 +1324,14 @@ impl Swarm {
             input.insert("agent_id".into(), Json::String(agent_id.to_owned()));
             input.insert("swarm_id".into(), Json::String(swarm_id.clone()));
             input.insert("role".into(), Json::String(role.to_owned()));
-            input.insert("harness".into(), Json::String("ClaudeCode".into()));
+            // `Claude`, because `swarm.config.Harness` declares `[Claude, Codex, B10x]` and
+            // nothing else. This line said `"ClaudeCode"` until 2026-09-18 — not a variant, and so
+            // not a value `coordinator.rs`'s `Some("Claude")` could ever route: the harness every
+            // agent in this repository's history was spawned on was unreadable by the only code
+            // that reads one. The interpreter refuses it now
+            // (`ess-runtime/src/apply.rs::require_declared_variants`), so this is checked rather
+            // than remembered.
+            input.insert("harness".into(), Json::String("Claude".into()));
             input.insert("display_name".into(), Json::String(display_name.to_owned()));
             input.insert("host".into(), Json::Object(Map::new()));
             self.issue(

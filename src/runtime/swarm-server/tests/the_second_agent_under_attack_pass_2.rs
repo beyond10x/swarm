@@ -368,7 +368,7 @@ async fn an_activated_config_cannot_admit_more_than_the_default_frame_does() {
             "swarm.config.DraftConfig",
             json!({"swarm_id": swarm_id, "paths": {},
                    "launch": {"harness": "Claude", "binary": "", "model": "", "args": [],
-                              "skip_permissions": false, "tool_surface": "Native",
+                              "skip_permissions": false, "tool_surface": "Owned",
                               "allow_program": [],
                               "admitted_operations": everything},
                    "schedules": {}, "budgets": {}, "board": {}})

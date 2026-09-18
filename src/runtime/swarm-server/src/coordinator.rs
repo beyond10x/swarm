@@ -1981,7 +1981,7 @@ mod resolution {
             &swarm,
             &swarm_id,
             json!({"harness": "Claude", "binary": "", "model": "", "args": [],
-                   "skip_permissions": false, "tool_surface": "Native", "allow_program": [],
+                   "skip_permissions": false, "tool_surface": "Owned", "allow_program": [],
                    "admitted_operations": ["file.read", "dir.list", "web.read"]}),
         )
         .await;
@@ -2005,7 +2005,7 @@ mod resolution {
             &swarm,
             &swarm_id,
             json!({"harness": "Claude", "binary": "", "model": "", "args": [],
-                   "skip_permissions": false, "tool_surface": "Native", "allow_program": [],
+                   "skip_permissions": false, "tool_surface": "Owned", "allow_program": [],
                    "admitted_operations": ["web.read", "task.todo"]}),
         )
         .await;
@@ -2133,7 +2133,7 @@ mod resolution {
             &swarm_id,
             json!({"harness": "Claude", "binary": "/usr/local/bin/answerer",
                    "model": "", "args": ["--verdict"], "skip_permissions": false,
-                   "tool_surface": "Native", "allow_program": []}),
+                   "tool_surface": "Owned", "allow_program": []}),
         )
         .await;
 
@@ -2159,7 +2159,7 @@ mod resolution {
             &swarm,
             &swarm_id,
             json!({"harness": "Claude", "binary": "", "model": "", "args": [],
-                   "skip_permissions": false, "tool_surface": "Native", "allow_program": []}),
+                   "skip_permissions": false, "tool_surface": "Owned", "allow_program": []}),
         )
         .await;
 
@@ -2225,7 +2225,7 @@ mod resolution {
             &swarm,
             &swarm_id,
             json!({"harness": "Codex", "binary": "", "model": "", "args": [],
-                   "skip_permissions": false, "tool_surface": "Native", "allow_program": []}),
+                   "skip_permissions": false, "tool_surface": "Owned", "allow_program": []}),
         )
         .await;
 

@@ -168,7 +168,7 @@ async fn two_members_whose_names_the_log_cannot_hold_are_not_the_same_record() {
                 "swarm.agent.Spawn",
                 args(
                     json!({"agent_id": agent, "swarm_id": swarm_id, "role": "Worker",
-                            "harness": "ClaudeCode", "display_name": agent, "host": {}}),
+                            "harness": "Claude", "display_name": agent, "host": {}}),
                 ),
                 &format!("spawn-{agent}"),
             )
