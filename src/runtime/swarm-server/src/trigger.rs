@@ -155,8 +155,19 @@ pub async fn ask_the_coordinator(server: &Arc<Server>, swarm: &Arc<Swarm>) {
         else {
             continue;
         };
-        if !server.claim(swarm.slug(), &unit) {
-            continue;
+        // How wide this swarm may run at one moment, decided before anything is launched. A swarm
+        // that is full does not refuse the goal — it takes it at the next period — so this breaks
+        // rather than reporting anything: every remaining goal would meet the same full swarm.
+        match server.claim_within(swarm.slug(), &unit, server.caps().max_in_flight) {
+            Ok(true) => {}
+            Ok(false) => continue,
+            Err(in_flight) => {
+                tracing::debug!(swarm = %swarm.slug(), unit = id, in_flight,
+                                ceiling = ?server.caps().max_in_flight,
+                                "the swarm is at its breadth ceiling; the turn waits for a period \
+                                 with room in it");
+                break;
+            }
         }
         let fields = instance.get("fields");
         let goal = fields
@@ -247,8 +258,21 @@ pub async fn work_the_assignments(server: &Arc<Server>, swarm: &Arc<Swarm>) {
         else {
             continue;
         };
-        if !server.claim(swarm.slug(), &unit) {
-            continue;
+        // The same ceiling, over the same count, and it is the reason this arrow is the one that
+        // needed it: the coordinator has one goal at a time and a coordinator that posts ten
+        // assignments gets ten tasks here, bounded by nothing until now. The coordinator's goals
+        // are claimed first, one pass earlier in `run`, so a ceiling of one is spent on the
+        // coordinator and the members wait — which is the ceiling choosing, not a defect.
+        match server.claim_within(swarm.slug(), &unit, server.caps().max_in_flight) {
+            Ok(true) => {}
+            Ok(false) => continue,
+            Err(in_flight) => {
+                tracing::debug!(swarm = %swarm.slug(), unit = %assignment.assignment_id, in_flight,
+                                ceiling = ?server.caps().max_in_flight,
+                                "the swarm is at its breadth ceiling; the assignment waits for a \
+                                 period with room in it");
+                break;
+            }
         }
 
         // What the member has already spent, across every unit it has worked. There is no
@@ -558,10 +582,15 @@ fn report_capped(server: &Server, swarm: &Arc<Swarm>, agent: &str, unit: &Unit, 
             bound: match &bound.bound {
                 Bound::Goal => "unit",
                 Bound::Agent(_) => "agent",
+                Bound::Swarm => "swarm",
             },
             turns: bound.turns,
             spent_usd: bound.spent_usd,
-            cap: bound.reached.variable(),
+            // `Capped::variable`, not `Reached::variable`: the swarm bound and the per-agent bound
+            // are both a `Reached::Spend`, and the measurement alone cannot say which number it was
+            // compared against. A record that named the wrong one is a record that sends its reader
+            // to raise a cap nothing reached.
+            cap: bound.variable(),
             why: &capped.why,
         });
         swarm.announce(What::Capped {
@@ -605,6 +634,20 @@ fn report_capped(server: &Server, swarm: &Arc<Swarm>, agent: &str, unit: &Unit, 
 /// The caps are the same numbers deliberately: an operator who set `SWARM_MAX_SPEND_USD=5` meant
 /// five dollars, and a ceiling that let the same agent spend five per goal would be answering a
 /// question nobody asked it. Lifting a cap still lifts both, because `None` exceeds nothing.
+///
+/// Three bounds since `story:run-two-workers-at-once`, and the third is the one an AGENT cannot get
+/// round. The argument that carried the second one level up carries again: a bound keyed on the
+/// agent binds a swarm to the number of agents in it, so four members at $2.00 each reach $8.00
+/// against a $5.00 cap with every per-agent fold reporting itself inside its bounds. That was
+/// arithmetic about a swarm nobody could run until this wave; a swarm that runs its members at once
+/// is what makes it a bill. So the swarm's whole record is read as well — `Swarm::spend()`, which
+/// asks neither which unit nor which agent — against `SWARM_MAX_TOTAL_SPEND_USD`.
+///
+/// It is read LAST, and that ordering is what a reader is told to do about it. A unit over its own
+/// bound and an agent over its own are each actionable by somebody; a swarm over its total is only
+/// actionable by whoever owns the swarm, and reporting it while a narrower bound also holds would
+/// name the widest cap to a reader who could have raised the narrowest. When the narrower two are
+/// inside their bounds it is the only bound that can stop the run, and then it is the one reported.
 pub fn bounded(
     caps: Caps,
     swarm: &Arc<Swarm>,
@@ -648,12 +691,28 @@ pub fn bounded(
     }
     // The figures that travel with the verdict are this fold's, because the unit's no longer
     // describe what was measured.
-    whole_agent.map(|reached| Capped {
-        bound: Bound::Agent(agent.to_owned()),
-        reached,
-        turns: agent_attempts,
-        spent_usd: agent_spent.cost_usd,
-    })
+    if let Some(reached) = whole_agent {
+        return Some(Capped {
+            bound: Bound::Agent(agent.to_owned()),
+            reached,
+            turns: agent_attempts,
+            spent_usd: agent_spent.cost_usd,
+        });
+    }
+    // And the swarm's, which is every row of the file and asks nothing about who wrote it. Read
+    // here and not earlier so that the narrowest bound that holds is the one a reader is sent to,
+    // and not at all when there is no cap to read it against — which is what the bare `?` below
+    // says: no cap, no fold, no verdict. This is a THIRD full pass over `spend.jsonl` in one call,
+    // and an operator who lifted the cap should not be charged for it.
+    caps.max_total_spend_usd?;
+    let (swarm_spent, swarm_attempts) = swarm.spend();
+    caps.swarm_exceeded(swarm_spent.cost_usd)
+        .map(|reached| Capped {
+            bound: Bound::Swarm,
+            reached,
+            turns: swarm_attempts,
+            spent_usd: swarm_spent.cost_usd,
+        })
 }
 
 /// The verdict alone, for a caller that wants only whether this goal may take another turn.
@@ -1057,17 +1116,26 @@ mod bounds {
     ///
     /// The class, not the instance. `SWARM_MAX_SPEND_USD=-1` was the one found; it lifted the cap
     /// because `read` compared `<= T::default()`, while `SWARM_MAX_TURNS=-1` did the documented
-    /// thing only because `u64` cannot parse it. Both names are listed here, and a third cap added
-    /// to `Caps` without being added to this list is the next instance of the same defect — which
-    /// is why the assertion below reads the whole struct rather than one field.
+    /// thing only because `u64` cannot parse it. Every name `Caps::configured` reads is listed
+    /// here, and a cap added to `Caps` without being added to this list is the next instance of the
+    /// same defect — which is why the assertions below read the whole struct rather than one field.
     #[tokio::test]
     async fn no_cap_is_lifted_by_a_value_that_is_merely_wrong() {
         let _guard = crate::ENVIRONMENT.lock().await;
+        // The four variables `Caps::configured` reads. The two swarm-wide ones arrived with
+        // `story:run-two-workers-at-once`, and arrived in this list in the same breath.
+        const EVERY: [&str; 4] = [
+            "SWARM_MAX_TURNS",
+            "SWARM_MAX_SPEND_USD",
+            "SWARM_MAX_IN_FLIGHT",
+            "SWARM_MAX_TOTAL_SPEND_USD",
+        ];
         for bad in ["-1", "-0.01", "nonsense"] {
             // SAFETY: every case in this crate that reads the environment holds `ENVIRONMENT`.
             unsafe {
-                std::env::set_var("SWARM_MAX_TURNS", bad);
-                std::env::set_var("SWARM_MAX_SPEND_USD", bad);
+                for name in EVERY {
+                    std::env::set_var(name, bad);
+                }
             }
             let caps = crate::budget::Caps::configured();
             assert_eq!(
@@ -1080,14 +1148,25 @@ mod bounds {
                 Caps::default().max_spend_usd,
                 "SWARM_MAX_SPEND_USD={bad} keeps the default"
             );
+            assert_eq!(
+                caps.max_in_flight,
+                Caps::default().max_in_flight,
+                "SWARM_MAX_IN_FLIGHT={bad} keeps the default"
+            );
+            assert_eq!(
+                caps.max_total_spend_usd,
+                Caps::default().max_total_spend_usd,
+                "SWARM_MAX_TOTAL_SPEND_USD={bad} keeps the default"
+            );
         }
 
         // And the two values that are documented to lift a cap still lift it.
         for lift in ["0", "off", "none"] {
             // SAFETY: as above.
             unsafe {
-                std::env::set_var("SWARM_MAX_TURNS", lift);
-                std::env::set_var("SWARM_MAX_SPEND_USD", lift);
+                for name in EVERY {
+                    std::env::set_var(name, lift);
+                }
             }
             let caps = Caps::configured();
             assert_eq!(caps.max_turns, None, "SWARM_MAX_TURNS={lift} lifts it");
@@ -1095,6 +1174,138 @@ mod bounds {
                 caps.max_spend_usd, None,
                 "SWARM_MAX_SPEND_USD={lift} lifts it"
             );
+            assert_eq!(
+                caps.max_in_flight, None,
+                "SWARM_MAX_IN_FLIGHT={lift} lifts it"
+            );
+            assert_eq!(
+                caps.max_total_spend_usd, None,
+                "SWARM_MAX_TOTAL_SPEND_USD={lift} lifts it"
+            );
+        }
+
+        // SAFETY: as above. The swarm-wide caps are left where every other case expects them.
+        unsafe {
+            std::env::remove_var("SWARM_MAX_IN_FLIGHT");
+            std::env::remove_var("SWARM_MAX_TOTAL_SPEND_USD");
+        }
+    }
+
+    /// A swarm no agent of which is over anything, stopped by the bound that is the swarm's own.
+    ///
+    /// The planted rows are four members at $2.00 each: under the $5.00 per-agent cap, on four
+    /// units none of which is near it, and not one of them the coordinator. Every fold that existed
+    /// before this wave says this swarm may keep going, and $8.00 has gone out of it.
+    ///
+    /// Driven through the real loop, so the refusal is `fire`'s own guard and the record is the one
+    /// `report_capped` writes. Delete the `swarm_exceeded` branch in [`bounded`] and this goes red
+    /// three ways: the coordinator takes turns, the swarm's total moves, and `capped.jsonl` is
+    /// never written at all.
+    #[tokio::test]
+    async fn a_swarm_over_its_total_is_stopped_with_the_bound_that_fired_named() {
+        let _guard = crate::ENVIRONMENT.lock().await;
+        let data = tempdir::TempDir::new("swarm-total").expect("a scratch directory");
+        let program = never_reached(&data.path().join("coordinator.sh"));
+        // SAFETY: every case in this crate that reads the environment holds `ENVIRONMENT` first.
+        unsafe {
+            std::env::set_var("SWARM_MAX_TURNS", "off");
+            std::env::set_var("SWARM_MAX_SPEND_USD", "5");
+            std::env::set_var("SWARM_MAX_TOTAL_SPEND_USD", "5");
+            std::env::set_var("SWARM_MAX_IN_FLIGHT", "off");
+            std::env::set_var("SWARM_COORDINATOR", &program);
+        }
+
+        let (server, swarm, goal) = a_swarm_with_a_goal(&data, "over-its-total").await;
+        let members = ["worker-a", "worker-b", "worker-c", "worker-d"];
+        let mut two_dollars = crate::coordinator::Spent::default();
+        two_dollars.cost_usd = Some(2.00);
+        for member in members {
+            swarm.record_spend(
+                member,
+                &format!("assignment-for-{member}"),
+                1,
+                &two_dollars,
+                Some(false),
+                None,
+            );
+        }
+        let planted = swarm.spend().0.cost_usd;
+        assert_eq!(planted, Some(8.00), "four members at $2.00 each");
+        for member in members {
+            let (spent, turns) = swarm.spend_by_agent(member);
+            assert!(
+                server.caps().exceeded(turns, spent.cost_usd).is_none(),
+                "{member} is inside every bound that is its own, which is what makes this case \
+                 about the swarm's"
+            );
+        }
+
+        for _ in 0..3 {
+            one_period(&server, &swarm).await;
+        }
+
+        // Nothing was launched, so nothing was spent: the check precedes the turn, and a cap that
+        // fires once the money is gone has stopped nothing.
+        assert_eq!(
+            swarm.spend_on(&goal).1,
+            0,
+            "the goal took no turn under a swarm that is over its total"
+        );
+        assert_eq!(
+            swarm.spend_by_agent(COORDINATOR).1,
+            0,
+            "and the coordinator never ran"
+        );
+        assert_eq!(
+            swarm.spend().0.cost_usd,
+            planted,
+            "the refusal cost $0.00: the swarm's total is what it was planted at"
+        );
+
+        // What the retained record says. `capped.jsonl` outlives the process, the watch stream and
+        // the log line, and it is where "was anything ever refused here" is answered.
+        let text = std::fs::read_to_string(swarm.dir().join("turns").join("capped.jsonl"))
+            .expect("the bound that fired was written down");
+        let rows: Vec<Json> = text
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("a row is JSON"))
+            .collect();
+        assert_eq!(rows.len(), 1, "written once, not once a period: {rows:?}");
+        let row = &rows[0];
+        // The retained row, for a run that is recorded rather than summarised.
+        println!("the bound that fired, from turns/capped.jsonl: {row}");
+        assert_eq!(row["bound"], json!("swarm"), "the swarm's own fold: {row}");
+        assert_eq!(
+            row["cap"],
+            json!("SWARM_MAX_TOTAL_SPEND_USD"),
+            "named by the variable that moves it, and not by the per-agent cap nothing reached: \
+             {row}"
+        );
+        assert_eq!(
+            row["spent_usd"],
+            json!(8.0),
+            "on the figure it fired on: {row}"
+        );
+        assert!(
+            row["why"].as_str().is_some_and(|why| {
+                why.contains("SWARM_MAX_TOTAL_SPEND_USD") && why.contains("$8.00 of $5.00")
+            }),
+            "and the sentence a person reads says both: {row}"
+        );
+
+        // The same bound, as a reader of `/status` and of the watch stream sees it.
+        let reported = server.capped_goals();
+        assert!(
+            reported.iter().any(|capped| {
+                capped.why.contains("SWARM_MAX_TOTAL_SPEND_USD") && capped.spent_usd == Some(8.00)
+            }),
+            "the loop said which bound stopped it: {reported:?}"
+        );
+
+        // SAFETY: as above.
+        unsafe {
+            std::env::remove_var("SWARM_MAX_TOTAL_SPEND_USD");
+            std::env::remove_var("SWARM_MAX_IN_FLIGHT");
         }
     }
 }

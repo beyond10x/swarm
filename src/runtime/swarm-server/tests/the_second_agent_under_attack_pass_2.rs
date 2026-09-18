@@ -469,6 +469,7 @@ async fn a_members_first_turn_at_a_new_assignment_is_not_capped_as_that_assignme
         Caps {
             max_turns: Some(3),
             max_spend_usd: None,
+            ..Caps::default()
         },
         &swarm,
         "builder",

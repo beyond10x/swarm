@@ -194,7 +194,10 @@ pub struct CappedRecord<'a> {
     /// Whose turn was refused. Always known: something was about to be asked when this fired.
     pub agent: &'a str,
     /// Which fold the caps were applied to: `"unit"` for the unit's own record, `"agent"` for the
-    /// agent's whole record across every unit it works.
+    /// agent's whole record across every unit it works, `"swarm"` for the whole swarm's record —
+    /// every agent in it, every unit they work. The third value arrived with
+    /// `SWARM_MAX_TOTAL_SPEND_USD`, which refuses a swarm whose members are each still inside
+    /// their own bounds.
     pub bound: &'a str,
     /// The unit of work the turn was refused at — the goal, or the assignment.
     pub unit: &'a str,
