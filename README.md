@@ -80,6 +80,20 @@ agents, more than two at once, and a swarm that extends its own specification ar
 undemonstrated. If you came here for a swarm that grows itself, this is one step of that and not the
 whole of it.
 
+**Two members do now take their turns at the same moment — under a test double, not a vendor.** A
+swarm used to run one turn at a time. Since 2026-09-18 it runs up to `SWARM_MAX_IN_FLIGHT` of them
+(default four), and `examples/two-workers/evidence/2026-09-18-two-workers-at-once/` records two of
+them in flight together: the runtime's own count, two session clocks that overlap, and each member
+saying so itself. The honest caveat is the whole of the caveat — every session in that run is a
+program launch satisfying the same stdin/stdout contract as `examples/coordinator-manual.sh`, so
+**no vendor was contacted and nothing was spent.** What it demonstrates is the runtime's admission
+path under concurrency and the ceiling over it, not two paid model turns at once.
+
+Breadth multiplies exposure, so it arrived with a bound on the exposure: `SWARM_MAX_TOTAL_SPEND_USD`
+(default $20.00) folds the whole swarm's spend across every agent in it and refuses a turn on a
+swarm whose members are each still inside their own caps. Being full is not a refusal — a turn the
+ceiling holds back costs nothing and runs at the next period; only a cap reached refuses.
+
 **A turn is narrowed, and the coordinator is still not sandboxed.** Both halves matter. Every turn now
 launches under a sealed frame that names which operations it admits and which directory it may write,
 so a tool call outside that set is refused when the model attempts it — measured in the run above: 1
@@ -95,7 +109,7 @@ stopped. Run it somewhere you would be comfortable letting an AI agent run.
 ## The shape of it, in numbers
 
 Six domains. Fifty-three commands. Twenty-seven views. About 4,800 lines of YAML describing what the
-system is — against roughly 11,900 lines of runtime in the interpreter and swarm host. The interpreter
+system is — against roughly 12,500 lines of runtime in the interpreter and swarm host. The interpreter
 knows nothing about swarms in particular and can execute a different specification.
 
 That ratio is the point of the project. The interesting part of the system is the part you can read.

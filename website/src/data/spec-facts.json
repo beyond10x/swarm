@@ -104,13 +104,13 @@
     "cliVerbs": 10
   },
   "lines": {
-    "essRuntime": 2088,
-    "swarmServer": 8916,
+    "essRuntime": 2248,
+    "swarmServer": 9427,
     "swarmCli": 874,
-    "runtimeTotal": 11878,
+    "runtimeTotal": 12549,
     "swarmCheck": 1927,
-    "integrationTests": 11124,
-    "integrationTestFiles": 39,
+    "integrationTests": 12063,
+    "integrationTestFiles": 41,
     "web": 8910,
     "specYaml": 4808
   }

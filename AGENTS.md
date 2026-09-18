@@ -209,7 +209,11 @@ difference is where the surprises live:
 - the coordinator process protocol — `metaharness run claude`, the prompt, the verdict line;
 - retry bounds. `swarm.rs:48-52`: "Neither number is the specification's." ESS declares `delivery`
   and `on_failure` and says nothing about attempts or spacing;
-- the pump depth cap and the budget caps;
+- the pump depth cap and the budget caps, including the two swarm-wide ceilings added on
+  2026-09-18 — `SWARM_MAX_IN_FLIGHT` (how many turns of one swarm may run at once) and
+  `SWARM_MAX_TOTAL_SPEND_USD` (dollars folded over every agent in the swarm). ESS declares a
+  `Budget` per agent and per goal and says nothing about a swarm's own total or its breadth, so
+  both are the host's, and `Bound::Swarm` is the host's subject, not a declared one;
 - the UI component library;
 - every clock read.
 
@@ -220,7 +224,8 @@ prose must respect them:
 
 - **"fully code-generated" is false.** No `build.rs`, no codegen step, no generated file, no marker,
   no staleness check. Say *interpreted*.
-- **Multi-agent operation is demonstrated, at depth one and breadth two.** This finding used to read
+- **Multi-agent operation is demonstrated, at depth one and breadth two — and since 2026-09-18,
+  two at once.** This finding used to read
   *"a working agent swarm is overstated"*, and it was true until 2026-09-13. It is retired by a
   recorded run, not by a decision. The swarm was `two-agents-proof`; its evidence is exported to
   `examples/two-agents/evidence/2026-09-13-two-agents-proof/`, because `data/swarms/*/` is runtime
@@ -233,6 +238,15 @@ prose must respect them:
   `cargo run -p swarm-check -- data/swarms/two-agents-proof` re-derives the verdict from the retained log.
   **What is still overstated:** one coordinator, one worker, one assignment. Agents spawning agents,
   more than two agents, and a swarm that extends its own specification are all undemonstrated.
+  **Corrected on 2026-09-18, and only this far:** "one turn at a time" is retired.
+  `examples/two-workers/evidence/2026-09-18-two-workers-at-once/` records two members of one swarm
+  with their turns in flight together — the runtime's own in-flight count, the two sessions'
+  overlapping clocks, and each member's own verdict, three independent readings because two turns
+  that both happened is not two turns that happened together. Read the limit with the result: every
+  session in that run is a `Launch::Program` test double, so what is demonstrated is the runtime's
+  admission path under concurrency and the ceiling over it — **not** two paid model turns at once.
+  The 2026-09-13 run is still the only one where a real harness spent real dollars, and it took one
+  turn at a time. Do not write "two agents working at once" as if a vendor had been contacted.
 - **Nothing confines a coordinator — and a turn is now narrowed.** metaharness gives hermeticity and
   a complete event record, not containment. Its `--substrate` flag is refused by name for this arm,
   because a socket configured there would be accepted, never consulted, and read as containment
