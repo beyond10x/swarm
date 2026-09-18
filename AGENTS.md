@@ -131,9 +131,17 @@ indistinguishable from a step that passed.
 
 Step 11 is part of the gate, not an extra. `website`'s build runs `scripts/spec-facts.mjs` first,
 which rederives every number the public site states; `--check` compares the committed
-`src/data/spec-facts.json`, the README and this file against the specification and fails when any of
-them is stale. It is the check that did not exist when the site published four wrong counts for its
-entire life, and it also guards the figures in prose, which no build step can import.
+`src/data/spec-facts.json` against the specification, and then the prose in `README.md`, this file,
+`CHANGELOG.md`, `src/core/README.md` and `docs/index.md` against what it just derived, failing when
+any of them is stale. It is the check that did not exist when the site published four wrong counts
+for its entire life, and it also guards the figures in prose, which no build step can import.
+
+Its prose assertions are **label-anchored** (`assertCount`), and that is not incidental. They used to
+match a bare number anywhere in the file, which on a line like `… · 4 components · 4 bindings · …`
+means asserting `bindings = 4` passes on the "4" in "4 components" whatever the bindings figure
+actually says — a check that cannot fail. Every count now has to sit against its own noun, and every
+place a file puts a number against that noun has to agree. When you add a number to published prose,
+add its assertion in the same change; a count with no assertion is how the wrong ones got in.
 
 `src/core/bin/check-docs.py` is not in the gate because it needs `ess generate --kind schema` run
 first. Run it when instance documents under `data/` change.
@@ -201,18 +209,23 @@ difference is where the surprises live:
 - the coordinator process protocol — `metaharness run claude`, the prompt, the verdict line;
 - retry bounds. `swarm.rs:48-52`: "Neither number is the specification's." ESS declares `delivery`
   and `on_failure` and says nothing about attempts or spacing;
-- the pump depth cap and the budget caps;
+- the pump depth cap and the budget caps, including the two swarm-wide ceilings added on
+  2026-09-18 — `SWARM_MAX_IN_FLIGHT` (how many turns of one swarm may run at once) and
+  `SWARM_MAX_TOTAL_SPEND_USD` (dollars folded over every agent in the swarm). ESS declares a
+  `Budget` per agent and per goal and says nothing about a swarm's own total or its breadth, so
+  both are the host's, and `Bound::Swarm` is the host's subject, not a declared one;
 - the UI component library;
 - every clock read.
 
 ## Honesty rules for anything published
 
-The public site and `README.md` were audited against the tree. Three findings stand, and any new
+The public site and `README.md` were audited against the tree. Four findings stand, and any new
 prose must respect them:
 
 - **"fully code-generated" is false.** No `build.rs`, no codegen step, no generated file, no marker,
   no staleness check. Say *interpreted*.
-- **Multi-agent operation is demonstrated, at depth one and breadth two.** This finding used to read
+- **Multi-agent operation is demonstrated, at depth one and breadth two — and since 2026-09-18,
+  two at once.** This finding used to read
   *"a working agent swarm is overstated"*, and it was true until 2026-09-13. It is retired by a
   recorded run, not by a decision. The swarm was `two-agents-proof`; its evidence is exported to
   `examples/two-agents/evidence/2026-09-13-two-agents-proof/`, because `data/swarms/*/` is runtime
@@ -225,6 +238,15 @@ prose must respect them:
   `cargo run -p swarm-check -- data/swarms/two-agents-proof` re-derives the verdict from the retained log.
   **What is still overstated:** one coordinator, one worker, one assignment. Agents spawning agents,
   more than two agents, and a swarm that extends its own specification are all undemonstrated.
+  **Corrected on 2026-09-18, and only this far:** "one turn at a time" is retired.
+  `examples/two-workers/evidence/2026-09-18-two-workers-at-once/` records two members of one swarm
+  with their turns in flight together — the runtime's own in-flight count, the two sessions'
+  overlapping clocks, and each member's own verdict, three independent readings because two turns
+  that both happened is not two turns that happened together. Read the limit with the result: every
+  session in that run is a `Launch::Program` test double, so what is demonstrated is the runtime's
+  admission path under concurrency and the ceiling over it — **not** two paid model turns at once.
+  The 2026-09-13 run is still the only one where a real harness spent real dollars, and it took one
+  turn at a time. Do not write "two agents working at once" as if a vendor had been contacted.
 - **Nothing confines a coordinator — and a turn is now narrowed.** metaharness gives hermeticity and
   a complete event record, not containment. Its `--substrate` flag is refused by name for this arm,
   because a socket configured there would be accepted, never consulted, and read as containment
@@ -235,11 +257,33 @@ prose must respect them:
   decision seam* and a write outside the agent's own work directory is refused by a subject scope the
   runtime derives — never reads from a config, because a config a coordinator writes for itself could
   widen its own scope. That is refusal, not containment, and the distinction is the whole of this
-  entry. Measured in the demonstration: 1 of 41 decided calls refused, `decided_by: frame`.
+  entry. Measured in the demonstration: 1 of 42 decided calls refused, `decided_by: frame`.
   One weakness is pinned rather than fixed: metaharness judges a call by the first rule any of its
   subjects matches, so an outside path is admitted when the same call also names an admitted one.
   Nothing found emits such a call; `frame::scope`'s doc states the condition, and two cases assert
   today's behaviour with their inversion triggers.
+- **A drawn edge grants nothing — the canvas describes, the frame decides.** The published prose
+  used to hand the canvas an access-control role: draw a connection to give a coordinator something,
+  delete it to take it back. No code has ever behaved that way. `swarm.blackbox.Box` and
+  `swarm.blackbox.Connection` are declared, created, folded and rendered, and nothing under
+  `src/runtime/` reads either to decide anything. `grep -rn 'LiveConnections' src/runtime/` selects
+  nothing: the view exists only as a declaration at `src/core/domains/blackbox.yaml:1197`. No
+  message travels a `Connection` and no box runs a program — `story:run-a-tool-box` states it
+  outright, that a `Box` of kind `Tool` or `Service` "is declared, drawn, connected and executed by
+  nothing." What a coordinator may actually reach is settled per call by the sealed
+  `metaharness.frame/1`: `frame::ADMITTED` (`src/runtime/swarm-server/src/frame.rs:84`) and
+  `frame::scope` (`frame.rs:229`), whose only arguments are the agent's own work directory, the
+  shared directory and an operation list intersected with `ADMITTED`. Neither consults the canvas,
+  and a coordinator drawing on the canvas cannot move either.
+  **What is true, and worth keeping visible:** the canvas is a real declared model with a real
+  purpose — it records what a swarm intends to reach and how its pieces are meant to fit. Wiring as
+  the grant is the design's *intent*. Write it as intent, never as behaviour, until a runner exists.
+  This finding is about **which mechanism decides access**, and it does not touch the entry above:
+  the frame is still refusal at a decision seam and still not containment, and correcting one must
+  not blur the other.
+  `website/scripts/spec-facts.mjs` fails the gate if the withdrawn sentence reappears in any of the
+  five files that carried it: `README.md`, this file, `website/src/pages/index.js`,
+  `src/core/README.md` and `docs/index.md`.
 
 No count in `website/` may be typed by hand. `website/scripts/spec-facts.mjs` derives all of them
 from the tree into `website/src/data/spec-facts.json`, and fails loudly rather than emitting a zero

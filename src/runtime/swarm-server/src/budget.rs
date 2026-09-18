@@ -37,14 +37,43 @@
 //! specification never declared, and a replay would then disagree with the log.
 //!
 //! ```text
-//!   SWARM_MAX_TURNS       default 20      turns of one agent, across every goal it works
-//!   SWARM_MAX_SPEND_USD   default 5.00    dollars of one agent, across every goal it works
+//!   SWARM_MAX_TURNS            default 20      turns of one agent, across every goal it works
+//!   SWARM_MAX_SPEND_USD        default 5.00    dollars of one agent, across every goal it works
+//!   SWARM_MAX_IN_FLIGHT        default 4       turns of one swarm at once, over every agent in it
+//!   SWARM_MAX_TOTAL_SPEND_USD  default 20.00   dollars of one swarm, over every agent in it
 //! ```
 //!
-//! Either may be set to `0`, `off` or `none` to lift it, and to nothing else: a value that is
-//! merely wrong — `-1`, `nan`, `inf`, `banana` — keeps the default and says so in a warning. Lifting both
-//! restores the old behaviour, which is a loop that stops when the goal is reached or when a person
-//! pauses it.
+//! Any of them may be set to `0`, `off` or `none` to lift it, and to nothing else: a value that is
+//! merely wrong — `-1`, `nan`, `inf`, `banana` — keeps the default and says so in a warning. Lifting them
+//! all restores the old behaviour, which is a loop that stops when the goal is reached or when a
+//! person pauses it.
+//!
+//! # The last two are the swarm's, and they exist because the first two are not
+//!
+//! The first two bound ONE AGENT. Under them a swarm's worst case is the number of agents in it
+//! times $5.00, and nothing in this file used to bound that number: `trigger` spawned one task per
+//! Pursuing goal and one per open assignment, and no code anywhere counted them. At breadth one
+//! that is invisible. At breadth ten it is the run above, ten times, with every per-agent fold
+//! reporting itself inside its bounds — the same shape as the per-goal defect of 2026-09-12, one
+//! level up, and it arrives the day a swarm runs more than one worker at once
+//! (`story:run-two-workers-at-once`).
+//!
+//! So the swarm is a unit of account too, and it is bounded twice: how many turns it may have IN
+//! FLIGHT at one moment, and how many dollars it may have spent ACROSS ALL of them. The two numbers
+//! agree on purpose — four turns at once, each of them an agent that may reach $5.00, is $20.00 of
+//! exposure, which is what `SWARM_MAX_TOTAL_SPEND_USD` bounds.
+//!
+//! The breadth ceiling is not a refusal and is not recorded as one: a turn that does not start
+//! because the swarm is full is taken at the next period, nothing in the model changes, and nothing
+//! is published. The swarm-wide spend cap IS a refusal — the money is gone and no later period
+//! makes it come back — so it is published like every other bound that fires, through
+//! `trigger::report_capped`, and `turns/capped.jsonl` names it: `"bound": "swarm"`, `"cap":
+//! "SWARM_MAX_TOTAL_SPEND_USD"`. A record that named `SWARM_MAX_SPEND_USD` there would send its
+//! reader to raise a cap that was never reached.
+//!
+//! Both are checked BEFORE a turn is launched, which is the property the $0.00 refusal in
+//! `examples/two-agents/evidence/` has and which a cap checked afterwards cannot: a bound that
+//! fires once the money is spent is a bound that has not stopped anything.
 
 use serde::Serialize;
 
@@ -52,6 +81,25 @@ use serde::Serialize;
 const TURNS: u64 = 20;
 /// The default spend cap, in US dollars, per goal.
 const SPEND_USD: f64 = 5.00;
+/// The default breadth: four turns of one swarm running at the same moment.
+///
+/// Four rather than one, because a swarm that may run only one turn at a time is a coordinator
+/// with extra steps and `story:run-two-workers-at-once` exists to end that. Four rather than
+/// unbounded, because the number of tasks `trigger` spawns is the number of units of work a
+/// coordinator has posted, and a coordinator writes that number itself.
+const IN_FLIGHT: u64 = 4;
+/// The default swarm-wide spend cap, in US dollars, across every agent of one swarm.
+///
+/// [`IN_FLIGHT`] times [`SPEND_USD`]: the exposure the breadth ceiling admits at one moment, if
+/// every turn in flight belonged to a different agent and every one of those agents were at its
+/// own cap.
+const TOTAL_SPEND_USD: f64 = IN_FLIGHT as f64 * SPEND_USD;
+
+/// The variable that sets the swarm-wide spend cap. Named once, because it is read in two places
+/// and written into a durable record in a third.
+const TOTAL_SPEND: &str = "SWARM_MAX_TOTAL_SPEND_USD";
+/// The variable that sets the breadth ceiling.
+const BREADTH: &str = "SWARM_MAX_IN_FLIGHT";
 
 /// What one agent may use up, across every goal it works.
 ///
@@ -85,6 +133,12 @@ pub struct Caps {
     /// Dollars of one agent, across every goal it works, as the vendor priced them. `None` means
     /// no cap.
     pub max_spend_usd: Option<f64>,
+    /// Turns of one swarm running at the same moment, over every agent in it. `None` means no
+    /// ceiling, which is what this runtime had until `story:run-two-workers-at-once`.
+    pub max_in_flight: Option<u64>,
+    /// Dollars of one swarm, over every agent in it, as the vendor priced them. `None` means no
+    /// cap.
+    pub max_total_spend_usd: Option<f64>,
 }
 
 impl Default for Caps {
@@ -92,6 +146,8 @@ impl Default for Caps {
         Self {
             max_turns: Some(TURNS),
             max_spend_usd: Some(SPEND_USD),
+            max_in_flight: Some(IN_FLIGHT),
+            max_total_spend_usd: Some(TOTAL_SPEND_USD),
         }
     }
 }
@@ -107,6 +163,8 @@ impl Caps {
         Self {
             max_turns: read("SWARM_MAX_TURNS", TURNS),
             max_spend_usd: read("SWARM_MAX_SPEND_USD", SPEND_USD),
+            max_in_flight: read(BREADTH, IN_FLIGHT),
+            max_total_spend_usd: read(TOTAL_SPEND, TOTAL_SPEND_USD),
         }
     }
 
@@ -126,6 +184,35 @@ impl Caps {
             return Some(Reached::Spend { spent, max });
         }
         None
+    }
+
+    /// Whether one whole swarm — every agent in it, every unit they work — has spent what it may.
+    ///
+    /// A separate question from [`Self::exceeded`] and not a second call to it: the number this
+    /// compares against is `SWARM_MAX_TOTAL_SPEND_USD`, and a verdict that carried the per-agent
+    /// figure would tell its reader to raise a cap nothing reached. There is deliberately no turn
+    /// half — turns summed over a swarm bound nothing an operator can act on, because a swarm's
+    /// turn count grows with the agents in it, and how many of those may run at once is
+    /// [`Self::at_breadth`]'s question.
+    pub fn swarm_exceeded(&self, spent_usd: Option<f64>) -> Option<Reached> {
+        match (self.max_total_spend_usd, spent_usd) {
+            (Some(max), Some(spent)) if spent >= max => Some(Reached::Spend { spent, max }),
+            _ => None,
+        }
+    }
+
+    /// Whether a swarm already holds as many turns at once as it may, and the ceiling it is at.
+    ///
+    /// Asked with the count of turns this swarm has IN FLIGHT, before another is launched. `>=`
+    /// rather than `>` for the reason [`Self::exceeded`] uses it: the count is what is already
+    /// running, so a swarm at its ceiling is full and the next turn is one too many.
+    ///
+    /// The answer is not a [`Reached`] and never becomes a [`Capped`]. Being full is not a refusal
+    /// — the turn is taken at the next period, nothing was spent, and nothing in the model changed
+    /// — and recording it as one would fill `capped.jsonl` with rows that say a swarm was stopped
+    /// when it was merely busy.
+    pub fn at_breadth(&self, in_flight: u64) -> Option<u64> {
+        self.max_in_flight.filter(|max| in_flight >= *max)
     }
 }
 
@@ -188,6 +275,12 @@ pub enum Bound {
     /// One agent's whole record, across every goal it works. Carries the agent, because a figure
     /// summed over goals is unreadable without the name it was summed for.
     Agent(String),
+    /// One swarm's whole record: every agent in it, every unit they work.
+    ///
+    /// Carries no name, and that is not an oversight. A figure summed over agents is read off ONE
+    /// swarm and every record it reaches already says which — `CappedGoal::swarm`, and the
+    /// `capped.jsonl` it is written to is that swarm's own file.
+    Swarm,
 }
 
 /// A bound that fired, with the figures it fired on.
@@ -210,12 +303,32 @@ pub struct Capped {
 }
 
 impl Capped {
+    /// The environment variable that sets the bound that FIRED.
+    ///
+    /// Not [`Reached::variable`] for every bound, and the difference is the whole reason this
+    /// method exists. A swarm stopped by `SWARM_MAX_TOTAL_SPEND_USD` reaches a `Reached::Spend`,
+    /// whose own `variable()` says `SWARM_MAX_SPEND_USD` — a different number, which nothing
+    /// reached, and raising which would not release the swarm by a cent. `Reached` cannot tell the
+    /// two apart because it carries the measurement and not the subject; [`Bound`] is the subject,
+    /// so the pair decides.
+    pub fn variable(&self) -> &'static str {
+        match (&self.bound, &self.reached) {
+            (Bound::Goal | Bound::Agent(_), reached) => reached.variable(),
+            (Bound::Swarm, Reached::Spend { .. }) => TOTAL_SPEND,
+            (Bound::Swarm, Reached::Turns { .. }) => BREADTH,
+        }
+    }
+
     /// What a reader is told, naming the record the cap was measured on.
     ///
     /// For the goal bound this is [`Reached`]'s own sentence, unchanged. For the agent bound that
     /// sentence would name the wrong subject, so the subject is said out loud: the goal may be
     /// within every bound of its own and still be refused, and a reader who is not told that reads
     /// the figures as this goal's and the cap as this goal's to raise.
+    ///
+    /// For the swarm bound both of those are true at once — the unit is inside its bounds and so
+    /// is the agent working it — so the sentence says whose money it was and which of the four
+    /// variables moves it.
     pub fn why(&self) -> String {
         match &self.bound {
             Bound::Goal => self.reached.to_string(),
@@ -224,6 +337,12 @@ impl Capped {
                  own bounds; raise {}, or stop one of the agent's other goals",
                 self.reached.measured(),
                 self.reached.variable()
+            ),
+            Bound::Swarm => format!(
+                "{}, by this swarm across every agent in it. This unit and the agent working it \
+                 are each within their own bounds; raise {}, or stop the swarm",
+                self.reached.measured(),
+                self.variable()
             ),
         }
     }
@@ -324,8 +443,120 @@ mod tests {
         let caps = Caps {
             max_turns: None,
             max_spend_usd: None,
+            max_in_flight: None,
+            max_total_spend_usd: None,
         };
         assert!(caps.exceeded(10_000, Some(1_000.0)).is_none());
+        assert!(caps.swarm_exceeded(Some(1_000.0)).is_none());
+        assert!(caps.at_breadth(1_000).is_none());
+    }
+
+    /// The swarm bound fires on a swarm no agent of which is over anything.
+    ///
+    /// Four agents at $2.00 each is $8.00 against a per-agent cap of $5.00 that every one of them
+    /// is inside, and that is the shape the per-agent caps cannot see: a bound keyed on the agent
+    /// binds a swarm to the number of agents it has, exactly as a bound keyed on the goal bound it
+    /// to the number of goals before 2026-09-12.
+    #[test]
+    fn a_swarm_can_be_over_while_every_agent_in_it_is_inside() {
+        let caps = Caps {
+            max_turns: None,
+            max_spend_usd: Some(5.00),
+            max_in_flight: Some(4),
+            max_total_spend_usd: Some(5.00),
+        };
+        for agent in [2.00_f64; 4] {
+            assert!(
+                caps.exceeded(1, Some(agent)).is_none(),
+                "every agent is inside its own cap"
+            );
+        }
+        let reached = caps.swarm_exceeded(Some(8.00)).expect("the swarm is not");
+        assert!(matches!(reached, Reached::Spend { spent, max }
+                         if (spent - 8.00).abs() < 1e-9 && (max - 5.00).abs() < 1e-9));
+        assert!(
+            caps.swarm_exceeded(Some(4.99)).is_none(),
+            "and a swarm under it runs"
+        );
+        assert!(
+            caps.swarm_exceeded(None).is_none(),
+            "a swarm nothing in which was priced is not a swarm that spent nothing"
+        );
+    }
+
+    /// The retained record names the bound that fired, not the one whose shape it shares.
+    ///
+    /// Both bounds reach `Reached::Spend`, whose own `variable()` is the per-agent cap. A record
+    /// that published that for a swarm bound would send a reader to raise $5.00 while $20.00 was
+    /// what refused them.
+    #[test]
+    fn a_swarm_bound_names_its_own_variable() {
+        let capped = Capped {
+            bound: Bound::Swarm,
+            reached: Reached::Spend {
+                spent: 8.00,
+                max: 5.00,
+            },
+            turns: 4,
+            spent_usd: Some(8.00),
+        };
+        assert_eq!(capped.variable(), "SWARM_MAX_TOTAL_SPEND_USD");
+        assert_ne!(
+            capped.variable(),
+            capped.reached.variable(),
+            "which is NOT the variable the measurement alone would name"
+        );
+        let why = capped.why();
+        assert!(why.contains("SWARM_MAX_TOTAL_SPEND_USD"), "{why}");
+        assert!(
+            why.contains("across every agent in it"),
+            "and says what it was summed over: {why}"
+        );
+
+        // The two bounds that were here before still name theirs.
+        let agent = Capped {
+            bound: Bound::Agent("coordinator".to_owned()),
+            reached: Reached::Spend {
+                spent: 6.00,
+                max: 5.00,
+            },
+            turns: 6,
+            spent_usd: Some(6.00),
+        };
+        assert_eq!(agent.variable(), "SWARM_MAX_SPEND_USD");
+        assert_eq!(
+            Capped {
+                bound: Bound::Goal,
+                reached: Reached::Turns { turns: 20, max: 20 },
+                turns: 20,
+                spent_usd: None,
+            }
+            .variable(),
+            "SWARM_MAX_TURNS"
+        );
+    }
+
+    /// A swarm is full at its ceiling, not one turn after it.
+    #[test]
+    fn a_swarm_at_its_breadth_admits_no_further_turn() {
+        let caps = Caps::default();
+        assert_eq!(caps.max_in_flight, Some(4));
+        assert!(caps.at_breadth(0).is_none(), "an idle swarm admits a turn");
+        assert!(
+            caps.at_breadth(3).is_none(),
+            "and so does one with three running, which is the whole point of the ceiling"
+        );
+        assert_eq!(caps.at_breadth(4), Some(4), "the fourth fills it");
+        assert_eq!(caps.at_breadth(9), Some(4), "and it stays full");
+        assert!(
+            Caps {
+                max_in_flight: None,
+                ..Caps::default()
+            }
+            .at_breadth(1_000)
+            .is_none(),
+            "a lifted ceiling stops nothing, which is what this runtime did before it existed"
+        );
     }
 
     #[test]
@@ -353,6 +584,7 @@ mod retries {
         let caps = Caps {
             max_turns: Some(3),
             max_spend_usd: None,
+            ..Caps::default()
         };
         let iterations = 1;
         let attempts = 4;

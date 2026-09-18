@@ -46,3 +46,25 @@ Two things worth saying plainly rather than leaving for a reader to notice:
   That is not a flaw in the demonstration — every clause it claims is carried by events whose meaning
   does not depend on an issuer — but it is the reason the next demonstration will be better evidence
   than this one.
+
+## `events.csv` carries a harness value the specification does not declare, and it stays
+
+Row 2 of `events.csv` is `swarm.agent.AgentSpawned` with `"harness":"ClaudeCode"`. That is not a
+variant of `swarm.config.Harness`, which declares `[Claude, Codex, B10x]`
+(`src/core/domains/config.yaml`). It was what `swarm-server` wrote for every agent it spawned, on
+every log in this repository's history, and on 2026-09-18 the interpreter was taught to refuse it:
+`ess-runtime/src/apply.rs::require_declared_variants` rejects a command input sitting at an enum
+position that the enum does not name.
+
+**This file is not edited, and must not be.** It is retained evidence behind
+`verification-report:two-agents-under-a-frame-2026-09-13`, and rewriting a row to a value the run
+did not produce would make the artifact say something the run did not — a sealed artifact
+falsified to flatter a later fix. The value is part of what happened. What this note does instead
+is the whole of the correct handling: it records, beside the file, that the value is invalid, why
+it was written, and when the writer was corrected.
+
+Nothing in the verdict rests on it. `swarm-check` never reads `harness`; the seven clauses are
+carried by event names, sequence and the `actor`/`subject` columns. And the refusal cannot break
+this file's replay either: `ess-runtime/src/store.rs::fold` replays a log without going through
+`apply`, so a recorded event carrying `"ClaudeCode"` still folds. The refusal is at the writing
+seam, where a value enters the system, not at the reading seam, where a value already happened.

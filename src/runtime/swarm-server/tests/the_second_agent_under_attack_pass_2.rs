@@ -368,7 +368,7 @@ async fn an_activated_config_cannot_admit_more_than_the_default_frame_does() {
             "swarm.config.DraftConfig",
             json!({"swarm_id": swarm_id, "paths": {},
                    "launch": {"harness": "Claude", "binary": "", "model": "", "args": [],
-                              "skip_permissions": false, "tool_surface": "Native",
+                              "skip_permissions": false, "tool_surface": "Owned",
                               "allow_program": [],
                               "admitted_operations": everything},
                    "schedules": {}, "budgets": {}, "board": {}})
@@ -469,6 +469,7 @@ async fn a_members_first_turn_at_a_new_assignment_is_not_capped_as_that_assignme
         Caps {
             max_turns: Some(3),
             max_spend_usd: None,
+            ..Caps::default()
         },
         &swarm,
         "builder",

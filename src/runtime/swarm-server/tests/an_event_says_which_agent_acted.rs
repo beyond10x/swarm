@@ -160,7 +160,7 @@ async fn two_workers(swarm: &Arc<Swarm>) -> String {
                 "swarm.agent.Spawn",
                 args(
                     json!({"agent_id": agent, "swarm_id": swarm_id, "role": "Worker",
-                            "harness": "ClaudeCode", "display_name": agent, "host": {}}),
+                            "harness": "Claude", "display_name": agent, "host": {}}),
                 ),
                 &format!("spawn-{agent}"),
             )

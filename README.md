@@ -32,8 +32,16 @@ the runtime will not fill in a verdict on the coordinator's behalf. Software tha
 nobody did is worse than software that stops.
 
 Everything a swarm needs beyond that bare start, it draws for itself. A tool is a box. A data source
-is a box. A panel in the UI is a box. Boxes connect when their ports agree on a shape. Giving a
-coordinator access to something is drawing an edge to it; taking it away is deleting the edge.
+is a box. A panel in the UI is a box. Boxes connect when their ports agree on a shape.
+
+Be careful about what that drawing means today. The boxes and the connections are **declared**: the
+specification defines them, a coordinator can create them, the canvas shows them, and the event log
+records every one. Nothing in the runtime then reads them. No message travels a connection and no
+box runs a program. What a coordinator may actually reach is settled somewhere else entirely —
+per call, by the sealed frame its turn launches under, from an admitted set of operations and a
+directory scope the runtime derives (below). An edge a coordinator draws does not widen that, and
+deleting one does not narrow it. The wiring as the grant is where this is going, and is not built
+yet; it is tracked as `story:run-a-tool-box`.
 
 ## What actually runs today
 
@@ -47,6 +55,12 @@ repository. The server, the command line tool and the web UI all work.
 to start if it does not resolve — it will not limp along with a broken model. The web UI asks the
 server what entities exist rather than knowing in advance, so adding one to the YAML makes it appear
 on the canvas.
+
+**The canvas is drawn, and not yet wired.** Boxes and connections are real declared entities with a
+real purpose, and today that purpose is description: they say what a swarm intends to reach and how
+the pieces are meant to fit. A box of kind `Tool` or `Service` runs nothing, a connection carries
+nothing, and no part of the runtime consults either when deciding what a turn is allowed to do. Read
+the canvas as a plan the swarm keeps of itself, not as a permission system.
 
 **The multi-agent part runs, at depth one and breadth two.** Until 2026-09-13 this paragraph said it
 was written down and not demonstrated, which was true. What changed is a recorded run, not an
@@ -66,10 +80,24 @@ agents, more than two at once, and a swarm that extends its own specification ar
 undemonstrated. If you came here for a swarm that grows itself, this is one step of that and not the
 whole of it.
 
+**Two members do now take their turns at the same moment — under a test double, not a vendor.** A
+swarm used to run one turn at a time. Since 2026-09-18 it runs up to `SWARM_MAX_IN_FLIGHT` of them
+(default four), and `examples/two-workers/evidence/2026-09-18-two-workers-at-once/` records two of
+them in flight together: the runtime's own count, two session clocks that overlap, and each member
+saying so itself. The honest caveat is the whole of the caveat — every session in that run is a
+program launch satisfying the same stdin/stdout contract as `examples/coordinator-manual.sh`, so
+**no vendor was contacted and nothing was spent.** What it demonstrates is the runtime's admission
+path under concurrency and the ceiling over it, not two paid model turns at once.
+
+Breadth multiplies exposure, so it arrived with a bound on the exposure: `SWARM_MAX_TOTAL_SPEND_USD`
+(default $20.00) folds the whole swarm's spend across every agent in it and refuses a turn on a
+swarm whose members are each still inside their own caps. Being full is not a refusal — a turn the
+ceiling holds back costs nothing and runs at the next period; only a cap reached refuses.
+
 **A turn is narrowed, and the coordinator is still not sandboxed.** Both halves matter. Every turn now
 launches under a sealed frame that names which operations it admits and which directory it may write,
 so a tool call outside that set is refused when the model attempts it — measured in the run above: 1
-of 41 decided calls refused by the frame. A write outside the agent's own directory is refused too,
+of 42 decided calls refused by the frame. A write outside the agent's own directory is refused too,
 and the rule is derived by the runtime rather than read from configuration, because a config an agent
 writes for itself could widen its own boundary.
 
@@ -81,7 +109,7 @@ stopped. Run it somewhere you would be comfortable letting an AI agent run.
 ## The shape of it, in numbers
 
 Six domains. Fifty-three commands. Twenty-seven views. About 4,800 lines of YAML describing what the
-system is — against roughly 11,900 lines of runtime in the interpreter and swarm host. The interpreter
+system is — against roughly 12,500 lines of runtime in the interpreter and swarm host. The interpreter
 knows nothing about swarms in particular and can execute a different specification.
 
 That ratio is the point of the project. The interesting part of the system is the part you can read.

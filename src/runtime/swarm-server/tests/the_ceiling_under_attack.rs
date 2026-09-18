@@ -244,6 +244,11 @@ async fn a_capped_goal_reports_the_figures_the_bound_was_measured_on() {
     let (measured, counted) = match &bound.bound {
         Bound::Goal => swarm.spend_on(goal),
         Bound::Agent(agent) => swarm.spend_by_agent(agent),
+        // The third fold, added with the swarm-wide cap. This swarm's $6.00 is one agent's, so the
+        // bound that fires here is still the agent's — and if it is ever this one, the fold below
+        // is the one the published figures have to match, not a wildcard that would let any fold
+        // through.
+        Bound::Swarm => swarm.spend(),
     };
     assert_eq!(
         (bound.turns, bound.spent_usd),

@@ -23,7 +23,7 @@ scope:
   path: src/runtime/swarm-server/tests/the_turn_cap_under_attack.rs
 - confidence: cited
   path: src/web/src/runtime.ts
-revision: 9
+revision: 10
 ---
 ## What
 
@@ -93,3 +93,16 @@ Derived 2026-09-12, **corrected 2026-09-13 from unit A's confirmation table** af
   in `review-result:adversary-2026-09-12c-unit-a-pass-1`.
 - **Would collide with:** any unit touching `state.rs`, `trigger.rs`, `budget.rs` or `swarm.rs`, and
   now also anything touching `src/web/src/runtime.ts`.
+
+## Corrected on 2026-09-18
+
+The sentence above — *"There is no global ceiling either. `turns_in_flight()` (`state.rs:201-203`)
+only reports its number to the UI; nothing reads it to refuse"* — stopped being true on
+2026-09-18. `story:run-two-workers-at-once` added `SWARM_MAX_IN_FLIGHT`, read by
+`Server::claim_within` to refuse a claim rather than to report a number, and
+`SWARM_MAX_TOTAL_SPEND_USD`, which folds the whole swarm's record under `Bound::Swarm`.
+
+This story's own acceptance — an agent bounded whichever goals it spreads its spend over — was met
+on 2026-09-12 and is untouched. What is corrected here is the paragraph beside it, which described
+a gap that is now closed elsewhere. The original text is left standing above, because a story that
+quietly edits what it found reads as if it had never been wrong.

@@ -194,7 +194,10 @@ pub struct CappedRecord<'a> {
     /// Whose turn was refused. Always known: something was about to be asked when this fired.
     pub agent: &'a str,
     /// Which fold the caps were applied to: `"unit"` for the unit's own record, `"agent"` for the
-    /// agent's whole record across every unit it works.
+    /// agent's whole record across every unit it works, `"swarm"` for the whole swarm's record —
+    /// every agent in it, every unit they work. The third value arrived with
+    /// `SWARM_MAX_TOTAL_SPEND_USD`, which refuses a swarm whose members are each still inside
+    /// their own bounds.
     pub bound: &'a str,
     /// The unit of work the turn was refused at — the goal, or the assignment.
     pub unit: &'a str,
@@ -504,7 +507,13 @@ impl Swarm {
             .open(dir.join("spend.jsonl"))
         {
             use std::io::Write;
-            let _ = writeln!(file, "{line}");
+            // One write per row, not many. `writeln!` issues several small writes, so two members
+            // recording a turn at the same moment interleave *inside* a row; `spend_where` then
+            // drops the shredded line with `let Ok(row) = ... else { continue }` and the turn and
+            // its dollars vanish from every cap fold. A single `write_all` under `O_APPEND` is
+            // atomic. Unreachable while one writer could not race itself; SWARM_MAX_IN_FLIGHT
+            // makes it reachable.
+            let _ = file.write_all(format!("{line}\n").as_bytes());
         }
     }
 
@@ -536,7 +545,13 @@ impl Swarm {
             .open(dir.join("capped.jsonl"))
         {
             use std::io::Write;
-            let _ = writeln!(file, "{line}");
+            // One write per row, not many. `writeln!` issues several small writes, so two members
+            // recording a turn at the same moment interleave *inside* a row; `spend_where` then
+            // drops the shredded line with `let Ok(row) = ... else { continue }` and the turn and
+            // its dollars vanish from every cap fold. A single `write_all` under `O_APPEND` is
+            // atomic. Unreachable while one writer could not race itself; SWARM_MAX_IN_FLIGHT
+            // makes it reachable.
+            let _ = file.write_all(format!("{line}\n").as_bytes());
         }
     }
 
@@ -1324,7 +1339,14 @@ impl Swarm {
             input.insert("agent_id".into(), Json::String(agent_id.to_owned()));
             input.insert("swarm_id".into(), Json::String(swarm_id.clone()));
             input.insert("role".into(), Json::String(role.to_owned()));
-            input.insert("harness".into(), Json::String("ClaudeCode".into()));
+            // `Claude`, because `swarm.config.Harness` declares `[Claude, Codex, B10x]` and
+            // nothing else. This line said `"ClaudeCode"` until 2026-09-18 — not a variant, and so
+            // not a value `coordinator.rs`'s `Some("Claude")` could ever route: the harness every
+            // agent in this repository's history was spawned on was unreadable by the only code
+            // that reads one. The interpreter refuses it now
+            // (`ess-runtime/src/apply.rs::require_declared_variants`), so this is checked rather
+            // than remembered.
+            input.insert("harness".into(), Json::String("Claude".into()));
             input.insert("display_name".into(), Json::String(display_name.to_owned()));
             input.insert("host".into(), Json::Object(Map::new()));
             self.issue(

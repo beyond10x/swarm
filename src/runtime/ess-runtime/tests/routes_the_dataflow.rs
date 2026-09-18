@@ -257,7 +257,7 @@ fn one_event_reaches_every_binding_that_names_it() {
             "agent_id": "coordinator",
             "swarm_id": "sw-1",
             "role": "Coordinator",
-            "harness": "ClaudeCode",
+            "harness": "Claude",
             "display_name": "The coordinator",
             "host": {}
         })),

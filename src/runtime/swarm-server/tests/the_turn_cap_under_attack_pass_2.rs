@@ -315,7 +315,7 @@ async fn resolve_refuses_rather_than_coin_flipping_between_two_active_configs() 
                 "swarm.config.DraftConfig",
                 json!({"swarm_id": swarm_id, "paths": {},
                        "launch": {"harness": "Claude", "binary": binary, "model": "", "args": [],
-                                  "skip_permissions": false, "tool_surface": "Native",
+                                  "skip_permissions": false, "tool_surface": "Owned",
                                   "allow_program": []},
                        "schedules": {}, "budgets": {}, "board": {}}),
             )

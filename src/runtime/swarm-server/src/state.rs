@@ -678,6 +678,52 @@ impl Server {
             .insert(unit.key(slug))
     }
 
+    /// Claims one unit of work, unless this swarm already holds as many turns at once as it may.
+    ///
+    /// `Err(in_flight)` is "this swarm is full", with the count that was measured. It is not a
+    /// refusal of the work: nothing was spent, nothing in the model moved, and the next period
+    /// asks again — which is why the caller logs it and does not report it capped.
+    ///
+    /// The count and the insert happen under ONE hold of the lock, and that is the whole reason
+    /// this is a method here rather than `turns_in_flight_for(slug)` beside `claim` at the call
+    /// site. A ceiling read and then claimed is a ceiling two callers can both pass: both read
+    /// three of four and both insert, and the swarm runs five turns under a ceiling of four.
+    ///
+    /// The ceiling is `Caps::max_in_flight` — the host's, from the environment, never from a
+    /// config a coordinator can write. `None` lifts it, and then this is `claim` exactly.
+    ///
+    /// Per swarm, because the keys say which swarm: `Unit::key` is `{slug}/{kind}/{id}` and a slug
+    /// is one path component, so `{slug}/` cannot be the prefix of another swarm's key.
+    pub fn claim_within(&self, slug: &str, unit: &Unit, ceiling: Option<u64>) -> Result<bool, u64> {
+        let mut in_flight = self.in_flight.lock().expect("not poisoned");
+        let prefix = format!("{slug}/");
+        let held = u64::try_from(
+            in_flight
+                .iter()
+                .filter(|key| key.starts_with(&prefix))
+                .count(),
+        )
+        .unwrap_or(u64::MAX);
+        if ceiling.is_some_and(|max| held >= max) {
+            return Err(held);
+        }
+        Ok(in_flight.insert(unit.key(slug)))
+    }
+
+    /// How many turns this one swarm is running right now.
+    ///
+    /// [`Self::turns_in_flight`] counts the whole server, which is every swarm it holds. A reader
+    /// asking whether one swarm is at its ceiling cannot use that number.
+    pub fn turns_in_flight_for(&self, slug: &str) -> usize {
+        let prefix = format!("{slug}/");
+        self.in_flight
+            .lock()
+            .expect("not poisoned")
+            .iter()
+            .filter(|key| key.starts_with(&prefix))
+            .count()
+    }
+
     /// The turn is over, whichever way.
     pub fn release(&self, slug: &str, unit: &Unit) {
         self.in_flight

@@ -230,6 +230,8 @@ async fn an_agents_spend_is_bounded_across_the_goals_it_works() {
     let lifted = Caps {
         max_turns: None,
         max_spend_usd: None,
+        max_in_flight: None,
+        max_total_spend_usd: None,
     };
     assert!(
         !goals

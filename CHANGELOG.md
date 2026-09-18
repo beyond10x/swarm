@@ -6,6 +6,91 @@ and the versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 Every number in this file is read from a command's output. Where a claim is inferred rather than
 measured it says so.
 
+## [Unreleased]
+
+Two members of one swarm take their turns at the same moment, the interpreter stopped writing a
+value its own specification does not declare, and two published claims that were never true of the
+code were withdrawn. Five pieces of work, built in parallel and landed together because they meet
+in four files.
+
+### Added
+
+- **Two turns of one swarm in flight at once, and a ceiling over them.** `SWARM_MAX_IN_FLIGHT`
+  (default 4) bounds how many turns of one swarm may run together, over every agent in it;
+  `Server::claim_within` takes the claim and the count in one pass, so two arrows of the same
+  period cannot both read "room for one more". Being full is **not** a refusal: a turn the ceiling
+  holds back costs nothing, publishes nothing, writes no `capped.jsonl` row, and runs at the next
+  period.
+- **A swarm-wide spend cap.** `SWARM_MAX_TOTAL_SPEND_USD` (default $20.00 = the breadth times the
+  per-agent cap) folds the whole swarm's record and refuses a turn on a swarm whose members are
+  each still inside their own bounds — the exposure breadth creates and nothing was bounding.
+  `Bound::Swarm` is the third subject a cap is read off, beside the goal and the agent, and
+  `turns/capped.jsonl` rows carry `"bound":"swarm"`.
+- **`examples/two-workers/evidence/2026-09-18-two-workers-at-once/`** — the recorded run behind it,
+  read three independent ways, because two turns that both happened is not two turns that happened
+  together: the runtime's own in-flight count (**2**), the two sessions' clocks (starting **28 µs**
+  apart and overlapping for **206 ms**), and each member's own verdict. Four mutation proofs are
+  named in that README; each turns the case red. **Its limit, stated rather than left to be found:**
+  every session in that run is a `Launch::Program` test double, so no vendor was contacted and
+  nothing was spent. It demonstrates the runtime's admission path under concurrency, not two paid
+  model turns at once.
+- **The interpreter refuses a value the specification's own enum does not declare.** `apply` gains
+  step 0, `require_declared_variants`, ahead of outcome selection: every input value sitting at an
+  enum position is one of that enum's declared variants, or `ApplyError::NotAVariant` and nothing
+  is applied. It walks struct, list and map bodies. It deliberately does not read a union's tag or
+  an enum behind a newtype — this specification declares neither, so a branch for either would be a
+  refusal nothing here can produce.
+- **A doc gate that can fail.** `demonstration()` in `website/scripts/spec-facts.mjs` derives the
+  two-agent run's measurements from `spend.jsonl` and cross-checks them against the retained
+  `checker-output.txt`; two independent retained sources have to agree or it fails. `WITHDRAWN` +
+  `checkWithdrawn()` fail the gate if a retired claim's sentence reappears in any of the five files
+  that published it. `components` and `workloads` are derived, and a class the IR stops emitting is
+  a hard failure rather than a zero.
+
+### Changed
+
+- **`assertProse` is deleted.** It tested whether a number appeared *anywhere* in a file, so on a
+  line reading `… · 4 components · 4 bindings · …` an assertion of `bindings = 4` passed on the "4"
+  in "4 components" whatever the bindings figure said — a check that cannot fail is worse than no
+  check, because it is believed. `assertCount(rel, label, value, noun, within?)` replaces it: the
+  number must sit against its own noun, and every place a file states a number against that noun
+  has to agree. `checkProse` now also opens `src/core/README.md` and `docs/index.md`, which it had
+  never read.
+- **A fourth honesty rule**, in `AGENTS.md` and everywhere the claim was published: *a drawn edge
+  grants nothing*. Boxes and connections are declared, created, folded and rendered, and nothing
+  under `src/runtime/` reads either to decide anything — no message travels a `Connection`, no
+  `Box` of kind `Tool` or `Service` runs a program, and `grep -rn 'LiveConnections' src/runtime/`
+  selects nothing. What a turn may reach is settled per call by the sealed frame, which never
+  consults the canvas. Wiring as the grant stays visible as the model's *intent*.
+- `AGENTS.md`'s list of what is outside the specification names the two new ceilings: ESS declares
+  a `Budget` per agent and per goal and says nothing about a swarm's own total or its breadth.
+- `CappedRecord::bound` documents `"swarm"` as the third value it can carry.
+
+### Fixed
+
+- **Spend rows could shred each other, and the dollars in them vanished.** Both append sites wrote
+  a row with `writeln!`, which issues several small writes; under `O_APPEND` each is atomic on its
+  own but the row is not, so two members recording a turn at the same moment interleaved *inside* a
+  row. `spend_where` then dropped the unparseable line silently and the turn and its dollars were
+  missing from every cap fold that reads the file — a cap is not enforced against spend it cannot
+  see. Both sites issue a single `write_all` of the row and its newline. Unreachable while one
+  writer could not race itself; `SWARM_MAX_IN_FLIGHT` is what makes it reachable, which is why the
+  two land together.
+- **504 occurrences of `"ClaudeCode"`**, which is not a variant of `swarm.config.Harness`
+  (`[Claude, Codex, B10x]`), plus **7** of an invalid `"Native"` tool surface the same sweep found.
+  Nothing could consume either: `coordinator.rs` matches `Some("Claude")` when it reads a launch
+  line back. The four `swarm-check` fixture corpora are regenerated.
+  `examples/two-agents/evidence/2026-09-13-two-agents-proof/events.csv` is **not** edited — it is
+  retained evidence, and rewriting a row to a value the run did not produce would falsify a sealed
+  artifact to flatter a later fix. A note beside it records what the value is and when the writer
+  was corrected. Replay is unaffected: `store.rs::fold` does not go through `apply`, so the refusal
+  sits at the writing seam and not the reading one.
+- **Two published counts that had been wrong since they were written.** `src/core/README.md` said
+  16 errors and 2 bindings; the compiler emits 17 and 4. And the demonstration measurement was one
+  short in four places — `README.md`, `AGENTS.md`, `CHANGELOG.md` and the website's honesty table
+  each said the frame refused one of forty-one, where the retained evidence carries 42 decided
+  calls. Both sat in exactly the gap the old prose check could not see.
+
 ## [0.2.0] — 2026-09-13
 
 A swarm ran two agents. `swarm.agent.AssignmentTaken`, `AssignmentDone` and `AgentIdle` had each
@@ -23,7 +108,7 @@ what it does not admit. 30 commits since `v0.1.0`.
 - **A sealed frame around every turn.** `src/runtime/swarm-server/src/frame.rs` builds and seals a
   `metaharness.frame/1` document; turns launch `--decisions frame --frame <file>` and a turn with no
   frame does not launch. `--decisions observe` — "allow every call and record every call" — appears
-  nowhere in the tree. Measured in the demonstration: **1 of 41 decided calls refused, `decided_by:
+  nowhere in the tree. Measured in the demonstration: **1 of 42 decided calls refused, `decided_by:
   frame`**.
 - **A subject scope the runtime derives**, never reads from configuration: an agent's own work
   directory in full, the swarm's shared root read-only, everything else refused. Derived rather than

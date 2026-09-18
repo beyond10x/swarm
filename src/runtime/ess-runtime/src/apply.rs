@@ -5,6 +5,8 @@
 //!
 //! The order is fixed, and each step is a thing the specification already decided:
 //!
+//!   0. check the input against the vocabulary the IR closed — every value sitting at an enum
+//!      position is one of that enum's declared variants, or nothing is applied;
 //!   1. select the outcome — each `when:` predicate against the invocation's input, in declaration
 //!      order, then the one `otherwise`, and `wrong_state` when the subject rests in a state that
 //!      no move of this command starts from;
@@ -18,6 +20,32 @@
 //! What it does NOT do is decide anything the model left open. A literal in a payload is text
 //! because ESS says a literal in a binding is text; a field no `sets:` writes stays undetermined;
 //! and an outcome that refuses moves nothing.
+//!
+//! # Why step 0 lives here, and not as an `ess` diagnostic family
+//!
+//! Until 2026-09-18 the specification was authoritative over STRUCTURE — which outcome is taken,
+//! what moves, what is emitted — and over nothing else. `swarm.config.Harness` declares
+//! `[Claude, Codex, B10x]`; `swarm-server` spawned every agent with `harness: "ClaudeCode"`, and
+//! the interpreter wrote it into the log without a word. `coordinator.rs` matches `Some("Claude")`
+//! when it reads a launch line back, so the value the runtime was writing was not merely invalid —
+//! nothing could consume it.
+//!
+//! `ess` could not have caught that, and that is the whole of the argument for where this lives. A
+//! diagnostic family in `ess` reads specification TEXT at compile time. `"ClaudeCode"` appears in
+//! no specification file; it is a runtime value in a JSON invocation `ess` never sees. The
+//! interpreter is the only thing that holds the compiled vocabulary and the invocation at the same
+//! moment, so it is the only place the two can be compared at all.
+//!
+//! It is also total and decidable straight from the IR — `ResolvedBody::Enum { variants }` is a
+//! finite list of strings, and membership in it is not an approximation of anything. That is what
+//! separates it from the general invariant checking ESS declines: there is no cheap syntactic
+//! subset here that would refuse some inputs and miss most.
+//!
+//! What it deliberately does not read: a union's tag, and an enum reached through a newtype. Both
+//! are closed vocabularies by the same argument, and this specification declares neither, so a
+//! branch for either would be a refusal nothing in this system can produce. A stated gap, which is
+//! the honest form. Primitives are not checked either — that is type checking, and this is
+//! membership.
 
 use std::collections::BTreeMap;
 
@@ -25,8 +53,8 @@ use serde_json::{Map, Value as Json};
 
 use ess_compiler::EssIr;
 use ess_compiler::ir::{
-    ResolvedCommand, ResolvedCondition, ResolvedEffect, ResolvedInstance, ResolvedOutcome,
-    ResolvedPayloadValue, ResolvedSubject,
+    ResolvedBody, ResolvedCommand, ResolvedCondition, ResolvedEffect, ResolvedInstance,
+    ResolvedOutcome, ResolvedPayloadValue, ResolvedSubject, ResolvedTypeRef,
 };
 use ess_primitives::predicate::Truth;
 
@@ -79,6 +107,21 @@ pub enum ApplyError {
     NoIdentity(String),
     /// A write to a field the entity does not declare.
     UnknownField { entity: String, field: String },
+    /// An input value sitting where the specification declares an enum, and not one of its
+    /// variants. The one thing this interpreter checks about a VALUE rather than a shape.
+    NotAVariant {
+        /// The command whose input carried it.
+        command: String,
+        /// Where in that input it sits: the field, plus the path through any struct, list or map.
+        path: String,
+        /// The enum it had to belong to.
+        type_name: String,
+        /// What arrived, rendered as JSON so that a number, a null and the string `"null"` are
+        /// three different things in the message.
+        value: String,
+        /// Everything that enum declares, in declaration order.
+        variants: Vec<String>,
+    },
 }
 
 impl std::fmt::Display for ApplyError {
@@ -100,6 +143,22 @@ impl std::fmt::Display for ApplyError {
             Self::UnknownField { entity, field } => {
                 write!(f, "`{entity}` declares no field `{field}`")
             }
+            Self::NotAVariant {
+                command,
+                path,
+                type_name,
+                value,
+                variants,
+            } => write!(
+                f,
+                "`{command}` input `{path}` is {value}, which is not a variant of `{type_name}`; \
+                 it declares {}",
+                variants
+                    .iter()
+                    .map(|variant| format!("`{variant}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
         }
     }
 }
@@ -132,6 +191,7 @@ pub fn apply(
         permitted(ir, actor, command)?;
     }
     require_declared_input(declared, command, input)?;
+    require_declared_variants(ir, declared, command, input)?;
 
     let subject = subject_state(ir, world, declared, input);
     let outcome = select(declared, input, subject.as_ref())
@@ -213,6 +273,106 @@ fn require_declared_input(
         }
     }
     Ok(())
+}
+
+/// Refuses an invocation carrying a value the enum at that position does not declare.
+///
+/// Only input is walked, and that is the complete seam: every value the outside world puts into
+/// this system arrives as a command input. A payload or a `sets:` writes what an input already
+/// carried, or a literal the specification itself wrote down.
+fn require_declared_variants(
+    ir: &EssIr,
+    declared: &ResolvedCommand,
+    command: &str,
+    input: &Map<String, Json>,
+) -> Result<(), ApplyError> {
+    for field in &declared.input {
+        if let Some(value) = input.get(field.name.as_str()) {
+            in_vocabulary(ir, command, field.name.as_str(), &field.type_ref, value)?;
+        }
+    }
+    Ok(())
+}
+
+/// Walks one value against one resolved type, refusing at the first enum position that disagrees.
+///
+/// # Termination
+///
+/// A `ResolvedTypeRef` is a finite tree the compiler built, so `Optional`, `List` and `Map` cannot
+/// recur forever on their own. The only hop out of one type tree into another is `Declared` into a
+/// struct body, and every such hop descends one level of the JSON value, which is finite. No depth
+/// counter is needed, and adding one would put a second bound beside the compiler's with nothing
+/// keeping the two in step.
+fn in_vocabulary(
+    ir: &EssIr,
+    command: &str,
+    path: &str,
+    type_ref: &ResolvedTypeRef,
+    value: &Json,
+) -> Result<(), ApplyError> {
+    match type_ref {
+        // Not this check's business: a primitive's shape is type checking, and the scope here is
+        // membership of a closed vocabulary.
+        ResolvedTypeRef::Primitive { .. } => Ok(()),
+        // Absent is a value the specification allows, so `null` ends the walk rather than failing
+        // it. Anything else is checked against what the `Optional` wraps.
+        ResolvedTypeRef::Optional { of } => {
+            if value.is_null() {
+                Ok(())
+            } else {
+                in_vocabulary(ir, command, path, of, value)
+            }
+        }
+        ResolvedTypeRef::List { of } => {
+            for (index, element) in value.as_array().into_iter().flatten().enumerate() {
+                in_vocabulary(ir, command, &format!("{path}[{index}]"), of, element)?;
+            }
+            Ok(())
+        }
+        ResolvedTypeRef::Map { value: of, .. } => {
+            for (key, held) in value.as_object().into_iter().flatten() {
+                in_vocabulary(ir, command, &format!("{path}.{key}"), of, held)?;
+            }
+            Ok(())
+        }
+        ResolvedTypeRef::Declared { name } => match &ir.named_type(name).body {
+            ResolvedBody::Enum { variants } => {
+                let held = value.as_str();
+                if held.is_some_and(|held| variants.iter().any(|variant| variant == held)) {
+                    Ok(())
+                } else {
+                    Err(ApplyError::NotAVariant {
+                        command: command.to_owned(),
+                        path: path.to_owned(),
+                        type_name: name.name().to_string(),
+                        value: value.to_string(),
+                        variants: variants.clone(),
+                    })
+                }
+            }
+            // A field the invocation does not carry is not this check's refusal:
+            // `require_declared_input` owns "required and missing", and a struct's own optional
+            // fields are the specification's business rather than an enum's.
+            ResolvedBody::Struct { fields, .. } => {
+                for field in fields {
+                    if let Some(held) = value.get(field.name.as_str()) {
+                        in_vocabulary(
+                            ir,
+                            command,
+                            &format!("{path}.{}", field.name),
+                            &field.type_ref,
+                            held,
+                        )?;
+                    }
+                }
+                Ok(())
+            }
+            // Both are closed vocabularies this check could read and deliberately does not — see
+            // the module header. Neither is declared anywhere in this specification, and a refusal
+            // nothing can produce is not a refusal.
+            ResolvedBody::Newtype { .. } | ResolvedBody::Union { .. } => Ok(()),
+        },
+    }
 }
 
 /// The state the subject rests in, when this command acts on an existing instance.

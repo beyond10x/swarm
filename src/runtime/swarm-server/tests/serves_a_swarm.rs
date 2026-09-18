@@ -210,6 +210,51 @@ async fn a_command_the_specification_refuses_is_a_bad_request_not_a_crash() {
     assert!(incomplete.to_string().contains("requires input field"));
 }
 
+/// The enum refusal reaches the seam an operator actually uses, and nothing is written.
+///
+/// `swarm.config.Harness` declares `[Claude, Codex, B10x]`. `"ClaudeCode"` is what this server
+/// wrote for every agent it spawned until 2026-09-18, and it is what `coordinator.rs` could never
+/// route. Here it is refused as `Refused::Command`, which `http.rs:115` answers with 400 and
+/// `kind: "command"` — the caller's mistake, not the host's.
+///
+/// MUTATION: delete the `require_declared_variants` call from `ess-runtime`'s `apply`, and this
+/// goes red twice over: the `expect_err` and the empty-log assertion.
+#[tokio::test]
+async fn a_value_outside_a_declared_enum_is_refused_and_nothing_is_recorded() {
+    let (server, _data) = server().await;
+    let swarm = server.open("vocabulary").await.expect("a swarm opens");
+
+    let refused = swarm
+        .issue(
+            None,
+            "swarm.agent.Spawn",
+            args(json!({
+                "agent_id": "coordinator",
+                "swarm_id": "4e6d38f9-7e3a-4b2f-9a0c-1d2e3f405162",
+                "role": "Coordinator",
+                "harness": "ClaudeCode",
+                "display_name": "The coordinator",
+                "host": {}
+            })),
+            "req-enum",
+        )
+        .await
+        .expect_err("`ClaudeCode` is not a variant of `swarm.config.Harness`");
+
+    let said = refused.to_string();
+    assert!(
+        said.contains("`harness` is \"ClaudeCode\"")
+            && said.contains("not a variant of `swarm.config.Harness`")
+            && said.contains("`Claude`, `Codex`, `B10x`"),
+        "the refusal names the value, the enum and the vocabulary; found: {said}"
+    );
+
+    assert!(
+        swarm.instances("swarm.agent.Agent").await.is_empty(),
+        "a refused command writes nothing: no agent, and no `AgentSpawned` in the log"
+    );
+}
+
 /// A failed at-least-once delivery is kept and re-attempted, not dropped.
 ///
 /// `adopt-activated-config` declares `delivery: at_least_once` with `on_failure: retry`, and the

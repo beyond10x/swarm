@@ -38,7 +38,7 @@
             "system",
             "runtime",
             "2026-09-13T12:04:00Z",
-            "{\"agent_id\": \"coordinator\", \"display_name\": \"coordinator\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Coordinator\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+            "{\"agent_id\": \"coordinator\", \"display_name\": \"coordinator\", \"harness\": \"Claude\", \"host\": {}, \"role\": \"Coordinator\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
           ],
           [
             5,
@@ -46,7 +46,7 @@
             "system",
             "agent:coordinator",
             "2026-09-13T12:05:00Z",
-            "{\"agent_id\": \"builder\", \"display_name\": \"builder\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Worker\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+            "{\"agent_id\": \"builder\", \"display_name\": \"builder\", \"harness\": \"Claude\", \"host\": {}, \"role\": \"Worker\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
           ],
           [
             6,
@@ -201,7 +201,7 @@
             "system",
             "runtime",
             "2026-09-13T12:04:00Z",
-            "{\"agent_id\": \"coordinator\", \"display_name\": \"coordinator\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Coordinator\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+            "{\"agent_id\": \"coordinator\", \"display_name\": \"coordinator\", \"harness\": \"Claude\", \"host\": {}, \"role\": \"Coordinator\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
           ],
           [
             5,
@@ -209,7 +209,7 @@
             "system",
             "agent:coordinator",
             "2026-09-13T12:05:00Z",
-            "{\"agent_id\": \"builder\", \"display_name\": \"builder\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Worker\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+            "{\"agent_id\": \"builder\", \"display_name\": \"builder\", \"harness\": \"Claude\", \"host\": {}, \"role\": \"Worker\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
           ],
           [
             6,
@@ -362,7 +362,7 @@
             "system",
             "runtime",
             "2026-09-13T12:04:00Z",
-            "{\"agent_id\": \"coordinator\", \"display_name\": \"coordinator\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Coordinator\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+            "{\"agent_id\": \"coordinator\", \"display_name\": \"coordinator\", \"harness\": \"Claude\", \"host\": {}, \"role\": \"Coordinator\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
           ],
           [
             5,
@@ -370,7 +370,7 @@
             "system",
             "agent:coordinator",
             "2026-09-13T12:05:00Z",
-            "{\"agent_id\": \"builder\", \"display_name\": \"builder\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Worker\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+            "{\"agent_id\": \"builder\", \"display_name\": \"builder\", \"harness\": \"Claude\", \"host\": {}, \"role\": \"Worker\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
           ],
           [
             6,
@@ -521,7 +521,7 @@
             "system",
             "runtime",
             "2026-09-13T12:04:00Z",
-            "{\"agent_id\": \"coordinator\", \"display_name\": \"coordinator\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Coordinator\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+            "{\"agent_id\": \"coordinator\", \"display_name\": \"coordinator\", \"harness\": \"Claude\", \"host\": {}, \"role\": \"Coordinator\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
           ],
           [
             5,
@@ -529,7 +529,7 @@
             "system",
             "agent:coordinator",
             "2026-09-13T12:05:00Z",
-            "{\"agent_id\": \"builder\", \"display_name\": \"builder\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Worker\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+            "{\"agent_id\": \"builder\", \"display_name\": \"builder\", \"harness\": \"Claude\", \"host\": {}, \"role\": \"Worker\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
           ],
           [
             6,
@@ -684,7 +684,7 @@
             "system",
             "runtime",
             "2026-09-13T12:04:00Z",
-            "{\"agent_id\": \"coordinator\", \"display_name\": \"coordinator\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Coordinator\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+            "{\"agent_id\": \"coordinator\", \"display_name\": \"coordinator\", \"harness\": \"Claude\", \"host\": {}, \"role\": \"Coordinator\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
           ],
           [
             5,
@@ -692,7 +692,7 @@
             "system",
             "agent:coordinator",
             "2026-09-13T12:05:00Z",
-            "{\"agent_id\": \"builder\", \"display_name\": \"builder\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Worker\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+            "{\"agent_id\": \"builder\", \"display_name\": \"builder\", \"harness\": \"Claude\", \"host\": {}, \"role\": \"Worker\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
           ],
           [
             6,
@@ -847,7 +847,7 @@
             "system",
             "runtime",
             "2026-09-13T12:04:00Z",
-            "{\"agent_id\": \"coordinator\", \"display_name\": \"coordinator\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Coordinator\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+            "{\"agent_id\": \"coordinator\", \"display_name\": \"coordinator\", \"harness\": \"Claude\", \"host\": {}, \"role\": \"Coordinator\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
           ],
           [
             5,
@@ -855,7 +855,7 @@
             "system",
             "agent:coordinator",
             "2026-09-13T12:05:00Z",
-            "{\"agent_id\": \"builder\", \"display_name\": \"builder\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Worker\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+            "{\"agent_id\": \"builder\", \"display_name\": \"builder\", \"harness\": \"Claude\", \"host\": {}, \"role\": \"Worker\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
           ],
           [
             6,
@@ -1010,7 +1010,7 @@
             "system",
             "runtime",
             "2026-09-13T12:04:00Z",
-            "{\"agent_id\": \"coordinator\", \"display_name\": \"coordinator\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Coordinator\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+            "{\"agent_id\": \"coordinator\", \"display_name\": \"coordinator\", \"harness\": \"Claude\", \"host\": {}, \"role\": \"Coordinator\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
           ],
           [
             5,
@@ -1018,7 +1018,7 @@
             "system",
             "agent:coordinator",
             "2026-09-13T12:05:00Z",
-            "{\"agent_id\": \"builder\", \"display_name\": \"builder\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Worker\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+            "{\"agent_id\": \"builder\", \"display_name\": \"builder\", \"harness\": \"Claude\", \"host\": {}, \"role\": \"Worker\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
           ],
           [
             6,
@@ -1174,7 +1174,7 @@
             "system",
             "runtime",
             "2026-09-13T12:04:00Z",
-            "{\"agent_id\": \"coordinator\", \"display_name\": \"coordinator\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Coordinator\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+            "{\"agent_id\": \"coordinator\", \"display_name\": \"coordinator\", \"harness\": \"Claude\", \"host\": {}, \"role\": \"Coordinator\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
           ],
           [
             5,
@@ -1182,7 +1182,7 @@
             "system",
             "agent:coordinator",
             "2026-09-13T12:05:00Z",
-            "{\"agent_id\": \"builder\", \"display_name\": \"builder\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Worker\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+            "{\"agent_id\": \"builder\", \"display_name\": \"builder\", \"harness\": \"Claude\", \"host\": {}, \"role\": \"Worker\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
           ],
           [
             6,
@@ -1337,7 +1337,7 @@
             "system",
             "runtime",
             "2026-09-13T12:04:00Z",
-            "{\"agent_id\": \"coordinator\", \"display_name\": \"coordinator\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Coordinator\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+            "{\"agent_id\": \"coordinator\", \"display_name\": \"coordinator\", \"harness\": \"Claude\", \"host\": {}, \"role\": \"Coordinator\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
           ],
           [
             5,
@@ -1345,7 +1345,7 @@
             "system",
             "agent:coordinator",
             "2026-09-13T12:05:00Z",
-            "{\"agent_id\": \"builder\", \"display_name\": \"builder\", \"harness\": \"ClaudeCode\", \"host\": {}, \"role\": \"Worker\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
+            "{\"agent_id\": \"builder\", \"display_name\": \"builder\", \"harness\": \"Claude\", \"host\": {}, \"role\": \"Worker\", \"swarm_id\": \"083b1264-b000-4fd6-a656-c07181e79796\"}"
           ],
           [
             6,
