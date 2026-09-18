@@ -131,9 +131,17 @@ indistinguishable from a step that passed.
 
 Step 11 is part of the gate, not an extra. `website`'s build runs `scripts/spec-facts.mjs` first,
 which rederives every number the public site states; `--check` compares the committed
-`src/data/spec-facts.json`, the README and this file against the specification and fails when any of
-them is stale. It is the check that did not exist when the site published four wrong counts for its
-entire life, and it also guards the figures in prose, which no build step can import.
+`src/data/spec-facts.json` against the specification, and then the prose in `README.md`, this file,
+`CHANGELOG.md`, `src/core/README.md` and `docs/index.md` against what it just derived, failing when
+any of them is stale. It is the check that did not exist when the site published four wrong counts
+for its entire life, and it also guards the figures in prose, which no build step can import.
+
+Its prose assertions are **label-anchored** (`assertCount`), and that is not incidental. They used to
+match a bare number anywhere in the file, which on a line like `… · 4 components · 4 bindings · …`
+means asserting `bindings = 4` passes on the "4" in "4 components" whatever the bindings figure
+actually says — a check that cannot fail. Every count now has to sit against its own noun, and every
+place a file puts a number against that noun has to agree. When you add a number to published prose,
+add its assertion in the same change; a count with no assertion is how the wrong ones got in.
 
 `src/core/bin/check-docs.py` is not in the gate because it needs `ess generate --kind schema` run
 first. Run it when instance documents under `data/` change.
@@ -235,7 +243,7 @@ prose must respect them:
   decision seam* and a write outside the agent's own work directory is refused by a subject scope the
   runtime derives — never reads from a config, because a config a coordinator writes for itself could
   widen its own scope. That is refusal, not containment, and the distinction is the whole of this
-  entry. Measured in the demonstration: 1 of 41 decided calls refused, `decided_by: frame`.
+  entry. Measured in the demonstration: 1 of 42 decided calls refused, `decided_by: frame`.
   One weakness is pinned rather than fixed: metaharness judges a call by the first rule any of its
   subjects matches, so an outside path is admitted when the same call also names an admitted one.
   Nothing found emits such a call; `frame::scope`'s doc states the condition, and two cases assert

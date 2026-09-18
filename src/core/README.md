@@ -10,8 +10,8 @@ the kernel: only what a swarm cannot build for itself.
 | compiles | `ess specify compile --path src/core --format json` | exit 0 |
 | every written field is replayable | `src/core/bin/check-sets-are-emitted.py` | 0 violations |
 
-Size: 6 domains · 10 entities · 24 types · 53 commands · 56 events · 27 views · 16 errors ·
-12 actors · 4 components · 2 bindings · 4 workloads (`ess specify compile`, counted).
+Size: 6 domains · 10 entities · 24 types · 53 commands · 56 events · 27 views · 17 errors ·
+12 actors · 4 components · 4 bindings · 4 workloads (`ess specify compile`, counted).
 
 ## What is in the kernel, and why nothing else is
 
@@ -112,7 +112,7 @@ docs/ess-authoring-rules.md     what ess accepts and refuses, as probed here
 
 Instance data is **not** here. It lives in `../../data/`, one directory per swarm.
 
-## Rough edges met here (ess 0.23.0)
+## Rough edges met here (probed at ess 0.23.0)
 
 | edge | what was done |
 |---|---|

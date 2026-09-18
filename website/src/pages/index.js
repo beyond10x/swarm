@@ -339,7 +339,8 @@ export default function Home() {
                   isolation, and the harness&rsquo;s own attestation says so. Since 2026-09-13 every
                   turn does launch under a sealed frame naming the operations it admits and the one
                   directory it may write, so a call outside that set is refused when the model
-                  attempts it — measured, 1 of 41 decided calls. That is a refusal at a decision
+                  attempts it — measured, {facts.demonstration.refusedCalls} of{' '}
+                  {facts.demonstration.decidedCalls} decided calls. That is a refusal at a decision
                   seam, which is a weaker claim than confinement and is the reason this row still
                   says no.
                 </td>

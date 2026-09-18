@@ -23,7 +23,7 @@ what it does not admit. 30 commits since `v0.1.0`.
 - **A sealed frame around every turn.** `src/runtime/swarm-server/src/frame.rs` builds and seals a
   `metaharness.frame/1` document; turns launch `--decisions frame --frame <file>` and a turn with no
   frame does not launch. `--decisions observe` — "allow every call and record every call" — appears
-  nowhere in the tree. Measured in the demonstration: **1 of 41 decided calls refused, `decided_by:
+  nowhere in the tree. Measured in the demonstration: **1 of 42 decided calls refused, `decided_by:
   frame`**.
 - **A subject scope the runtime derives**, never reads from configuration: an agent's own work
   directory in full, the swarm's shared root read-only, everything else refused. Derived rather than

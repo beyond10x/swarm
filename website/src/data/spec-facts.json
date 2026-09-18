@@ -16,7 +16,9 @@
     "errors": 17,
     "views": 27,
     "actors": 12,
-    "bindings": 4
+    "components": 4,
+    "bindings": 4,
+    "workloads": 4
   },
   "domains": [
     {
@@ -90,6 +92,13 @@
       "views": 2
     }
   ],
+  "demonstration": {
+    "slug": "two-agents-proof",
+    "decidedCalls": 42,
+    "refusedCalls": 1,
+    "spendRows": 3,
+    "agents": 2
+  },
   "surfaces": {
     "httpRoutes": 13,
     "cliVerbs": 10

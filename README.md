@@ -83,7 +83,7 @@ whole of it.
 **A turn is narrowed, and the coordinator is still not sandboxed.** Both halves matter. Every turn now
 launches under a sealed frame that names which operations it admits and which directory it may write,
 so a tool call outside that set is refused when the model attempts it — measured in the run above: 1
-of 41 decided calls refused by the frame. A write outside the agent's own directory is refused too,
+of 42 decided calls refused by the frame. A write outside the agent's own directory is refused too,
 and the rule is derived by the runtime rather than read from configuration, because a config an agent
 writes for itself could widen its own boundary.
 
