@@ -411,7 +411,7 @@ dependencies = [
 
 [[package]]
 name = "ess-runtime"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ess-compiler",
  "ess-domain",
@@ -1294,7 +1294,7 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "swarm-check"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "clap",
  "num-bigint",
@@ -1307,7 +1307,7 @@ dependencies = [
 
 [[package]]
 name = "swarm-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "clap",
  "serde",
@@ -1317,7 +1317,7 @@ dependencies = [
 
 [[package]]
 name = "swarm-server"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "axum",
  "ess-domain",

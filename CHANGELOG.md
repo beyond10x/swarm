@@ -8,10 +8,12 @@ measured it says so.
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-11-22
+
 Two members of one swarm take their turns at the same moment, the interpreter stopped writing a
 value its own specification does not declare, and two published claims that were never true of the
 code were withdrawn. Five pieces of work, built in parallel and landed together because they meet
-in four files.
+in four files. 38 commits since `v0.2.0`.
 
 ### Added
 
@@ -250,4 +252,6 @@ Each of these is an open story in `.engineering/planning/`, with the measurement
 - The website deploys to GitHub Pages from `.github/workflows/deploy-website.yml`, every action
   pinned to a commit.
 
+[0.3.0]: https://github.com/beyond10x/swarm/releases/tag/v0.3.0
+[0.2.0]: https://github.com/beyond10x/swarm/releases/tag/v0.2.0
 [0.1.0]: https://github.com/beyond10x/swarm/releases/tag/v0.1.0
